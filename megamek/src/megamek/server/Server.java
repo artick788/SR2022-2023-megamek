@@ -21889,36 +21889,13 @@ public class Server implements Runnable {
         // if this is a fighter squadron then pick an active fighter and pass on
         // the damage
         if (te instanceof FighterSquadron) {
-            if(te.getActiveSubEntities().orElse(Collections.emptyList()).isEmpty()) {
-                return vDesc;
-            }
-            List<Entity> fighters = te.getSubEntities().orElse(Collections.emptyList());
-            Entity fighter = fighters.get(hit.getLocation());
-            HitData new_hit = fighter.rollHitLocation(ToHitData.HIT_NORMAL, ToHitData.SIDE_FRONT);
-            new_hit.setBoxCars(hit.rolledBoxCars());
-            new_hit.setGeneralDamageType(hit.getGeneralDamageType());
-            new_hit.setCapital(hit.isCapital());
-            new_hit.setCapMisCritMod(hit.getCapMisCritMod());
-            new_hit.setSingleAV(hit.getSingleAV());
-            new_hit.setAttackerId(hit.getAttackerId());
-            return damageEntity(fighter, new_hit, damage, ammoExplosion, bFrag,
-                                damageIS, areaSatArty, throughFront, underWater, nukeS2S);
+            return damageFighterSquadron(te, hit, damage, ammoExplosion, bFrag, damageIS, areaSatArty, throughFront, underWater, nukeS2S);
         }
 
         // Battle Armor takes full damage to each trooper from area-effect.
         if (areaSatArty && (te instanceof BattleArmor)) {
-            r = new Report(6044);
-            r.subject = te.getId();
-            r.indent(2);
-            vDesc.add(r);
-            for (int i = 0; i < ((BattleArmor) te).getTroopers(); i++) {
-                hit.setLocation(BattleArmor.LOC_TROOPER_1 + i);
-                if (te.getInternal(hit) > 0) {
-                    vDesc.addAll(damageEntity(te, hit, damage, ammoExplosion, bFrag,
-                            damageIS, false, throughFront, underWater, nukeS2S));
-                }
-            }
-            return vDesc;
+            return damageBattleArmor(te, hit, damage, ammoExplosion, bFrag,
+                    damageIS, throughFront, underWater, nukeS2S);
         }
 
         // This is good for shields if a shield absorps the hit it shouldn't
@@ -23660,6 +23637,45 @@ public class Server implements Runnable {
         // This flag indicates the hit was directly to IS
         if (wasDamageIS) {
             Report.addNewline(vDesc);
+        }
+        return vDesc;
+    }
+
+    private Vector<Report> damageFighterSquadron(Entity te, HitData hit, int damage,
+                                                 boolean ammoExplosion, DamageType bFrag, boolean damageIS,
+                                                 boolean areaSatArty, boolean throughFront, boolean underWater,
+                                                 boolean nukeS2S){
+        if(te.getActiveSubEntities().orElse(Collections.emptyList()).isEmpty()) {
+            return new Vector<>();
+        }
+        List<Entity> fighters = te.getSubEntities().orElse(Collections.emptyList());
+        Entity fighter = fighters.get(hit.getLocation());
+        HitData new_hit = fighter.rollHitLocation(ToHitData.HIT_NORMAL, ToHitData.SIDE_FRONT);
+        new_hit.setBoxCars(hit.rolledBoxCars());
+        new_hit.setGeneralDamageType(hit.getGeneralDamageType());
+        new_hit.setCapital(hit.isCapital());
+        new_hit.setCapMisCritMod(hit.getCapMisCritMod());
+        new_hit.setSingleAV(hit.getSingleAV());
+        new_hit.setAttackerId(hit.getAttackerId());
+        return damageEntity(fighter, new_hit, damage, ammoExplosion, bFrag,
+                damageIS, areaSatArty, throughFront, underWater, nukeS2S);
+    }
+
+    private Vector<Report> damageBattleArmor(Entity te, HitData hit, int damage,
+                                             boolean ammoExplosion, DamageType bFrag, boolean damageIS,
+                                             boolean throughFront, boolean underWater,
+                                             boolean nukeS2S){
+        Vector<Report> vDesc = new Vector<>();
+        Report r = new Report(6044);
+        r.subject = te.getId();
+        r.indent(2);
+        vDesc.add(r);
+        for (int i = 0; i < ((BattleArmor) te).getTroopers(); i++) {
+            hit.setLocation(BattleArmor.LOC_TROOPER_1 + i);
+            if (te.getInternal(hit) > 0) {
+                vDesc.addAll(damageEntity(te, hit, damage, ammoExplosion, bFrag,
+                        damageIS, false, throughFront, underWater, nukeS2S));
+            }
         }
         return vDesc;
     }
