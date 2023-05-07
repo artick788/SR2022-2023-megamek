@@ -1,15 +1,9 @@
 package megamek.server;
 
 import megamek.client.ui.swing.util.PlayerColour;
-import megamek.common.Coords;
-import megamek.common.Game;
-import megamek.common.IGame;
-import megamek.common.IPlayer;
+import megamek.common.*;
 
-import java.util.Enumeration;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import java.util.Set;
+import java.util.*;
 
 public class GameManager {
     /**
@@ -64,6 +58,34 @@ public class GameManager {
      * Stores a set of <code>Coords</code> that have changed during this phase.
      */
     private Set<Coords> hexUpdateSet = new LinkedHashSet<>();
+
+    /**
+     * Checks to see if Flawed Cooling is triggered and generates a report of
+     * the result.
+     *
+     * @param reason
+     * @param entity
+     * @return
+     */
+    public Vector<Report> doFlawedCoolingCheck(String reason, Entity entity) {
+        Vector<Report> out = new Vector<>();
+        Report r = new Report(9800);
+        r.addDesc(entity);
+        r.add(reason);
+        int roll = Compute.d6(2);
+        r.add(roll);
+        out.add(r);
+        if (roll >= 10) {
+            Report s = new Report(9805);
+            ((Mech) entity).setCoolingFlawActive(true);
+            out.add(s);
+        }
+
+        return out;
+    }
+
+
+
 
 
 }

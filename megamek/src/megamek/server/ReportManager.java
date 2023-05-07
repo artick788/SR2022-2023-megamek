@@ -194,6 +194,63 @@ public class ReportManager {
         return copy;
     }
 
+    /**
+     * Filter a report vector for double blind.
+     *
+     * @param originalReportVector the original <code>Vector<Report></code>
+     * @param p                    the <code>Player</code> who should see stuff only visible to
+     *                             him
+     * @return the <code>Vector<Report></code> with stuff only Player p can see
+     */
+    public Vector<Report> filterReportVector(IGame game, Vector<Report> originalReportVector, IPlayer p) {
+        // If no double blind, no filtering to do
+        if (!game.doBlind()) {
+            return new Vector<>(originalReportVector);
+        }
+        // But if it is, then filter everything properly.
+        Vector<Report> filteredReportVector = new Vector<>();
+        for (Report r : originalReportVector) {
+            Report filteredReport = filterReport(game, r, p, false);
+            if (filteredReport != null) {
+                filteredReportVector.addElement(filteredReport);
+            }
+        }
+        return filteredReportVector;
+    }
+
+    /**
+     * Convenience method that fills in a report showing that a crew member of a multicrew cockpit
+     * has taken over for another incapacitated crew member.
+     *
+     * @param e         The <code>Entity</code> for the crew.
+     * @param slot      The slot index of the crew member that was incapacitated.
+     * @param wasPilot  Whether the crew member was the pilot before becoming incapacitated.
+     * @param wasGunner Whether the crew member was the gunner before becoming incapacitated.
+     * @return          A completed <code>Report</code> if the position was assumed by another
+     *                  crew members, otherwise null.
+     */
+    public Report createCrewTakeoverReport(Entity e, int slot, boolean wasPilot, boolean wasGunner) {
+        if (wasPilot && e.getCrew().getCurrentPilotIndex() != slot) {
+            Report r = new Report(5560);
+            r.subject = e.getId();
+            r.indent(4);
+            r.add(e.getCrew().getNameAndRole(e.getCrew().getCurrentPilotIndex()));
+            r.add(e.getCrew().getCrewType().getRoleName(e.getCrew().getCrewType().getPilotPos()));
+            r.addDesc(e);
+            return r;
+        }
+        if (wasGunner && e.getCrew().getCurrentGunnerIndex() != slot) {
+            Report r = new Report(5560);
+            r.subject = e.getId();
+            r.indent(4);
+            r.add(e.getCrew().getNameAndRole(e.getCrew().getCurrentGunnerIndex()));
+            r.add(e.getCrew().getCrewType().getRoleName(e.getCrew().getCrewType().getGunnerPos()));
+            r.addDesc(e);
+            return r;
+        }
+        return null;
+    }
+
 
 
 }

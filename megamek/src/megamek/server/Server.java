@@ -927,7 +927,7 @@ public class Server implements Runnable {
                 // Send Entities *after* the Lounge Phase Change
                 send(connId,
                         new Packet(Packet.COMMAND_PHASE_CHANGE, game.getPhase()));
-                if (doBlind()) {
+                if (game.doBlind()) {
                     send(connId, createFilteredFullEntitiesPacket(player));
                 } else {
                     send(connId, createFullEntitiesPacket());
@@ -938,7 +938,7 @@ public class Server implements Runnable {
                 send(connId, createAllReportsPacket(player));
 
                 // Send entities *before* other phase changes.
-                if (doBlind()) {
+                if (game.doBlind()) {
                     send(connId, createFilteredFullEntitiesPacket(player));
                 } else {
                     send(connId, createFullEntitiesPacket());
@@ -976,7 +976,7 @@ public class Server implements Runnable {
      * Resend entities to the player called by SeeAll command
      */
     public void sendEntities(int connId) {
-        if (doBlind()) {
+        if (game.doBlind()) {
             send(connId, createFilteredEntitiesPacket(game.getPlayer(connId), null));
         } else {
             send(connId, createEntitiesPacket());
@@ -2109,7 +2109,7 @@ public class Server implements Runnable {
                     }
                 }
                 // Update visibility indications if using double blind.
-                if (doBlind()) {
+                if (game.doBlind()) {
                     updateVisibilityIndicator(null);
                 }
                 resetEntityPhase(phase);
@@ -2184,7 +2184,7 @@ public class Server implements Runnable {
                     }
                     Report r = new Report();
                     r.type = Report.PUBLIC;
-                    if (doBlind() && suppressBlindBV()) {
+                    if (game.doBlind() && game.suppressBlindBV()) {
                         r.type = Report.PLAYER;
                         r.player = player.getId();
                     }
@@ -2581,7 +2581,7 @@ public class Server implements Runnable {
                 // movement phase
                 checkForFlamingDamage();
                 checkForTeleMissileAttacks();
-                cleanupDestroyedNarcPods();
+                game.cleanupDestroyedNarcPods();
                 checkForFlawedCooling();
                 resolveCallSupport();
                 // check phase report
@@ -2613,7 +2613,7 @@ public class Server implements Runnable {
                 resolveScheduledNukes();
                 applyBuildingDamage();
                 checkForPSRFromDamage();
-                cleanupDestroyedNarcPods();
+                game.cleanupDestroyedNarcPods();
                 reportmanager.addReport(resolvePilotingRolls());
                 checkForFlawedCooling();
                 // check phase report
@@ -2638,7 +2638,7 @@ public class Server implements Runnable {
                 checkForPSRFromDamage();
                 reportmanager.addReport(resolvePilotingRolls());
                 resolveSinkVees();
-                cleanupDestroyedNarcPods();
+                game.cleanupDestroyedNarcPods();
                 checkForFlawedCooling();
                 checkForChainWhipGrappleChecks();
                 // check phase report
@@ -2697,7 +2697,7 @@ public class Server implements Runnable {
                 checkForPSRFromDamage();
                 reportmanager.addReport(resolvePilotingRolls());
 
-                cleanupDestroyedNarcPods();
+                game.cleanupDestroyedNarcPods();
                 checkForFlawedCooling();
 
                 sendSpecialHexDisplayPackets();
@@ -3629,7 +3629,7 @@ public class Server implements Runnable {
                 }
             }
 
-            if (!doBlind()) {
+            if (!game.doBlind()) {
 
                 // The turn order is different in movement phase
                 // if a player has any "even" moving units.
@@ -4627,7 +4627,7 @@ public class Server implements Runnable {
         detectHiddenUnits();
 
         // Update visibility indications if using double blind.
-        if (doBlind()) {
+        if (game.doBlind()) {
             updateVisibilityIndicator(losCache);
         }
 
@@ -6465,7 +6465,7 @@ public class Server implements Runnable {
                         r.add(e.getPosition().getBoardNum());
                         reportmanager.addReport(r);
                         // Report the block
-                        if (doBlind()) {
+                        if (game.doBlind()) {
                             r = new Report(9961);
                             r.subject = e.getId();
                             r.addDesc(e);
@@ -7104,7 +7104,7 @@ public class Server implements Runnable {
                     && entity.hasSpotlight()) {
                 final boolean SearchOn = !entity.isUsingSpotlight();
                 entity.setSpotlightState(SearchOn);
-                if (doBlind()) { // if double blind, we may need to filter the
+                if (game.doBlind()) { // if double blind, we may need to filter the
                     // players that receive this message
                     Vector<IPlayer> playersVector = game.getPlayersVector();
                     Vector<IPlayer> vCanSee = whoCanSee(entity);
@@ -9212,7 +9212,7 @@ public class Server implements Runnable {
         }
 
         // if using double blind, update the player on new units he might see
-        if (doBlind()) {
+        if (game.doBlind()) {
             send(entity.getOwner().getId(),
                     createFilteredEntitiesPacket(entity.getOwner(), losCache));
         }
@@ -10721,7 +10721,7 @@ public class Server implements Runnable {
                 int roll = Compute.d6(2);
 
                 // Report minefield roll
-                if (doBlind()) { // only report if DB, otherwise all players see
+                if (game.doBlind()) { // only report if DB, otherwise all players see
                 r = new Report(2152);
                 r.player = mf.getPlayerId();
                 r.add(Minefield.getDisplayableName(mf.getType()));
@@ -10733,7 +10733,7 @@ public class Server implements Runnable {
 
                 if (roll >= 6) {
                     // Report hit
-                    if (doBlind()) {
+                    if (game.doBlind()) {
                         r = new Report(5543);
                         r.player = mf.getPlayerId();
                         vMineReport.add(r);
@@ -10786,7 +10786,7 @@ public class Server implements Runnable {
                     continue;
                 } else {
                     // Report miss
-                    if (doBlind()) {
+                    if (game.doBlind()) {
                         r = new Report(5542);
                         r.player = mf.getPlayerId();
                         vMineReport.add(r);
@@ -10823,7 +10823,7 @@ public class Server implements Runnable {
             int roll = Compute.d6(2);
 
             // Report minefield roll
-            if (doBlind()) { // Only do if DB, otherwise all players will see
+            if (game.doBlind()) { // Only do if DB, otherwise all players will see
                 r = new Report(2151);
                 r.player = mf.getPlayerId();
                 r.add(Minefield.getDisplayableName(mf.getType()));
@@ -10836,7 +10836,7 @@ public class Server implements Runnable {
 
             if (roll < target) {
                 // Report miss
-                if (doBlind()) {
+                if (game.doBlind()) {
                     r = new Report(2217);
                     r.player = mf.getPlayerId();
                     vMineReport.add(r);
@@ -10845,7 +10845,7 @@ public class Server implements Runnable {
             }
 
             // Report hit
-            if (doBlind()) {
+            if (game.doBlind()) {
                 r = new Report(2270);
                 r.player = mf.getPlayerId();
                 vMineReport.add(r);
@@ -12653,7 +12653,7 @@ public class Server implements Runnable {
         }
 
         // Update visibility indications if using double blind.
-        if (doBlind()) {
+        if (game.doBlind()) {
             updateVisibilityIndicator(null);
         }
 
@@ -13002,7 +13002,7 @@ public class Server implements Runnable {
         processAttack(entity, vector);
 
         // Update visibility indications if using double blind.
-        if (doBlind()) {
+        if (game.doBlind()) {
             updateVisibilityIndicator(null);
         }
 
@@ -13956,34 +13956,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * Called during the fire phase to resolve all (and only) weapon attacks
-     */
-    private void resolveOnlyWeaponAttacks() {
-        // loop through received attack actions, getting attack handlers
-        for (Enumeration<EntityAction> i = game.getActions(); i
-                .hasMoreElements(); ) {
-            EntityAction ea = i.nextElement();
-            if (ea instanceof WeaponAttackAction) {
-                WeaponAttackAction waa = (WeaponAttackAction) ea;
-                Entity ae = game.getEntity(waa.getEntityId());
-                Mounted m = ae.getEquipment(waa.getWeaponId());
-                Weapon w = (Weapon) m.getType();
-                // Track attacks original target, for things like swarm LRMs
-                waa.setOriginalTargetId(waa.getTargetId());
-                waa.setOriginalTargetType(waa.getTargetType());
-                AttackHandler ah = w.fire(waa, game, this);
-                if (ah != null) {
-                    ah.setStrafing(waa.isStrafing());
-                    ah.setStrafingFirstShot(waa.isStrafingFirstShot());
-                    game.addAttack(ah);
-                }
-            }
-        }
-        // and clear the attacks Vector
-        game.resetActions();
-    }
-
-    /**
      * Trigger the indicated AP Pod of the entity.
      *
      * @param entity the <code>Entity</code> triggering the AP Pod.
@@ -14640,7 +14612,7 @@ public class Server implements Runnable {
         game.resetTeleMissileAttacks();
 
         // remove any duplicate attack declarations
-        cleanupPhysicalAttacks();
+        game.cleanupPhysicalAttacks();
 
         // loop thru received attack actions
         for (Enumeration<EntityAction> i = game.getActions(); i
@@ -14667,78 +14639,6 @@ public class Server implements Runnable {
             cen = pr.aaa.getEntityId();
         }
         physicalResults.removeAllElements();
-    }
-
-    /**
-     * Cleans up the attack declarations for the physical phase by removing all
-     * attacks past the first for any one mech. Also clears out attacks by dead
-     * or disabled mechs.
-     */
-    private void cleanupPhysicalAttacks() {
-        for (Iterator<Entity> i = game.getEntities(); i.hasNext(); ) {
-            Entity entity = i.next();
-            removeDuplicateAttacks(entity.getId());
-        }
-        removeDeadAttacks();
-    }
-
-    /**
-     * Removes any actions in the attack queue beyond the first by the specified
-     * entity, unless that entity has melee master in which case it allows two
-     * attacks.
-     */
-    private void removeDuplicateAttacks(int entityId) {
-        int allowed = 1;
-        Entity en = game.getEntity(entityId);
-        if (null != en) {
-            allowed = en.getAllowedPhysicalAttacks();
-        }
-        Vector<EntityAction> toKeep = new Vector<>();
-
-        for (Enumeration<EntityAction> i = game.getActions(); i.hasMoreElements(); ) {
-            EntityAction action = i.nextElement();
-            if (action.getEntityId() != entityId) {
-                toKeep.addElement(action);
-            } else if (allowed > 0) {
-                toKeep.addElement(action);
-                if (!(action instanceof SearchlightAttackAction)) {
-                    allowed--;
-                }
-            } else {
-                MegaMek.getLogger().error("Removing duplicate phys attack for id#" + entityId
-                                + "\n\t\taction was " + action.toString());
-            }
-        }
-
-        // reset actions and re-add valid elements
-        game.resetActions();
-        for (EntityAction entityAction : toKeep) {
-            game.addAction(entityAction);
-        }
-    }
-
-    /**
-     * Removes all attacks by any dead entities. It does this by going through
-     * all the attacks and only keeping ones from active entities. DFAs are kept
-     * even if the pilot is unconscious, so that he can fail.
-     */
-    private void removeDeadAttacks() {
-        Vector<EntityAction> toKeep = new Vector<>(game.actionsSize());
-
-        for (Enumeration<EntityAction> i = game.getActions(); i.hasMoreElements(); ) {
-            EntityAction action = i.nextElement();
-            Entity entity = game.getEntity(action.getEntityId());
-            if ((entity != null) && !entity.isDestroyed()
-                    && (entity.isActive() || (action instanceof DfaAttackAction))) {
-                toKeep.addElement(action);
-            }
-        }
-
-        // reset actions and re-add valid elements
-        game.resetActions();
-        for (EntityAction entityAction : toKeep) {
-            game.addAction(entityAction);
-        }
     }
 
     /**
@@ -15276,7 +15176,7 @@ public class Server implements Runnable {
         }
 
         if (te.canFall()) {
-            PilotingRollData kickPRD = getKickPushPSR(te, ae, te, "was kicked");
+            PilotingRollData kickPRD = game.getKickPushPSR(te, ae, te, "was kicked");
             game.addPSR(kickPRD);
         }
 
@@ -16704,16 +16604,16 @@ public class Server implements Runnable {
                 r.addDesc(ae);
                 reportmanager.addReport(r);
                 if (ae.canFall()) {
-                    PilotingRollData pushPRD = getKickPushPSR(ae, ae, te, "was pushed");
+                    PilotingRollData pushPRD = game.getKickPushPSR(ae, ae, te, "was pushed");
                     game.addPSR(pushPRD);
                 } else if (ae instanceof LandAirMech && ae.isAirborneVTOLorWIGE()) {
-                    game.addControlRoll(getKickPushPSR(ae, ae, te, "was pushed"));
+                    game.addControlRoll(game.getKickPushPSR(ae, ae, te, "was pushed"));
                 }
                 if (te.canFall()) {
-                    PilotingRollData targetPushPRD = getKickPushPSR(te, ae, te, "was pushed");
+                    PilotingRollData targetPushPRD = game.getKickPushPSR(te, ae, te, "was pushed");
                     game.addPSR(targetPushPRD);
                 } else if (ae instanceof LandAirMech && ae.isAirborneVTOLorWIGE()) {
-                    game.addControlRoll(getKickPushPSR(te, ae, te, "was pushed"));
+                    game.addControlRoll(game.getKickPushPSR(te, ae, te, "was pushed"));
                 }
                 return;
             }
@@ -16742,7 +16642,7 @@ public class Server implements Runnable {
         Coords src = te.getPosition();
         Coords dest = src.translated(direction);
 
-        PilotingRollData pushPRD = getKickPushPSR(te, ae, te, "was pushed");
+        PilotingRollData pushPRD = game.getKickPushPSR(te, ae, te, "was pushed");
 
         if (Compute.isValidDisplacement(game, te.getId(), te.getPosition(), direction)) {
             r = new Report(4170);
@@ -16843,7 +16743,7 @@ public class Server implements Runnable {
 
         // we hit...
         if (te.canFall()) {
-            PilotingRollData pushPRD = getKickPushPSR(te, ae, te, "was tripped");
+            PilotingRollData pushPRD = game.getKickPushPSR(te, ae, te, "was tripped");
             game.addPSR(pushPRD);
         }
 
@@ -18543,49 +18443,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * Get the Kick or Push PSR, modified by weight class
-     *
-     * @param psrEntity The <code>Entity</code> that should make a PSR
-     * @param attacker  The attacking <code>Entity></code>
-     * @param target    The target <code>Entity</code>
-     * @return The <code>PilotingRollData</code>
-     */
-    private PilotingRollData getKickPushPSR(Entity psrEntity, Entity attacker,
-                                            Entity target, String reason) {
-        int mod = 0;
-        PilotingRollData psr = new PilotingRollData(psrEntity.getId(), mod,
-                                                    reason);
-        if (psrEntity.hasQuirk(OptionsConstants.QUIRK_POS_STABLE)) {
-            psr.addModifier(-1, "stable", false);
-        }
-        if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_TACOPS_PHYSICAL_PSR)) {
-
-            switch (target.getWeightClass()) {
-                case EntityWeightClass.WEIGHT_LIGHT:
-                    mod = 1;
-                    break;
-                case EntityWeightClass.WEIGHT_MEDIUM:
-                    mod = 0;
-                    break;
-                case EntityWeightClass.WEIGHT_HEAVY:
-                    mod = -1;
-                    break;
-                case EntityWeightClass.WEIGHT_ASSAULT:
-                    mod = -2;
-                    break;
-            }
-            String reportStr;
-            if (mod > 0) {
-                reportStr = ("weight class modifier +") + mod;
-            } else {
-                reportStr = ("weight class modifier ") + mod;
-            }
-            psr.addModifier(mod, reportStr, false);
-        }
-        return psr;
-    }
-
-    /**
      * Each mech sinks the amount of heat appropriate to its current heat
      * capacity.
      */
@@ -19691,24 +19548,6 @@ public class Server implements Runnable {
         }
     }
 
-    private void clearFlawedCoolingFlags(Entity entity) {
-        // If we're not using quirks, no need to do this check.
-        if (!game.getOptions().booleanOption(OptionsConstants.ADVANCED_STRATOPS_QUIRKS)) {
-            return;
-        }
-        // Only applies to Mechs.
-        if (!(entity instanceof Mech)) {
-            return;
-        }
-
-        // Check for existence of flawed cooling quirk.
-        if (!entity.hasQuirk(OptionsConstants.QUIRK_NEG_FLAWED_COOLING)) {
-            return;
-        }
-        entity.setFallen(false);
-        entity.setStruck(false);
-    }
-
     private void checkForFlawedCooling() {
 
         // If we're not using quirks, no need to do this check.
@@ -19736,41 +19575,16 @@ public class Server implements Runnable {
 
             // Perform the check.
             if (entity.damageThisPhase >= 20) {
-                reportmanager.addReport(doFlawedCoolingCheck("20+ damage", entity));
+                reportmanager.addReport(gamemanager.doFlawedCoolingCheck("20+ damage", entity));
             }
             if (entity.hasFallen()) {
-                reportmanager.addReport(doFlawedCoolingCheck("fall", entity));
+                reportmanager.addReport(gamemanager.doFlawedCoolingCheck("fall", entity));
             }
             if (entity.wasStruck()) {
-                reportmanager.addReport(doFlawedCoolingCheck("being struck", entity));
+                reportmanager.addReport(gamemanager.doFlawedCoolingCheck("being struck", entity));
             }
-            clearFlawedCoolingFlags(entity);
+            game.clearFlawedCoolingFlags(entity);
         }
-    }
-
-    /**
-     * Checks to see if Flawed Cooling is triggered and generates a report of
-     * the result.
-     *
-     * @param reason
-     * @param entity
-     * @return
-     */
-    private Vector<Report> doFlawedCoolingCheck(String reason, Entity entity) {
-        Vector<Report> out = new Vector<>();
-        Report r = new Report(9800);
-        r.addDesc(entity);
-        r.add(reason);
-        int roll = Compute.d6(2);
-        r.add(roll);
-        out.add(r);
-        if (roll >= 10) {
-            Report s = new Report(9805);
-            ((Mech) entity).setCoolingFlawActive(true);
-            out.add(s);
-        }
-
-        return out;
     }
 
     /**
@@ -20191,16 +20005,6 @@ public class Server implements Runnable {
                 reportmanager.addReport(damageCrew(entity, 1));
 
             }
-        }
-    }
-
-    /**
-     * Iterates over all entities and gets rid of Narc pods attached to destroyed
-     * or lost locations.
-     */
-    private void cleanupDestroyedNarcPods() {
-        for (Iterator<Entity> i = game.getEntities(); i.hasNext(); ) {
-            i.next().clearDestroyedNarcPods();
         }
     }
 
@@ -20872,7 +20676,7 @@ public class Server implements Runnable {
                     r.add(crew.getHits(pos));
                     vDesc.addElement(r);
                     if (crew.isDead(pos)) {
-                        r = createCrewTakeoverReport(en, pos, wasPilot, wasGunner);
+                        r = reportmanager.createCrewTakeoverReport(en, pos, wasPilot, wasGunner);
                         if (null != r) {
                             vDesc.addElement(r);
                         }
@@ -20915,39 +20719,6 @@ public class Server implements Runnable {
             }
         }
         return vDesc;
-    }
-
-    /**
-     * Convenience method that fills in a report showing that a crew member of a multicrew cockpit
-     * has taken over for another incapacitated crew member.
-     *
-     * @param e         The <code>Entity</code> for the crew.
-     * @param slot      The slot index of the crew member that was incapacitated.
-     * @param wasPilot  Whether the crew member was the pilot before becoming incapacitated.
-     * @param wasGunner Whether the crew member was the gunner before becoming incapacitated.
-     * @return          A completed <code>Report</code> if the position was assumed by another
-     *                  crew members, otherwise null.
-     */
-    private Report createCrewTakeoverReport(Entity e, int slot, boolean wasPilot, boolean wasGunner) {
-        if (wasPilot && e.getCrew().getCurrentPilotIndex() != slot) {
-            Report r = new Report(5560);
-            r.subject = e.getId();
-            r.indent(4);
-            r.add(e.getCrew().getNameAndRole(e.getCrew().getCurrentPilotIndex()));
-            r.add(e.getCrew().getCrewType().getRoleName(e.getCrew().getCrewType().getPilotPos()));
-            r.addDesc(e);
-            return r;
-        }
-        if (wasGunner && e.getCrew().getCurrentGunnerIndex() != slot) {
-            Report r = new Report(5560);
-            r.subject = e.getId();
-            r.indent(4);
-            r.add(e.getCrew().getNameAndRole(e.getCrew().getCurrentGunnerIndex()));
-            r.add(e.getCrew().getCrewType().getRoleName(e.getCrew().getCrewType().getGunnerPos()));
-            r.addDesc(e);
-            return r;
-        }
-        return null;
     }
 
     /**
@@ -21027,7 +20798,7 @@ public class Server implements Runnable {
                 boolean wasPilot = e.getCrew().getCurrentPilotIndex() == crewPos;
                 boolean wasGunner = e.getCrew().getCurrentGunnerIndex() == crewPos;
                 e.getCrew().setUnconscious(true, crewPos);
-                Report r = createCrewTakeoverReport(e, crewPos, wasPilot, wasGunner);
+                Report r = reportmanager.createCrewTakeoverReport(e, crewPos, wasPilot, wasGunner);
                 if (null != r) {
                     vDesc.add(r);
                 }
@@ -24399,7 +24170,7 @@ public class Server implements Runnable {
                     r.addDesc(en);
                     r.add(en.getCrew().getName(crewSlot));
                     reports.addElement(r);
-                    r = createCrewTakeoverReport(en, crewSlot, wasPilot, wasGunner);
+                    r = reportmanager.createCrewTakeoverReport(en, crewSlot, wasPilot, wasGunner);
                     if (null != r) {
                         reports.add(r);
                     }
@@ -28712,19 +28483,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * @return whether this game is double blind or not and we should be blind in
-     * the current phase
-     */
-    private boolean doBlind() {
-        return game.getOptions().booleanOption(OptionsConstants.ADVANCED_DOUBLE_BLIND)
-               && game.getPhase().isDuringOrAfter(IGame.Phase.PHASE_DEPLOYMENT);
-    }
-
-    private boolean suppressBlindBV() {
-        return game.getOptions().booleanOption(OptionsConstants.ADVANCED_SUPPRESS_DB_BV);
-    }
-
-    /**
      * In a double-blind game, update only visible entities. Otherwise, update
      * everyone
      */
@@ -28754,7 +28512,7 @@ public class Server implements Runnable {
         }
 
         // If we're doing double blind, be careful who can see it...
-        if (doBlind()) {
+        if (game.doBlind()) {
             Vector<IPlayer> playersVector = game.getPlayersVector();
             Vector<IPlayer> vCanSee;
             if (updateVisibility) {
@@ -29005,7 +28763,7 @@ public class Server implements Runnable {
     private void entityAllUpdate() {
         // If double-blind is in effect, filter each players' list individually,
         // and then quit out...
-        if (doBlind()) {
+        if (game.doBlind()) {
             Vector<IPlayer> playersVector = game.getPlayersVector();
             for (int x = 0; x < playersVector.size(); x++) {
                 IPlayer p = playersVector.elementAt(x);
@@ -29137,30 +28895,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * Filter a report vector for double blind.
-     *
-     * @param originalReportVector the original <code>Vector<Report></code>
-     * @param p                    the <code>Player</code> who should see stuff only visible to
-     *                             him
-     * @return the <code>Vector<Report></code> with stuff only Player p can see
-     */
-    private Vector<Report> filterReportVector(Vector<Report> originalReportVector, IPlayer p) {
-        // If no double blind, no filtering to do
-        if (!doBlind()) {
-            return new Vector<>(originalReportVector);
-        }
-        // But if it is, then filter everything properly.
-        Vector<Report> filteredReportVector = new Vector<>();
-        for (Report r : originalReportVector) {
-            Report filteredReport = reportmanager.filterReport(game, r, p, false);
-            if (filteredReport != null) {
-                filteredReportVector.addElement(filteredReport);
-            }
-        }
-        return filteredReportVector;
-    }
-
-    /**
      *
      * @return a vector which has as its keys the round number and as its
      *         elements vectors that contain all the reports for the specified player
@@ -29170,7 +28904,7 @@ public class Server implements Runnable {
     private Vector<Vector<Report>> filterPastReports(
             Vector<Vector<Report>> pastReports, IPlayer p) {
         // Only actually bother with the filtering if double-blind is in effect.
-        if (!doBlind()) {
+        if (!game.doBlind()) {
             return pastReports;
         }
         // Perform filtering
@@ -30217,10 +29951,10 @@ public class Server implements Runnable {
         // When the final report is created, MM sends a null player to create
         // the
         // report. This will handle that issue.
-        if ((p == null) || !doBlind()) {
+        if ((p == null) || !game.doBlind()) {
             return new Packet(Packet.COMMAND_SENDING_REPORTS, reportmanager.getvPhaseReport());
         }
-        return new Packet(Packet.COMMAND_SENDING_REPORTS, filterReportVector(reportmanager.getvPhaseReport(), p));
+        return new Packet(Packet.COMMAND_SENDING_REPORTS, reportmanager.filterReportVector(game, reportmanager.getvPhaseReport(), p));
     }
 
     /**
@@ -34760,6 +34494,34 @@ public class Server implements Runnable {
             reportmanager.addReport(r);
             entity.setLayingMines(true);
         }
+    }
+
+    /**
+     * Called during the fire phase to resolve all (and only) weapon attacks
+     */
+    public void resolveOnlyWeaponAttacks() {
+        // loop through received attack actions, getting attack handlers
+        for (Enumeration<EntityAction> i = game.getActions(); i
+                .hasMoreElements(); ) {
+            EntityAction ea = i.nextElement();
+            if (ea instanceof WeaponAttackAction) {
+                WeaponAttackAction waa = (WeaponAttackAction) ea;
+                Entity ae = game.getEntity(waa.getEntityId());
+                Mounted m = ae.getEquipment(waa.getWeaponId());
+                Weapon w = (Weapon) m.getType();
+                // Track attacks original target, for things like swarm LRMs
+                waa.setOriginalTargetId(waa.getTargetId());
+                waa.setOriginalTargetType(waa.getTargetType());
+                AttackHandler ah = w.fire(waa, game, this);
+                if (ah != null) {
+                    ah.setStrafing(waa.isStrafing());
+                    ah.setStrafingFirstShot(waa.isStrafingFirstShot());
+                    game.addAttack(ah);
+                }
+            }
+        }
+        // and clear the attacks Vector
+        game.resetActions();
     }
 
     public void reportRoll(Roll roll) {

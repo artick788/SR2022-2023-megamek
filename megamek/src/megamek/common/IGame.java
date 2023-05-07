@@ -1592,4 +1592,21 @@ public interface IGame {
     public boolean isTurnSkippable();
 
     public void receivePlayerDone(Packet pkt, int connIndex);
+
+    public boolean doBlind();
+
+    public boolean suppressBlindBV();
+
+    public void clearFlawedCoolingFlags(Entity entity);
+
+    public PilotingRollData getKickPushPSR(Entity psrEntity, Entity attacker,
+                                           Entity target, String reason);
+
+    public void removeDeadAttacks();
+
+    public void removeDuplicateAttacks(int entityId);
+
+    public void cleanupPhysicalAttacks();
+
+    public void cleanupDestroyedNarcPods();
 }

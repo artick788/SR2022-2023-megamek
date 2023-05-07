@@ -53,6 +53,7 @@ import megamek.common.net.Packet;
 import megamek.common.options.GameOptions;
 import megamek.common.options.OptionsConstants;
 import megamek.common.weapons.AttackHandler;
+import megamek.common.weapons.Weapon;
 import megamek.server.SmokeCloud;
 import megamek.server.victory.Victory;
 
@@ -4442,4 +4443,166 @@ public class Game implements Serializable, IGame {
             player.setDone(ready);
         }
     }
+
+    /**
+     * @return whether this game is double blind or not and we should be blind in
+     * the current phase
+     */
+    public boolean doBlind() {
+        return getOptions().booleanOption(OptionsConstants.ADVANCED_DOUBLE_BLIND)
+                && getPhase().isDuringOrAfter(IGame.Phase.PHASE_DEPLOYMENT);
+    }
+
+    public boolean suppressBlindBV() {
+        return getOptions().booleanOption(OptionsConstants.ADVANCED_SUPPRESS_DB_BV);
+    }
+
+    /**
+     * Iterates over all entities and gets rid of Narc pods attached to destroyed
+     * or lost locations.
+     */
+    public void cleanupDestroyedNarcPods() {
+        for (Iterator<Entity> i = getEntities(); i.hasNext(); ) {
+            i.next().clearDestroyedNarcPods();
+        }
+    }
+
+    public void clearFlawedCoolingFlags(Entity entity) {
+        // If we're not using quirks, no need to do this check.
+        if (!getOptions().booleanOption(OptionsConstants.ADVANCED_STRATOPS_QUIRKS)) {
+            return;
+        }
+        // Only applies to Mechs.
+        if (!(entity instanceof Mech)) {
+            return;
+        }
+
+        // Check for existence of flawed cooling quirk.
+        if (!entity.hasQuirk(OptionsConstants.QUIRK_NEG_FLAWED_COOLING)) {
+            return;
+        }
+        entity.setFallen(false);
+        entity.setStruck(false);
+    }
+
+    /**
+     * Get the Kick or Push PSR, modified by weight class
+     *
+     * @param psrEntity The <code>Entity</code> that should make a PSR
+     * @param attacker  The attacking <code>Entity></code>
+     * @param target    The target <code>Entity</code>
+     * @return The <code>PilotingRollData</code>
+     */
+    public PilotingRollData getKickPushPSR(Entity psrEntity, Entity attacker,
+                                            Entity target, String reason) {
+        int mod = 0;
+        PilotingRollData psr = new PilotingRollData(psrEntity.getId(), mod,
+                reason);
+        if (psrEntity.hasQuirk(OptionsConstants.QUIRK_POS_STABLE)) {
+            psr.addModifier(-1, "stable", false);
+        }
+        if (getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_TACOPS_PHYSICAL_PSR)) {
+
+            switch (target.getWeightClass()) {
+                case EntityWeightClass.WEIGHT_LIGHT:
+                    mod = 1;
+                    break;
+                case EntityWeightClass.WEIGHT_MEDIUM:
+                    mod = 0;
+                    break;
+                case EntityWeightClass.WEIGHT_HEAVY:
+                    mod = -1;
+                    break;
+                case EntityWeightClass.WEIGHT_ASSAULT:
+                    mod = -2;
+                    break;
+            }
+            String reportStr;
+            if (mod > 0) {
+                reportStr = ("weight class modifier +") + mod;
+            } else {
+                reportStr = ("weight class modifier ") + mod;
+            }
+            psr.addModifier(mod, reportStr, false);
+        }
+        return psr;
+    }
+
+    /**
+     * Removes all attacks by any dead entities. It does this by going through
+     * all the attacks and only keeping ones from active entities. DFAs are kept
+     * even if the pilot is unconscious, so that he can fail.
+     */
+    public void removeDeadAttacks() {
+        Vector<EntityAction> toKeep = new Vector<>(actionsSize());
+
+        for (Enumeration<EntityAction> i = getActions(); i.hasMoreElements(); ) {
+            EntityAction action = i.nextElement();
+            Entity entity = getEntity(action.getEntityId());
+            if ((entity != null) && !entity.isDestroyed()
+                    && (entity.isActive() || (action instanceof DfaAttackAction))) {
+                toKeep.addElement(action);
+            }
+        }
+
+        // reset actions and re-add valid elements
+        resetActions();
+        for (EntityAction entityAction : toKeep) {
+            addAction(entityAction);
+        }
+    }
+
+    /**
+     * Removes any actions in the attack queue beyond the first by the specified
+     * entity, unless that entity has melee master in which case it allows two
+     * attacks.
+     */
+    public void removeDuplicateAttacks(int entityId) {
+        int allowed = 1;
+        Entity en = getEntity(entityId);
+        if (null != en) {
+            allowed = en.getAllowedPhysicalAttacks();
+        }
+        Vector<EntityAction> toKeep = new Vector<>();
+
+        for (Enumeration<EntityAction> i = getActions(); i.hasMoreElements(); ) {
+            EntityAction action = i.nextElement();
+            if (action.getEntityId() != entityId) {
+                toKeep.addElement(action);
+            } else if (allowed > 0) {
+                toKeep.addElement(action);
+                if (!(action instanceof SearchlightAttackAction)) {
+                    allowed--;
+                }
+            } else {
+                MegaMek.getLogger().error("Removing duplicate phys attack for id#" + entityId
+                        + "\n\t\taction was " + action.toString());
+            }
+        }
+
+        // reset actions and re-add valid elements
+        resetActions();
+        for (EntityAction entityAction : toKeep) {
+            addAction(entityAction);
+        }
+    }
+
+    /**
+     * Cleans up the attack declarations for the physical phase by removing all
+     * attacks past the first for any one mech. Also clears out attacks by dead
+     * or disabled mechs.
+     */
+    public void cleanupPhysicalAttacks() {
+        for (Iterator<Entity> i = getEntities(); i.hasNext(); ) {
+            Entity entity = i.next();
+            removeDuplicateAttacks(entity.getId());
+        }
+        removeDeadAttacks();
+    }
+
+
+
+
+
+
 }
