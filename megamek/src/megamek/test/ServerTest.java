@@ -1,8 +1,6 @@
 package megamek.test;
 
-import megamek.common.Entity;
-import megamek.common.HitData;
-import megamek.common.Report;
+import megamek.common.*;
 import megamek.server.Server;
 
 import java.io.IOException;
@@ -14,12 +12,24 @@ public class ServerTest {
 
     public static Vector<Report> damageEntityWrapper(Entity te){
         HitData hitData = new HitData(0);
-        return m_Server.damageEntity(te, hitData);
+        int damage = 20;
+        boolean ammoExplosion = true;
+        Server.DamageType damageType = Server.DamageType.FRAGMENTATION;
+        boolean damageIs = true;
+        boolean areaSatEntry = false;
+        boolean throughFront = true;
+        boolean underWater = false;
+        boolean nukeS2S = false;
+
+        return m_Server.damageEntity(te, hitData, damage, ammoExplosion, damageType, damageIs, areaSatEntry, throughFront, underWater, nukeS2S);
     }
 
     public static void testDamageEntity() {
-
-
+        System.out.println("==================Starting testDamageEntity==================");
+        Mech mech = new BipedMech();
+        Vector<Report> report = damageEntityWrapper(mech);
+        System.out.println("Mech damage report: " + report);
+        System.out.println("==================Ending testDamageEntity==================");
     }
 
     public static void main(String[] args) throws IOException {
