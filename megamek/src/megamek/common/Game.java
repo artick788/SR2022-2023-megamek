@@ -31,10 +31,9 @@ import java.util.Vector;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import megamek.MegaMek;
+import megamek.client.ui.swing.util.PlayerColour;
 import megamek.common.GameTurn.SpecificEntityTurn;
-import megamek.common.actions.ArtilleryAttackAction;
-import megamek.common.actions.AttackAction;
-import megamek.common.actions.EntityAction;
+import megamek.common.actions.*;
 import megamek.common.event.GameBoardChangeEvent;
 import megamek.common.event.GameBoardNewEvent;
 import megamek.common.event.GameEndEvent;
@@ -49,9 +48,12 @@ import megamek.common.event.GamePhaseChangeEvent;
 import megamek.common.event.GamePlayerChangeEvent;
 import megamek.common.event.GameSettingsChangeEvent;
 import megamek.common.event.GameTurnChangeEvent;
+import megamek.common.icons.Camouflage;
+import megamek.common.net.Packet;
 import megamek.common.options.GameOptions;
 import megamek.common.options.OptionsConstants;
 import megamek.common.weapons.AttackHandler;
+import megamek.common.weapons.Weapon;
 import megamek.server.SmokeCloud;
 import megamek.server.victory.Victory;
 
@@ -3674,5 +3676,933 @@ public class Game implements Serializable, IGame {
         return uuid.toString();
 
     }
+
+    /**
+     * Calculates all players initial BV, should only be called at start of game
+     */
+    public void calculatePlayerBVs() {
+        for (Enumeration<IPlayer> players = getPlayers(); players.hasMoreElements(); ) {
+            players.nextElement().setInitialBV();
+        }
+    }
+
+    /**
+     * Called at the end of movement. Determines if an entity
+     * has moved beyond sensor range
+     */
+    public void updateSpacecraftDetection() {
+        // Don't bother if we're not in space or if the game option isn't on
+        if (!getBoard().inSpace()
+                || !getOptions().booleanOption(OptionsConstants.ADVAERORULES_STRATOPS_ADVANCED_SENSORS)) {
+            return;
+        }
+        //Run through our list of units and remove any entities from the plotting board that have moved out of range
+        for (Entity detector : getEntitiesVector()) {
+            Compute.updateFiringSolutions(this, detector);
+            Compute.updateSensorContacts(this, detector);
+        }
+    }
+
+    /**
+     * Called at the beginning of each game round to reset values on this entity
+     * that are reset every round
+     */
+    public void resetEntityRound() {
+        for (Iterator<Entity> e = getEntities(); e.hasNext(); ) {
+            Entity entity = e.next();
+
+            entity.newRound(getRoundCount());
+        }
+    }
+
+    /**
+     * Deploys elligible offboard entities.
+     */
+    public void deployOffBoardEntities() {
+        // place off board entities actually off-board
+        Iterator<Entity> entities = getEntities();
+        while (entities.hasNext()) {
+            Entity en = entities.next();
+            if (en.isOffBoard() && !en.isDeployed()) {
+                en.deployOffBoard(getRoundCount());
+            }
+        }
+    }
+
+    /**
+     * Cancels the force victory
+     */
+    public void cancelVictory() {
+        setForceVictory(false);
+        setVictoryPlayerId(IPlayer.PLAYER_NONE);
+        setVictoryTeam(IPlayer.TEAM_NONE);
+    }
+
+    /**
+     * are we currently in a reporting phase
+     *
+     * @return <code>true</code> if we are or <code>false</code> if not.
+     */
+    public boolean isReportingPhase() {
+        return (getPhase() == IGame.Phase.PHASE_FIRING_REPORT)
+                || (getPhase() == IGame.Phase.PHASE_INITIATIVE_REPORT)
+                || (getPhase() == IGame.Phase.PHASE_MOVEMENT_REPORT)
+                || (getPhase() == IGame.Phase.PHASE_OFFBOARD_REPORT)
+                || (getPhase() == IGame.Phase.PHASE_PHYSICAL_REPORT);
+    }
+
+    /*
+     *  Called during the end phase. Checks each entity for ASEW effects counters and decrements them by 1 if > 0
+     */
+
+    public void decrementASEWTurns() {
+        for (Iterator<Entity> e = getEntities(); e.hasNext(); ) {
+            final Entity entity = e.next();
+            // Decrement ASEW effects
+            if ((entity.getEntityType() & Entity.ETYPE_DROPSHIP) == Entity.ETYPE_DROPSHIP) {
+                Dropship d = (Dropship) entity;
+                for (int loc = 0; loc < d.locations(); loc++) {
+                    if (d.getASEWAffected(loc) > 0) {
+                        d.setASEWAffected(loc, d.getASEWAffected(loc) - 1);
+                    }
+                }
+            } else if ((entity.getEntityType() & Entity.ETYPE_JUMPSHIP) != 0) {
+                Jumpship j = (Jumpship) entity;
+                for (int loc = 0; loc < j.locations(); loc++) {
+                    if (j.getASEWAffected(loc) > 0) {
+                        j.setASEWAffected(loc, j.getASEWAffected(loc) - 1);
+                    }
+                }
+            } else {
+                if (entity.getASEWAffected() > 0) {
+                    entity.setASEWAffected(entity.getASEWAffected() - 1);
+                }
+            }
+        }
+    }
+
+    public boolean isPlayerForcedVictory() {
+        // check game options
+        if (!getOptions().booleanOption(OptionsConstants.VICTORY_SKIP_FORCED_VICTORY)) {
+            return false;
+        }
+
+        if (!isForceVictory()) {
+            return false;
+        }
+
+        for (IPlayer player : getPlayersVector()) {
+            if ((player.getId() == getVictoryPlayerId()) || ((player.getTeam() == getVictoryTeam())
+                    && (getVictoryTeam() != IPlayer.TEAM_NONE))) {
+                continue;
+            }
+
+            if (!player.admitsDefeat()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Marks ineligible entities as not ready for this phase
+     */
+    public void setIneligible(IGame.Phase phase) {
+        Vector<Entity> assistants = new Vector<>();
+        boolean assistable = false;
+
+        if (isPlayerForcedVictory()) {
+            assistants.addAll(getEntitiesVector());
+        } else {
+            for (Entity entity : getEntitiesVector()) {
+                if (entity.isEligibleFor(phase)) {
+                    assistable = true;
+                } else {
+                    assistants.addElement(entity);
+                }
+            }
+        }
+        for (Entity assistant : assistants) {
+            if (!assistable || !assistant.canAssist(phase)) {
+                assistant.setDone(true);
+            }
+        }
+    }
+
+    public boolean checkCrash(Entity entity, Coords pos, int altitude) {
+        // only Aeros can crash and no crashing in space
+        if (!entity.isAero() || getBoard().inSpace()) {
+            return false;
+        }
+
+        // if aero on the ground map, then only crash if elevation is zero
+        else if (getBoard().onGround()) {
+            return altitude <= 0;
+        }
+        // we must be in atmosphere
+        // if we're off the map, assume hex ceiling 0
+        // Hexes with elevations < 0 are treated as 0 altitude
+        int ceiling = 0;
+        if (getBoard().getHex(pos) != null) {
+            ceiling = Math.max(0, getBoard().getHex(pos).ceiling(true));
+        }
+        return ceiling >= altitude;
+    }
+
+    /**
+     * Flips the order of a tractor's towed trailers list by index and
+     * adds their starting coordinates to a list of hexes the tractor passed through
+     *
+     * @return  Returns the properly sorted list of all train coordinates
+     */
+    public List<Coords> initializeTrailerCoordinates(Entity tractor, List<Integer> allTowedTrailers) {
+        List<Coords> trainCoords = new ArrayList<>();
+        for (int trId : allTowedTrailers) {
+            Entity trailer = getEntity(trId);
+            Coords position = trailer.getPosition();
+            //Duplicates foul up the works...
+            if (!trainCoords.contains(position)) {
+                trainCoords.add(position);
+            }
+        }
+        for (Coords c : tractor.getPassedThrough() ) {
+            if (!trainCoords.contains(c)) {
+                trainCoords.add(c);
+            }
+        }
+        return trainCoords;
+    }
+
+    /**
+     * Add heat from the movement phase
+     */
+    public void addMovementHeat() {
+        for (Iterator<Entity> i = getEntities(); i.hasNext(); ) {
+            Entity entity = i.next();
+
+            if (entity.hasDamagedRHS()) {
+                entity.heatBuildup += 1;
+            }
+
+            if ((entity.getMovementMode() == EntityMovementMode.BIPED_SWIM)
+                    || (entity.getMovementMode() == EntityMovementMode.QUAD_SWIM)) {
+                // UMU heat
+                entity.heatBuildup += 1;
+                continue;
+            }
+
+            // build up heat from movement
+            if (entity.isEvading() && !entity.isAero()) {
+                entity.heatBuildup += entity.getRunHeat() + 2;
+            } else if (entity.moved == EntityMovementType.MOVE_NONE) {
+                entity.heatBuildup += entity.getStandingHeat();
+            } else if ((entity.moved == EntityMovementType.MOVE_WALK)
+                    || (entity.moved == EntityMovementType.MOVE_VTOL_WALK)
+                    || (entity.moved == EntityMovementType.MOVE_CAREFUL_STAND)) {
+                entity.heatBuildup += entity.getWalkHeat();
+            } else if ((entity.moved == EntityMovementType.MOVE_RUN)
+                    || (entity.moved == EntityMovementType.MOVE_VTOL_RUN)
+                    || (entity.moved == EntityMovementType.MOVE_SKID)) {
+                entity.heatBuildup += entity.getRunHeat();
+            } else if (entity.moved == EntityMovementType.MOVE_JUMP) {
+                entity.heatBuildup += entity.getJumpHeat(entity.delta_distance);
+            } else if (entity.moved == EntityMovementType.MOVE_SPRINT
+                    || entity.moved == EntityMovementType.MOVE_VTOL_SPRINT) {
+                entity.heatBuildup += entity.getSprintHeat();
+            }
+        }
+    }
+
+    /**
+     * Client has sent an update indicating that a ground unit is firing at
+     * an airborne unit and is overriding the default select for the position
+     * in the flight path.
+     * @param packet the packet to be processed
+     * @param connId the id for connection that received the packet.
+     */
+    public void receiveGroundToAirHexSelectPacket(Packet packet, int connId) {
+        Integer targetId = (Integer)packet.getObject(0);
+        Integer attackerId = (Integer)packet.getObject(1);
+        Coords pos = (Coords)packet.getObject(2);
+        getEntity(targetId).setPlayerPickedPassThrough(attackerId, pos);
+    }
+
+    /**
+     * Determine which telemissile attack actions could be affected by AMS, and
+     * assign AMS to those attacks.
+     */
+    public void assignTeleMissileAMS(TeleMissileAttackAction taa) {
+        // Map target to a list of telemissile attacks directed at entities
+        Hashtable<Entity, Vector<AttackAction>> htTMAttacks = new Hashtable<>();
+
+        //This should be impossible but just in case...
+        if (taa == null) {
+            MegaMek.getLogger().error("Null TeleMissileAttackAction!");
+        }
+
+        Entity target = (taa.getTargetType() == Targetable.TYPE_ENTITY)
+                ? (Entity) taa.getTarget(this) : null;
+
+        //If a telemissile is still on the board and its original target is not....
+        if (target == null) {
+            MegaMek.getLogger().info("Telemissile has no target. AMS not assigned.");
+            return;
+        }
+
+        Vector<AttackAction> v = htTMAttacks.computeIfAbsent(target, k -> new Vector<>());
+        v.addElement(taa);
+        // Let each target assign its AMS
+        for (Entity e : htTMAttacks.keySet()) {
+            Vector<AttackAction> vTMAttacks = htTMAttacks.get(e);
+            // Allow MM to automatically assign AMS targets
+            // AMS bays can fire multiple times, so manual target assignment is kind of pointless
+            e.assignTMAMS(vTMAttacks);
+        }
+    }
+
+    /**
+     * Add any extreme gravity PSRs the entity gets due to its movement
+     *
+     * @param entity
+     *            The <code>Entity</code> to check.
+     * @param step
+     *            The last <code>MoveStep</code> of this entity
+     * @param moveType
+     *            The movement type for the MovePath the supplied MoveStep comes
+     *            from. This generally comes from the last step in the move
+     *            path.
+     * @param curPos
+     *            The current <code>Coords</code> of this entity
+     * @param cachedMaxMPExpenditure
+     *            Server checks run/jump MP at start of move, as appropriate,
+     *            caches to avoid mid-move change in MP causing erroneous grav
+     *            check
+     */
+    public void checkExtremeGravityMovement(Entity entity, MoveStep step,
+                                             EntityMovementType moveType, Coords curPos,
+                                             int cachedMaxMPExpenditure) {
+        PilotingRollData rollTarget;
+        if (getPlanetaryConditions().getGravity() != 1) {
+            if ((entity instanceof Mech) || (entity instanceof Tank)) {
+                if ((moveType == EntityMovementType.MOVE_WALK)
+                        || (moveType == EntityMovementType.MOVE_VTOL_WALK)
+                        || (moveType == EntityMovementType.MOVE_RUN)
+                        || (moveType == EntityMovementType.MOVE_SPRINT)
+                        || (moveType == EntityMovementType.MOVE_VTOL_RUN)
+                        || (moveType == EntityMovementType.MOVE_VTOL_SPRINT)) {
+                    int limit = cachedMaxMPExpenditure;
+                    if (step.isOnlyPavement() && entity.isEligibleForPavementBonus()) {
+                        limit++;
+                    }
+                    if (step.getMpUsed() > limit) {
+                        // We moved too fast, let's make PSR to see if we get
+                        // damage
+                        addExtremeGravityPSR(entity.checkMovedTooFast(
+                                step, moveType));
+                    }
+                } else if (moveType == EntityMovementType.MOVE_JUMP) {
+                    MegaMek.getLogger().debug("Gravity move check jump: "
+                            + step.getMpUsed() + "/" + cachedMaxMPExpenditure);
+                    int origWalkMP = entity.getWalkMP(false, false);
+                    int gravWalkMP = entity.getWalkMP();
+                    if (step.getMpUsed() > cachedMaxMPExpenditure) {
+                        // Jumped too far, make PSR to see if we get damaged
+                        addExtremeGravityPSR(entity.checkMovedTooFast(
+                                step, moveType));
+                    } else if ((getPlanetaryConditions().getGravity() > 1)
+                            && ((origWalkMP - gravWalkMP) > 0)) {
+                        // jumping in high g is bad for your legs
+                        // Damage dealt = 1 pt for each MP lost due to gravity
+                        // Ignore this if no damage would be dealt
+                        rollTarget = entity.getBasePilotingRoll(moveType);
+                        entity.addPilotingModifierForTerrain(rollTarget, step);
+                        int gravMod = getPlanetaryConditions()
+                                .getGravityPilotPenalty();
+                        if ((gravMod != 0) && !getBoard().inSpace()) {
+                            rollTarget.addModifier(gravMod,
+                                    getPlanetaryConditions().getGravity()
+                                    + "G gravity");
+                        }
+                        rollTarget.append(new PilotingRollData(entity.getId(),
+                                0, "jumped in high gravity"));
+                        addExtremeGravityPSR(rollTarget);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Called at the start and end of movement. Determines if an entity
+     * has been detected and/or had a firing solution calculated
+     */
+    public void detectSpacecraft() {
+        // Don't bother if we're not in space or if the game option isn't on
+        if (!getBoard().inSpace()
+                || !getOptions().booleanOption(OptionsConstants.ADVAERORULES_STRATOPS_ADVANCED_SENSORS)) {
+            return;
+        }
+
+        //Now, run the detection rolls
+        for (Entity detector : getEntitiesVector()) {
+            //Don't process for invalid units
+            //in the case of squadrons and transports, we want the 'host'
+            //unit, not the component entities
+            if (detector.getPosition() == null
+                    || detector.isDestroyed()
+                    || detector.isDoomed()
+                    || detector.isOffBoard()
+                    || detector.isPartOfFighterSquadron()
+                    || detector.getTransportId() != Entity.NONE) {
+                continue;
+            }
+            for (Entity target : getEntitiesVector()) {
+                //Once a target is detected, we don't need to detect it again
+                if (detector.hasSensorContactFor(target.getId())) {
+                    continue;
+                }
+                //Don't process for invalid units
+                //in the case of squadrons and transports, we want the 'host'
+                //unit, not the component entities
+                if (target.getPosition() == null
+                        || target.isDestroyed()
+                        || target.isDoomed()
+                        || target.isOffBoard()
+                        || target.isPartOfFighterSquadron()
+                        || target.getTransportId() != Entity.NONE) {
+                    continue;
+                }
+                // Only process for enemy units
+                if (!detector.isEnemyOf(target)) {
+                    continue;
+                }
+                //If we successfully detect the enemy, add it to the appropriate detector's sensor contacts list
+                if (Compute.calcSensorContact(this, detector, target)) {
+                    getEntity(detector.getId()).addSensorContact(target.getId());
+                    //If detector is part of a C3 network, share the contact
+                    if (detector.hasNavalC3()) {
+                        for (Entity c3NetMate : getC3NetworkMembers(detector)) {
+                            getEntity(c3NetMate.getId()).addSensorContact(target.getId());
+                        }
+                    }
+                }
+            }
+        }
+        //Now, run the firing solution calculations
+        for (Entity detector : getEntitiesVector()) {
+            //Don't process for invalid units
+            //in the case of squadrons and transports, we want the 'host'
+            //unit, not the component entities
+            if (detector.getPosition() == null
+                    || detector.isDestroyed()
+                    || detector.isDoomed()
+                    || detector.isOffBoard()
+                    || detector.isPartOfFighterSquadron()
+                    || detector.getTransportId() != Entity.NONE) {
+                continue;
+            }
+            for (int targetId : detector.getSensorContacts()) {
+                Entity target = getEntity(targetId);
+                //if we already have a firing solution, no need to process a new one
+                if (detector.hasFiringSolutionFor(targetId)) {
+                    continue;
+                }
+                //Don't process for invalid units
+                //in the case of squadrons and transports, we want the 'host'
+                //unit, not the component entities
+                if (target == null
+                        || target.getPosition() == null
+                        || target.isDestroyed()
+                        || target.isDoomed()
+                        || target.isOffBoard()
+                        || target.isPartOfFighterSquadron()
+                        || target.getTransportId() != Entity.NONE) {
+                    continue;
+                }
+                // Only process for enemy units
+                if (!detector.isEnemyOf(target)) {
+                    continue;
+                }
+                //If we successfully lock up the enemy, add it to the appropriate detector's firing solutions list
+                if (Compute.calcFiringSolution(this, detector, target)) {
+                    getEntity(detector.getId()).addFiringSolution(targetId);
+                }
+            }
+        }
+    }
+
+    /**
+     * Check if spikes get broken in the given location
+     *
+     * @param e   The {@link Entity} to check
+     * @param loc The location index
+     * @return    A report showing the results of the roll
+     */
+    public Report checkBreakSpikes(Entity e, int loc) {
+        int roll = Compute.d6(2);
+        Report r;
+        if (roll < 9) {
+            r = new Report(4445);
+            r.indent(2);
+            r.add(roll);
+            r.subject = e.getId();
+        } else {
+            r = new Report(4440);
+            r.indent(2);
+            r.add(roll);
+            r.subject = e.getId();
+            for (Mounted m : e.getMisc()) {
+                if (m.getType().hasFlag(MiscType.F_SPIKES)
+                        && (m.getLocation() == loc)) {
+                    m.setHit(true);
+                }
+            }
+        }
+        return r;
+    }
+
+    /**
+     * pre-treats a physical attack
+     *
+     * @param aaa The <code>AbstractAttackAction</code> of the physical attack
+     *            to pre-treat
+     * @return The <code>PhysicalResult</code> of that action, including
+     * possible damage.
+     */
+    public PhysicalResult preTreatPhysicalAttack(AbstractAttackAction aaa) {
+        final Entity ae = getEntity(aaa.getEntityId());
+        int damage = 0;
+        PhysicalResult pr = new PhysicalResult();
+        ToHitData toHit = new ToHitData();
+        pr.roll = Compute.d6(2);
+        pr.aaa = aaa;
+        if (aaa instanceof BrushOffAttackAction) {
+            BrushOffAttackAction baa = (BrushOffAttackAction) aaa;
+            int arm = baa.getArm();
+            baa.setArm(BrushOffAttackAction.LEFT);
+            toHit = BrushOffAttackAction.toHit(this, aaa.getEntityId(),
+                    aaa.getTarget(this), BrushOffAttackAction.LEFT);
+            baa.setArm(BrushOffAttackAction.RIGHT);
+            pr.toHitRight = BrushOffAttackAction.toHit(this, aaa.getEntityId(),
+                    aaa.getTarget(this), BrushOffAttackAction.RIGHT);
+            damage = BrushOffAttackAction.getDamageFor(ae, BrushOffAttackAction.LEFT);
+            pr.damageRight = BrushOffAttackAction.getDamageFor(ae, BrushOffAttackAction.RIGHT);
+            baa.setArm(arm);
+            pr.rollRight = Compute.d6(2);
+        } else if (aaa instanceof ChargeAttackAction) {
+            ChargeAttackAction caa = (ChargeAttackAction) aaa;
+            toHit = caa.toHit(this);
+            if (caa.getTarget(this) instanceof Entity) {
+                Entity target = (Entity) caa.getTarget(this);
+                damage = ChargeAttackAction.getDamageFor(ae, target,
+                        getOptions().booleanOption(OptionsConstants.ADVCOMBAT_TACOPS_CHARGE_DAMAGE),
+                        toHit.getMoS());
+            } else {
+                damage = ChargeAttackAction.getDamageFor(ae);
+            }
+        } else if (aaa instanceof AirmechRamAttackAction) {
+            AirmechRamAttackAction raa = (AirmechRamAttackAction) aaa;
+            toHit = raa.toHit(this);
+            damage = AirmechRamAttackAction.getDamageFor(ae);
+        } else if (aaa instanceof ClubAttackAction) {
+            ClubAttackAction caa = (ClubAttackAction) aaa;
+            toHit = caa.toHit(this);
+            damage = ClubAttackAction.getDamageFor(ae, caa.getClub(),
+                    (caa.getTarget(this) instanceof Infantry)
+                            && !(caa.getTarget(this) instanceof BattleArmor),
+                    caa.isZweihandering());
+            if (caa.getTargetType() == Targetable.TYPE_BUILDING) {
+                EquipmentType clubType = caa.getClub().getType();
+                if (clubType.hasSubType(MiscType.S_BACKHOE)
+                        || clubType.hasSubType(MiscType.S_CHAINSAW)
+                        || clubType.hasSubType(MiscType.S_MINING_DRILL)
+                        || clubType.hasSubType(MiscType.S_PILE_DRIVER)) {
+                    damage += Compute.d6(1);
+                } else if (clubType.hasSubType(MiscType.S_DUAL_SAW)) {
+                    damage += Compute.d6(2);
+                } else if (clubType.hasSubType(MiscType.S_ROCK_CUTTER)) {
+                    damage += Compute.d6(3);
+                }
+                else if (clubType.hasSubType(MiscType.S_WRECKING_BALL)) {
+                    damage += Compute.d6(4);
+                }
+            }
+        } else if (aaa instanceof DfaAttackAction) {
+            DfaAttackAction daa = (DfaAttackAction) aaa;
+            toHit = daa.toHit(this);
+            damage = DfaAttackAction.getDamageFor(ae,
+                    (daa.getTarget(this) instanceof Infantry)
+                            && !(daa.getTarget(this) instanceof BattleArmor));
+        } else if (aaa instanceof KickAttackAction) {
+            KickAttackAction kaa = (KickAttackAction) aaa;
+            toHit = kaa.toHit(this);
+            damage = KickAttackAction.getDamageFor(ae, kaa.getLeg(),
+                    (kaa.getTarget(this) instanceof Infantry)
+                            && !(kaa.getTarget(this) instanceof BattleArmor));
+        } else if (aaa instanceof ProtomechPhysicalAttackAction) {
+            ProtomechPhysicalAttackAction paa = (ProtomechPhysicalAttackAction) aaa;
+            toHit = paa.toHit(this);
+            damage = ProtomechPhysicalAttackAction.getDamageFor(ae, paa.getTarget(this));
+        } else if (aaa instanceof PunchAttackAction) {
+            PunchAttackAction paa = (PunchAttackAction) aaa;
+            int arm = paa.getArm();
+            int damageRight;
+            paa.setArm(PunchAttackAction.LEFT);
+            toHit = paa.toHit(this);
+            paa.setArm(PunchAttackAction.RIGHT);
+            ToHitData toHitRight = paa.toHit(this);
+            damage = PunchAttackAction.getDamageFor(ae, PunchAttackAction.LEFT,
+                    (paa.getTarget(this) instanceof Infantry)
+                            && !(paa.getTarget(this) instanceof BattleArmor),
+                    paa.isZweihandering());
+            damageRight = PunchAttackAction.getDamageFor(ae, PunchAttackAction.RIGHT,
+                    (paa.getTarget(this) instanceof Infantry)
+                            && !(paa.getTarget(this) instanceof BattleArmor),
+                    paa.isZweihandering());
+            paa.setArm(arm);
+            // If we're punching while prone (at a Tank,
+            // duh), then we can only use one arm.
+            if (ae.isProne()) {
+                double oddsLeft = Compute.oddsAbove(toHit.getValue(),
+                        ae.hasAbility(OptionsConstants.PILOT_APTITUDE_PILOTING));
+                double oddsRight = Compute.oddsAbove(toHitRight.getValue(),
+                        ae.hasAbility(OptionsConstants.PILOT_APTITUDE_PILOTING));
+                // Use the best attack.
+                if ((oddsLeft * damage) > (oddsRight * damageRight)) {
+                    paa.setArm(PunchAttackAction.LEFT);
+                } else {
+                    paa.setArm(PunchAttackAction.RIGHT);
+                }
+            }
+            pr.damageRight = damageRight;
+            pr.toHitRight = toHitRight;
+            pr.rollRight = Compute.d6(2);
+        } else if (aaa instanceof PushAttackAction) {
+            PushAttackAction paa = (PushAttackAction) aaa;
+            toHit = paa.toHit(this);
+        } else if (aaa instanceof TripAttackAction) {
+            TripAttackAction paa = (TripAttackAction) aaa;
+            toHit = paa.toHit(this);
+        } else if (aaa instanceof LayExplosivesAttackAction) {
+            LayExplosivesAttackAction leaa = (LayExplosivesAttackAction) aaa;
+            toHit = leaa.toHit(this);
+            damage = LayExplosivesAttackAction.getDamageFor(ae);
+        } else if (aaa instanceof ThrashAttackAction) {
+            ThrashAttackAction taa = (ThrashAttackAction) aaa;
+            toHit = taa.toHit(this);
+            damage = ThrashAttackAction.getDamageFor(ae);
+        } else if (aaa instanceof JumpJetAttackAction) {
+            JumpJetAttackAction jaa = (JumpJetAttackAction) aaa;
+            toHit = jaa.toHit(this);
+            if (jaa.getLeg() == JumpJetAttackAction.BOTH) {
+                damage = JumpJetAttackAction.getDamageFor(ae, JumpJetAttackAction.LEFT);
+                pr.damageRight = JumpJetAttackAction.getDamageFor(ae, JumpJetAttackAction.LEFT);
+            } else {
+                damage = JumpJetAttackAction.getDamageFor(ae, jaa.getLeg());
+                pr.damageRight = 0;
+            }
+            ae.heatBuildup += (damage + pr.damageRight) / 3;
+        } else if (aaa instanceof GrappleAttackAction) {
+            GrappleAttackAction taa = (GrappleAttackAction) aaa;
+            toHit = taa.toHit(this);
+        } else if (aaa instanceof BreakGrappleAttackAction) {
+            BreakGrappleAttackAction taa = (BreakGrappleAttackAction) aaa;
+            toHit = taa.toHit(this);
+        } else if (aaa instanceof RamAttackAction) {
+            RamAttackAction raa = (RamAttackAction) aaa;
+            toHit = raa.toHit(this);
+            damage = RamAttackAction.getDamageFor((IAero) ae, (Entity) aaa.getTarget(this));
+        } else if (aaa instanceof TeleMissileAttackAction) {
+            TeleMissileAttackAction taa = (TeleMissileAttackAction) aaa;
+            assignTeleMissileAMS(taa);
+            taa.calcCounterAV(this, taa.getTarget(this));
+            toHit = taa.toHit(this);
+            damage = TeleMissileAttackAction.getDamageFor(ae);
+        } else if (aaa instanceof BAVibroClawAttackAction) {
+            BAVibroClawAttackAction bvca = (BAVibroClawAttackAction) aaa;
+            toHit = bvca.toHit(this);
+            damage = BAVibroClawAttackAction.getDamageFor(ae);
+        }
+        pr.toHit = toHit;
+        pr.damage = damage;
+        return pr;
+    }
+
+
+    /**
+     * Validates the player info.
+     */
+    public void validatePlayerInfo(int playerId) {
+        final IPlayer player = getPlayer(playerId);
+
+        if (player != null) {
+            // TODO : check for duplicate or reserved names
+
+            // Colour Assignment
+            final PlayerColour[] playerColours = PlayerColour.values();
+            boolean allUsed = true;
+            Set<PlayerColour> colourUtilization = new HashSet<>();
+            for (Enumeration<IPlayer> i = getPlayers(); i.hasMoreElements(); ) {
+                final IPlayer otherPlayer = i.nextElement();
+                if (otherPlayer.getId() != playerId) {
+                    colourUtilization.add(otherPlayer.getColour());
+                } else {
+                    allUsed = false;
+                }
+            }
+
+            if (!allUsed && colourUtilization.contains(player.getColour())) {
+                for (PlayerColour colour : playerColours) {
+                    if (!colourUtilization.contains(colour)) {
+                        player.setColour(colour);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Adds a new player to the game
+     */
+    public IPlayer addNewPlayer(int connId, String name) {
+        int team = IPlayer.TEAM_UNASSIGNED;
+        if (getPhase() == Phase.PHASE_LOUNGE) {
+            team = IPlayer.TEAM_NONE;
+            for (IPlayer p : getPlayersVector()) {
+                if (p.getTeam() > team) {
+                    team = p.getTeam();
+                }
+            }
+            team++;
+        }
+        IPlayer newPlayer = new Player(connId, name);
+        PlayerColour colour = newPlayer.getColour();
+        Enumeration<IPlayer> players = getPlayers();
+        final PlayerColour[] colours = PlayerColour.values();
+        while (players.hasMoreElements()) {
+            final IPlayer p = players.nextElement();
+            if (p.getId() == newPlayer.getId()) {
+                continue;
+            }
+
+            if ((p.getColour() == colour) && (colours.length > (colour.ordinal() + 1))) {
+                colour = colours[colour.ordinal() + 1];
+            }
+        }
+        newPlayer.setColour(colour);
+        newPlayer.setCamoCategory(Camouflage.COLOUR_CAMOUFLAGE);
+        newPlayer.setCamoFileName(colour.name());
+        newPlayer.setTeam(Math.min(team, 5));
+        addPlayer(connId, newPlayer);
+        validatePlayerInfo(connId);
+        return newPlayer;
+    }
+
+    /**
+     * Forces victory for the specified player, or his/her team at the end of
+     * the round.
+     */
+    public void forceVictory(IPlayer victor) {
+        setForceVictory(true);
+        if (victor.getTeam() == IPlayer.TEAM_NONE) {
+            setVictoryPlayerId(victor.getId());
+            setVictoryTeam(IPlayer.TEAM_NONE);
+        } else {
+            setVictoryPlayerId(IPlayer.PLAYER_NONE);
+            setVictoryTeam(victor.getTeam());
+        }
+
+        Vector<IPlayer> playersVector = getPlayersVector();
+        for (int i = 0; i < playersVector.size(); i++) {
+            IPlayer player = playersVector.elementAt(i);
+            player.setAdmitsDefeat(false);
+        }
+    }
+
+    /**
+     * Returns true if the current turn may be skipped. Ghost players' turns are
+     * skippable, and a turn should be skipped if there's nothing to move.
+     */
+    public boolean isTurnSkippable() {
+        GameTurn turn = getTurn();
+        if (null == turn) {
+            return false;
+        }
+        IPlayer player = getPlayer(turn.getPlayerNum());
+        return (null == player) || player.isGhost() || (getFirstEntity() == null);
+    }
+
+    /**
+     * Sets a player's ready status
+     */
+    public void receivePlayerDone(Packet pkt, int connIndex) {
+        boolean ready = pkt.getBooleanValue(0);
+        IPlayer player = getPlayer(connIndex);
+        if (null != player) {
+            player.setDone(ready);
+        }
+    }
+
+    /**
+     * @return whether this game is double blind or not and we should be blind in
+     * the current phase
+     */
+    public boolean doBlind() {
+        return getOptions().booleanOption(OptionsConstants.ADVANCED_DOUBLE_BLIND)
+                && getPhase().isDuringOrAfter(IGame.Phase.PHASE_DEPLOYMENT);
+    }
+
+    public boolean suppressBlindBV() {
+        return getOptions().booleanOption(OptionsConstants.ADVANCED_SUPPRESS_DB_BV);
+    }
+
+    /**
+     * Iterates over all entities and gets rid of Narc pods attached to destroyed
+     * or lost locations.
+     */
+    public void cleanupDestroyedNarcPods() {
+        for (Iterator<Entity> i = getEntities(); i.hasNext(); ) {
+            i.next().clearDestroyedNarcPods();
+        }
+    }
+
+    public void clearFlawedCoolingFlags(Entity entity) {
+        // If we're not using quirks, no need to do this check.
+        if (!getOptions().booleanOption(OptionsConstants.ADVANCED_STRATOPS_QUIRKS)) {
+            return;
+        }
+        // Only applies to Mechs.
+        if (!(entity instanceof Mech)) {
+            return;
+        }
+
+        // Check for existence of flawed cooling quirk.
+        if (!entity.hasQuirk(OptionsConstants.QUIRK_NEG_FLAWED_COOLING)) {
+            return;
+        }
+        entity.setFallen(false);
+        entity.setStruck(false);
+    }
+
+    /**
+     * Get the Kick or Push PSR, modified by weight class
+     *
+     * @param psrEntity The <code>Entity</code> that should make a PSR
+     * @param attacker  The attacking <code>Entity></code>
+     * @param target    The target <code>Entity</code>
+     * @return The <code>PilotingRollData</code>
+     */
+    public PilotingRollData getKickPushPSR(Entity psrEntity, Entity attacker,
+                                            Entity target, String reason) {
+        int mod = 0;
+        PilotingRollData psr = new PilotingRollData(psrEntity.getId(), mod,
+                reason);
+        if (psrEntity.hasQuirk(OptionsConstants.QUIRK_POS_STABLE)) {
+            psr.addModifier(-1, "stable", false);
+        }
+        if (getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_TACOPS_PHYSICAL_PSR)) {
+
+            switch (target.getWeightClass()) {
+                case EntityWeightClass.WEIGHT_LIGHT:
+                    mod = 1;
+                    break;
+                case EntityWeightClass.WEIGHT_MEDIUM:
+                    mod = 0;
+                    break;
+                case EntityWeightClass.WEIGHT_HEAVY:
+                    mod = -1;
+                    break;
+                case EntityWeightClass.WEIGHT_ASSAULT:
+                    mod = -2;
+                    break;
+            }
+            String reportStr;
+            if (mod > 0) {
+                reportStr = ("weight class modifier +") + mod;
+            } else {
+                reportStr = ("weight class modifier ") + mod;
+            }
+            psr.addModifier(mod, reportStr, false);
+        }
+        return psr;
+    }
+
+    /**
+     * Removes all attacks by any dead entities. It does this by going through
+     * all the attacks and only keeping ones from active entities. DFAs are kept
+     * even if the pilot is unconscious, so that he can fail.
+     */
+    public void removeDeadAttacks() {
+        Vector<EntityAction> toKeep = new Vector<>(actionsSize());
+
+        for (Enumeration<EntityAction> i = getActions(); i.hasMoreElements(); ) {
+            EntityAction action = i.nextElement();
+            Entity entity = getEntity(action.getEntityId());
+            if ((entity != null) && !entity.isDestroyed()
+                    && (entity.isActive() || (action instanceof DfaAttackAction))) {
+                toKeep.addElement(action);
+            }
+        }
+
+        // reset actions and re-add valid elements
+        resetActions();
+        for (EntityAction entityAction : toKeep) {
+            addAction(entityAction);
+        }
+    }
+
+    /**
+     * Removes any actions in the attack queue beyond the first by the specified
+     * entity, unless that entity has melee master in which case it allows two
+     * attacks.
+     */
+    public void removeDuplicateAttacks(int entityId) {
+        int allowed = 1;
+        Entity en = getEntity(entityId);
+        if (null != en) {
+            allowed = en.getAllowedPhysicalAttacks();
+        }
+        Vector<EntityAction> toKeep = new Vector<>();
+
+        for (Enumeration<EntityAction> i = getActions(); i.hasMoreElements(); ) {
+            EntityAction action = i.nextElement();
+            if (action.getEntityId() != entityId) {
+                toKeep.addElement(action);
+            } else if (allowed > 0) {
+                toKeep.addElement(action);
+                if (!(action instanceof SearchlightAttackAction)) {
+                    allowed--;
+                }
+            } else {
+                MegaMek.getLogger().error("Removing duplicate phys attack for id#" + entityId
+                        + "\n\t\taction was " + action.toString());
+            }
+        }
+
+        // reset actions and re-add valid elements
+        resetActions();
+        for (EntityAction entityAction : toKeep) {
+            addAction(entityAction);
+        }
+    }
+
+    /**
+     * Cleans up the attack declarations for the physical phase by removing all
+     * attacks past the first for any one mech. Also clears out attacks by dead
+     * or disabled mechs.
+     */
+    public void cleanupPhysicalAttacks() {
+        for (Iterator<Entity> i = getEntities(); i.hasNext(); ) {
+            Entity entity = i.next();
+            removeDuplicateAttacks(entity.getId());
+        }
+        removeDeadAttacks();
+    }
+
+
+
+
+
 
 }

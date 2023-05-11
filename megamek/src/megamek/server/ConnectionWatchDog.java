@@ -32,7 +32,7 @@ class ConnectionWatchdog extends TimerTask {
 
     @Override
     public void run() {
-        if (server.getPlayer(id) != null) {
+        if (server.getGame().getPlayer(id) != null) {
             // fully connected
             cancel();
             return;

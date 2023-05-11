@@ -25,12 +25,11 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Vector;
 
-import megamek.common.actions.ArtilleryAttackAction;
-import megamek.common.actions.AttackAction;
-import megamek.common.actions.EntityAction;
+import megamek.common.actions.*;
 import megamek.common.annotations.Nullable;
 import megamek.common.event.GameEvent;
 import megamek.common.event.GameListener;
+import megamek.common.net.Packet;
 import megamek.common.options.GameOptions;
 import megamek.common.options.OptionsConstants;
 import megamek.common.weapons.AttackHandler;
@@ -1546,4 +1545,68 @@ public interface IGame {
             HashSet<Coords> oldPositions);
 
     public abstract String getUUIDString();
+
+    public void calculatePlayerBVs();
+
+    public void updateSpacecraftDetection();
+
+    public void resetEntityRound();
+
+    public void deployOffBoardEntities();
+
+    public void cancelVictory();
+
+    public boolean isReportingPhase();
+
+    public void decrementASEWTurns();
+
+    public boolean isPlayerForcedVictory();
+
+    public void setIneligible(IGame.Phase phase);
+
+    public boolean checkCrash(Entity entity, Coords pos, int altitude);
+
+    public List<Coords> initializeTrailerCoordinates(Entity tractor, List<Integer> allTowedTrailers);
+
+    public void addMovementHeat();
+
+    public void receiveGroundToAirHexSelectPacket(Packet packet, int connId);
+
+    public void assignTeleMissileAMS(TeleMissileAttackAction taa);
+
+    public void checkExtremeGravityMovement(Entity entity, MoveStep step, EntityMovementType moveType, Coords curPos,
+                                             int cachedMaxMPExpenditure);
+
+    public void detectSpacecraft();
+
+    public Report checkBreakSpikes(Entity e, int loc);
+
+    public PhysicalResult preTreatPhysicalAttack(AbstractAttackAction aaa);
+
+    public void validatePlayerInfo(int playerId);
+
+    public IPlayer addNewPlayer(int connId, String name);
+
+    public void forceVictory(IPlayer victor);
+
+    public boolean isTurnSkippable();
+
+    public void receivePlayerDone(Packet pkt, int connIndex);
+
+    public boolean doBlind();
+
+    public boolean suppressBlindBV();
+
+    public void clearFlawedCoolingFlags(Entity entity);
+
+    public PilotingRollData getKickPushPSR(Entity psrEntity, Entity attacker,
+                                           Entity target, String reason);
+
+    public void removeDeadAttacks();
+
+    public void removeDuplicateAttacks(int entityId);
+
+    public void cleanupPhysicalAttacks();
+
+    public void cleanupDestroyedNarcPods();
 }
