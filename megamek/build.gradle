@@ -35,6 +35,10 @@ dependencies {
     implementation 'com.formdev:flatlaf:0.26'
     implementation 'com.github.ikkisoft:SerialKiller:master-SNAPSHOT'
 
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.13.0'
+    implementation 'com.fasterxml.jackson.core:jackson-annotations:2.13.0'
+    implementation 'com.fasterxml.jackson.core:jackson-core:2.13.0'
+
     implementation 'jakarta.xml.bind:jakarta.xml.bind-api:2.3.2'
     runtimeOnly 'org.glassfish.jaxb:jaxb-runtime:2.3.2'
 
@@ -42,6 +46,7 @@ dependencies {
 
     testImplementation 'junit:junit:4.12' 
     testImplementation 'org.mockito:mockito-core:2.20.1'
+
 }
 
 mainClassName = 'megamek.MegaMek'
