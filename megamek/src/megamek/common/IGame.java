@@ -1609,4 +1609,16 @@ public interface IGame {
     public void cleanupPhysicalAttacks();
 
     public void cleanupDestroyedNarcPods();
+
+    public void checkForObservers();
+
+    public void addTeammates(Vector<IPlayer> vector, IPlayer player);
+
+    public void addObservers(Vector<IPlayer> vector);
+
+    public Hashtable<Coords, List<Mounted>> getAPDSProtectedCoords();
+
+    public void clearArtillerySpotters(int entityID, int weaponID);
+
+    public void creditKill(Entity target, Entity attacker);
 }

@@ -173,53 +173,6 @@ import megamek.server.victory.VictoryResult;
  * @author Ben Mazur
  */
 public class Server implements Runnable {
-    private GameManager gamemanager;
-    private ReportManager reportmanager;
-
-    public ReportManager getReportmanager() {
-        return reportmanager;
-    }
-
-    private static class EntityTargetPair {
-        Entity ent;
-
-        Targetable target;
-
-        EntityTargetPair (Entity e, Targetable t) {
-            ent = e;
-            target = t;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) {
-                return true;
-            }
-            if ((null == o) || (getClass() != o.getClass())) {
-                return false;
-            }
-            final EntityTargetPair other = (EntityTargetPair) o;
-            return Objects.equals(ent, other.ent) && Objects.equals(target, other.target);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(ent, target);
-        }
-
-    }
-    /**
-     * The DamageType enumeration is used for the damageEntity function.
-     */
-    public enum DamageType {
-        NONE, FRAGMENTATION, FLECHETTE, ACID, INCENDIARY, IGNORE_PASSENGER, ANTI_TSM, ANTI_INFANTRY, NAIL_RIVET,
-        NONPENETRATING
-    }
-
-    // public static final String LEGAL_CHARS =
-    // "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-";
-    private static final String DEFAULT_BOARD = MapSettings.BOARD_SURPRISE;
-
     // server setup
     private String password;
 
@@ -228,6 +181,8 @@ public class Server implements Runnable {
     private ServerSocket serverSocket;
 
     private String motd;
+
+    private GameManager gamemanager;
 
     private static class ReceivedPacket {
         public int connId;
@@ -292,10 +247,6 @@ public class Server implements Runnable {
 
     private int connectionCounter;
 
-    private IGame game = new Game();
-
-    private MapSettings mapSettings = MapSettings.getInstance();
-
     // commands
     private Hashtable<String, ServerCommand> commandsHash = new Hashtable<>();
 
@@ -305,20 +256,7 @@ public class Server implements Runnable {
     private PacketPump packetPump;
     private Thread packetPumpThread;
 
-    // Track buildings that are affected by an entity's movement.
-    private Hashtable<Building, Boolean> affectedBldgs = new Hashtable<>();
-
-    // Track Physical Action results, HACK to deal with opposing pushes
-    // canceling each other
-    private Vector<PhysicalResult> physicalResults = new Vector<>();
-
-    private Vector<DynamicTerrainProcessor> terrainProcessors = new Vector<>();
-
     private Timer watchdogTimer = new Timer("Watchdog Timer");
-
-    private static EntityVerifier entityVerifier;
-
-    private ArrayList<int[]> scheduledNukes = new ArrayList<>();
 
     private static Server serverInstance = null;
 
@@ -326,7 +264,30 @@ public class Server implements Runnable {
 
     private Timer serverBrowserUpdateTimer = null;
 
-    private List<DemolitionCharge> explodingCharges = new ArrayList<>();
+    /**
+     * Used to ensure only one thread at a time is accessing this particular
+     * instance of the server.
+     */
+    private final Object serverLock = new Object();
+
+    public static String ORIGIN = "***Server";
+
+    // Easter eggs. Happy April Fool's Day!!
+    private static final String DUNE_CALL = "They tried and failed?";
+
+    private static final String DUNE_RESPONSE = "They tried and died!";
+
+    private static final String STAR_WARS_CALL = "I'd just as soon kiss a Wookiee.";
+
+    private static final String STAR_WARS_RESPONSE = "I can arrange that!";
+
+    private static final String INVADER_ZIM_CALL = "What does the G stand for?";
+
+    private static final String INVADER_ZIM_RESPONSE = "I don't know.";
+
+    private static final String WARGAMES_CALL = "Shall we play a game?";
+
+    private static final String WARGAMES_RESPONSE = "Let's play global thermonuclear war.";
 
     private ConnectionListenerAdapter connectionListener = new ConnectionListenerAdapter() {
 
@@ -369,7 +330,7 @@ public class Server implements Runnable {
                     cfrPacketQueue.add(rp);
                     cfrPacketQueue.notifyAll();
                 }
-            // Some packets should be handled immediately
+                // Some packets should be handled immediately
             } else if ((cmd == Packet.COMMAND_CLOSE_CONNECTION)
                     || (cmd == Packet.COMMAND_CLIENT_NAME)
                     || (cmd == Packet.COMMAND_CLIENT_VERSIONS)
@@ -384,12 +345,6 @@ public class Server implements Runnable {
         }
 
     };
-
-    /**
-     * Used to ensure only one thread at a time is accessing this particular
-     * instance of the server.
-     */
-    private final Object serverLock = new Object();
 
     public Server(String password, int port) throws IOException {
         this(password, port, false, "");
@@ -498,7 +453,7 @@ public class Server implements Runnable {
                 @Override
                 public void run() {
                     registerWithServerBrowser(true,
-                                              Server.getServerInstance().metaServerUrl);
+                            Server.getServerInstance().metaServerUrl);
                 }
             };
             serverBrowserUpdateTimer = new Timer(
@@ -511,68 +466,6 @@ public class Server implements Runnable {
         connector.start();
 
         serverInstance = this;
-    }
-
-    /**
-     * Sets the game for this server. Restores any transient fields, and sets
-     * all players as ghosts. This should only be called during server
-     * initialization before any players have connected.
-     */
-    public void setGame(IGame g) {
-        // game listeners are transient so we need to save and restore them
-        Vector<GameListener> gameListenersClone = new Vector<>(getGame().getGameListeners());
-
-        game = g;
-
-        for (GameListener listener : gameListenersClone) {
-            getGame().addGameListener(listener);
-        }
-
-        List<Integer> orphanEntities = new ArrayList<>();
-                
-        // reattach the transient fields and ghost the players
-        for (Iterator<Entity> e = game.getEntities(); e.hasNext(); ) {
-            Entity ent = e.next();
-            ent.setGame(game);
-            
-            if(ent.getOwner() == null) {
-                orphanEntities.add(ent.getId());
-                continue;
-            }
-            
-            if (ent instanceof Mech) {
-                ((Mech) ent).setBAGrabBars();
-                ((Mech) ent).setProtomechClampMounts();
-            }
-            if (ent instanceof Tank) {
-                ((Tank) ent).setBAGrabBars();
-            }
-        }
-        
-        game.removeEntities(orphanEntities, IEntityRemovalConditions.REMOVE_UNKNOWN);
-        
-        game.setOutOfGameEntitiesVector(game.getOutOfGameEntitiesVector());
-        for (Enumeration<IPlayer> e = game.getPlayers(); e.hasMoreElements(); ) {
-            IPlayer p = e.nextElement();
-            p.setGame(game);
-            p.setGhost(true);
-        }
-        // might need to restore weapon type for some attacks that take multiple
-        // turns (like artillery)
-        for (Enumeration<AttackHandler> a = game.getAttacks(); a
-                .hasMoreElements(); ) {
-            AttackHandler handler = a.nextElement();
-            if (handler instanceof WeaponHandler) {
-                ((WeaponHandler) handler).restore();
-            }
-        }
-    }
-
-    /**
-     * Returns the current game object
-     */
-    public IGame getGame() {
-        return game;
     }
 
     /**
@@ -693,12 +586,989 @@ public class Server implements Runnable {
      */
     public int getFreeConnectionId() {
         while ((getPendingConnection(connectionCounter) != null)
-               || (getConnection(connectionCounter) != null)
-               || (game.getPlayer(connectionCounter) != null)) {
+                || (getConnection(connectionCounter) != null)
+                || (game.getPlayer(connectionCounter) != null)) {
             connectionCounter++;
         }
         return connectionCounter;
     }
+
+    private void registerWithServerBrowser(boolean register, String urlString) {
+        try {
+            URL url = new URL(urlString);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+            DataOutputStream printout = new DataOutputStream(
+                    conn.getOutputStream());
+            String content;
+            content = "port="
+                    + URLEncoder.encode(
+                    Integer.toString(serverSocket.getLocalPort()), "UTF-8");
+            if (register) {
+                for (IConnection iconn : connections) {
+                    content += "&players[]=" + (game.getPlayer(iconn.getId()).getName());
+                }
+                if ((game.getPhase() != Phase.PHASE_LOUNGE)
+                        && (game.getPhase() != Phase.PHASE_UNKNOWN)) {
+                    content += "&close=yes";
+                }
+                content += "&version=" + MegaMek.VERSION;
+                if (isPassworded()) {
+                    content += "&pw=yes";
+                }
+            } else {
+                content += "&delete=yes";
+            }
+            if (serverAccessKey != null) {
+                content += "&key=" + serverAccessKey;
+            }
+            printout.writeBytes(content);
+            printout.flush();
+            BufferedReader rd = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            String line;
+            if (conn.getResponseCode() == 200) {
+                while ((line = rd.readLine()) != null) {
+                    if (serverAccessKey == null) {
+                        serverAccessKey = line;
+                    }
+                }
+            }
+            rd.close();
+            printout.close();
+        } catch (Exception ignored) {
+        }
+    }
+
+    /**
+     * @return the current server instance
+     */
+    public static Server getServerInstance() {
+        return serverInstance;
+    }
+
+    /**
+     * @return the <code>int</code> this server is listening on
+     */
+    public int getPort() {
+        return serverSocket.getLocalPort();
+    }
+
+    /**
+     * @return a <code>String</code> representing the hostname
+     */
+    public String getHost() {
+        try {
+            return InetAddress.getLocalHost().getHostName();
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+            return "";
+        }
+    }
+
+    /**
+     * Listen for incoming clients.
+     */
+    public void run() {
+        Thread currentThread = Thread.currentThread();
+        MegaMek.getLogger().info("s: listening for clients...");
+        while (connector == currentThread) {
+            try {
+                Socket s = serverSocket.accept();
+                synchronized (serverLock) {
+                    int id = getFreeConnectionId();
+                    MegaMek.getLogger().info("s: accepting player connection #" + id + "...");
+
+                    IConnection c = ConnectionFactory.getInstance().createServerConnection(s, id);
+                    c.addConnectionListener(connectionListener);
+                    c.open();
+                    connectionsPending.addElement(c);
+                    ConnectionHandler ch = new ConnectionHandler(c);
+                    Thread newConnThread = new Thread(ch, "Connection " + id);
+                    newConnThread.start();
+                    connectionHandlers.put(id, ch);
+
+                    greeting(id);
+                    ConnectionWatchdog w = new ConnectionWatchdog(this, id);
+                    watchdogTimer.schedule(w, 1000, 500);
+                }
+            } catch (InterruptedIOException ignored) {
+                // ignore , just SOTimeout blowing..
+            } catch (IOException ignored) { }
+        }
+    }
+
+    /**
+     * Process a packet from a connection.
+     *
+     * @param connId
+     *            - the <code>int</code> ID the connection that received the
+     *            packet.
+     * @param packet
+     *            - the <code>Packet</code> to be processed.
+     */
+    protected void handle(int connId, Packet packet) {
+        IPlayer player = game.getPlayer(connId);
+        // Check player. Please note, the connection may be pending.
+        if ((null == player) && (null == getPendingConnection(connId))) {
+            MegaMek.getLogger().error("Server does not recognize player at connection " + connId);
+            return;
+        }
+
+        if (packet == null) {
+            MegaMek.getLogger().error("Got null packet");
+            return;
+        }
+        // act on it
+        switch (packet.getCommand()) {
+            case Packet.COMMAND_CLIENT_VERSIONS:
+                receivePlayerVersion(packet, connId);
+                break;
+            case Packet.COMMAND_CLOSE_CONNECTION:
+                // We have a client going down!
+                IConnection c = getConnection(connId);
+                if (c != null) {
+                    c.close();
+                }
+                break;
+            case Packet.COMMAND_CLIENT_NAME:
+                receivePlayerName(packet, connId);
+                break;
+            case Packet.COMMAND_PLAYER_UPDATE:
+                receivePlayerInfo(packet, connId);
+                game.validatePlayerInfo(connId);
+                send(createPlayerUpdatePacket(connId));
+                break;
+            case Packet.COMMAND_PLAYER_READY:
+                game.receivePlayerDone(packet, connId);
+                send(createPlayerDonePacket(connId));
+                checkReady();
+                break;
+            case Packet.COMMAND_REROLL_INITIATIVE:
+                receiveInitiativeRerollRequest(packet, connId);
+                // send(createPlayerDonePacket(connId));
+                break;
+            case Packet.COMMAND_FORWARD_INITIATIVE:
+                receiveForwardIni(connId);
+                break;
+            case Packet.COMMAND_CHAT:
+                String chat = (String) packet.getObject(0);
+                if (chat.startsWith("/")) {
+                    processCommand(connId, chat);
+                } else if (packet.getData().length > 1) {
+                    connId = (int) packet.getObject(1);
+                    if (connId == IPlayer.PLAYER_NONE) {
+                        sendServerChat(chat);
+                    } else {
+                        sendServerChat(connId, chat);
+                    }
+                } else {
+                    sendChat(player.getName(), chat);
+                }
+                // Easter eggs. Happy April Fool's Day!!
+                if (DUNE_CALL.equalsIgnoreCase(chat)) {
+                    sendServerChat(DUNE_RESPONSE);
+                } else if (STAR_WARS_CALL.equalsIgnoreCase(chat)) {
+                    sendServerChat(STAR_WARS_RESPONSE);
+                } else if (INVADER_ZIM_CALL.equalsIgnoreCase(chat)) {
+                    sendServerChat(INVADER_ZIM_RESPONSE);
+                } else if (WARGAMES_CALL.equalsIgnoreCase(chat)) {
+                    sendServerChat(WARGAMES_RESPONSE);
+                }
+                break;
+            case Packet.COMMAND_BLDG_EXPLODE:
+                DemolitionCharge charge = (DemolitionCharge)packet.getData()[0];
+                if (charge.playerId == connId) {
+                    if (!explodingCharges.contains(charge)) {
+                        explodingCharges.add(charge);
+                        IPlayer p = game.getPlayer(connId);
+                        sendServerChat(p.getName() + " has touched off explosives "
+                                + "(handled in end phase)!");
+                    }
+                }
+                break;
+            case Packet.COMMAND_ENTITY_MOVE:
+                receiveMovement(packet, connId);
+                break;
+            case Packet.COMMAND_ENTITY_DEPLOY:
+                receiveDeployment(packet, connId);
+                break;
+            case Packet.COMMAND_ENTITY_DEPLOY_UNLOAD:
+                receiveDeploymentUnload(packet, connId);
+                break;
+            case Packet.COMMAND_DEPLOY_MINEFIELDS:
+                receiveDeployMinefields(packet, connId);
+                break;
+            case Packet.COMMAND_ENTITY_ATTACK:
+                receiveAttack(packet, connId);
+                break;
+            case Packet.COMMAND_ENTITY_GTA_HEX_SELECT:
+                game.receiveGroundToAirHexSelectPacket(packet, connId);
+                break;
+            case Packet.COMMAND_ENTITY_ADD:
+                receiveEntityAdd(packet, connId);
+                resetPlayersDone();
+                break;
+            case Packet.COMMAND_ENTITY_UPDATE:
+                receiveEntityUpdate(packet, connId);
+                resetPlayersDone();
+                break;
+            case Packet.COMMAND_ENTITY_LOAD:
+                receiveEntityLoad(packet, connId);
+                resetPlayersDone();
+                transmitAllPlayerDones();
+                break;
+            case Packet.COMMAND_ENTITY_MODECHANGE:
+                receiveEntityModeChange(packet, connId);
+                break;
+            case Packet.COMMAND_ENTITY_SENSORCHANGE:
+                receiveEntitySensorChange(packet, connId);
+                break;
+            case Packet.COMMAND_ENTITY_SINKSCHANGE:
+                receiveEntitySinksChange(packet, connId);
+                break;
+            case Packet.COMMAND_ENTITY_ACTIVATE_HIDDEN:
+                receiveEntityActivateHidden(packet, connId);
+                break;
+            case Packet.COMMAND_ENTITY_NOVA_NETWORK_CHANGE:
+                receiveEntityNovaNetworkModeChange(packet, connId);
+                break;
+            case Packet.COMMAND_ENTITY_MOUNTED_FACINGCHANGE:
+                receiveEntityMountedFacingChange(packet, connId);
+                break;
+            case Packet.COMMAND_ENTITY_CALLEDSHOTCHANGE:
+                receiveEntityCalledShotChange(packet, connId);
+                break;
+            case Packet.COMMAND_ENTITY_SYSTEMMODECHANGE:
+                receiveEntitySystemModeChange(packet, connId);
+                break;
+            case Packet.COMMAND_ENTITY_AMMOCHANGE:
+                receiveEntityAmmoChange(packet, connId);
+                break;
+            case Packet.COMMAND_ENTITY_REMOVE:
+                receiveEntityDelete(packet, connId);
+                resetPlayersDone();
+                break;
+            case Packet.COMMAND_ENTITY_WORDER_UPDATE:
+                Object[] data = packet.getData();
+                Entity ent = game.getEntity((Integer) data[0]);
+                if (ent != null) {
+                    Entity.WeaponSortOrder order = (Entity.WeaponSortOrder) data[1];
+                    ent.setWeaponSortOrder(order);
+                    // Used by the client but is set in setWeaponSortOrder
+                    ent.setWeapOrderChanged(false);
+                    if (order == Entity.WeaponSortOrder.CUSTOM) {
+                        @SuppressWarnings("unchecked")
+                        // Unchecked cause of limitations in Java when casting
+                        // to a collection
+                        Map<Integer, Integer> customWeaponOrder = (Map<Integer, Integer>) data[2];
+                        ent.setCustomWeaponOrder(customWeaponOrder);
+                    }
+                }
+                break;
+            case Packet.COMMAND_SENDING_GAME_SETTINGS:
+                if (receiveGameOptions(packet, connId)) {
+                    resetPlayersDone();
+                    transmitAllPlayerDones();
+                    send(createGameSettingsPacket());
+                    receiveGameOptionsAux(packet, connId);
+                }
+                break;
+            case Packet.COMMAND_SENDING_MAP_SETTINGS:
+                if (game.getPhase().isBefore(Phase.PHASE_DEPLOYMENT)) {
+                    MapSettings newSettings = (MapSettings) packet.getObject(0);
+                    if (!mapSettings.equalMapGenParameters(newSettings)) {
+                        sendServerChat("Player " + player.getName() + " changed map settings");
+                    }
+                    mapSettings = newSettings;
+                    mapSettings.setBoardsAvailableVector(gamemanager.scanForBoards(new BoardDimensions(
+                            mapSettings.getBoardWidth(), mapSettings.getBoardHeight())));
+                    mapSettings.removeUnavailable();
+                    mapSettings.setNullBoards(DEFAULT_BOARD);
+                    mapSettings.replaceBoardWithRandom(MapSettings.BOARD_RANDOM);
+                    mapSettings.removeUnavailable();
+                    // if still only nulls left, use BOARD_GENERATED
+                    if (mapSettings.getBoardsSelected().next() == null) {
+                        mapSettings.setNullBoards((MapSettings.BOARD_GENERATED));
+                    }
+                    resetPlayersDone();
+                    transmitAllPlayerDones();
+                    send(createMapSettingsPacket());
+                }
+                break;
+            case Packet.COMMAND_SENDING_MAP_DIMENSIONS:
+                if (game.getPhase().isBefore(Phase.PHASE_DEPLOYMENT)) {
+                    MapSettings newSettings = (MapSettings) packet.getObject(0);
+                    if (!mapSettings.equalMapGenParameters(newSettings)) {
+                        sendServerChat("Player " + player.getName() + " changed map dimensions");
+                    }
+                    mapSettings = newSettings;
+                    mapSettings.setBoardsAvailableVector(gamemanager.scanForBoards(new BoardDimensions(
+                            mapSettings.getBoardWidth(), mapSettings.getBoardHeight())));
+                    mapSettings.removeUnavailable();
+                    mapSettings.setNullBoards(DEFAULT_BOARD);
+                    mapSettings.replaceBoardWithRandom(MapSettings.BOARD_RANDOM);
+                    mapSettings.removeUnavailable();
+                    // if still only nulls left, use BOARD_GENERATED
+                    if (mapSettings.getBoardsSelected().next() == null) {
+                        mapSettings.setNullBoards((MapSettings.BOARD_GENERATED));
+                    }
+                    resetPlayersDone();
+                    transmitAllPlayerDones();
+                    send(createMapSettingsPacket());
+                }
+                break;
+            case Packet.COMMAND_SENDING_PLANETARY_CONDITIONS:
+                // MapSettings newSettings = (MapSettings) packet.getObject(0);
+                if (game.getPhase().isBefore(Phase.PHASE_DEPLOYMENT)) {
+                    PlanetaryConditions conditions = (PlanetaryConditions) packet.getObject(0);
+                    sendServerChat("Player " + player.getName() + " changed planetary conditions");
+                    game.setPlanetaryConditions(conditions);
+                    resetPlayersDone();
+                    transmitAllPlayerDones();
+                    send(createPlanetaryConditionsPacket());
+                }
+                break;
+            case Packet.COMMAND_UNLOAD_STRANDED:
+                receiveUnloadStranded(packet, connId);
+                break;
+            case Packet.COMMAND_SET_ARTYAUTOHITHEXES:
+                receiveArtyAutoHitHexes(packet, connId);
+                break;
+            case Packet.COMMAND_CUSTOM_INITIATIVE:
+                receiveCustomInit(packet, connId);
+                resetPlayersDone();
+                transmitAllPlayerDones();
+                break;
+            case Packet.COMMAND_LOAD_GAME:
+                try {
+                    sendServerChat(game.getPlayer(connId).getName() + " loaded a new game.");
+                    setGame((IGame) packet.getObject(0));
+                    for (IConnection conn : connections) {
+                        sendCurrentInfo(conn.getId());
+                    }
+                } catch (Exception e) {
+                    MegaMek.getLogger().error("Error loading save game sent from client", e);
+                }
+                break;
+            case Packet.COMMAND_SQUADRON_ADD:
+                receiveSquadronAdd(packet, connId);
+                resetPlayersDone();
+                transmitAllPlayerDones();
+                break;
+            case Packet.COMMAND_RESET_ROUND_DEPLOYMENT:
+                game.setupRoundDeployment();
+                break;
+            case Packet.COMMAND_SPECIAL_HEX_DISPLAY_DELETE:
+                game.getBoard().removeSpecialHexDisplay((Coords) packet.getObject(0),
+                        (SpecialHexDisplay) packet.getObject(1));
+                sendSpecialHexDisplayPackets();
+                break;
+            case Packet.COMMAND_SPECIAL_HEX_DISPLAY_APPEND:
+                game.getBoard().addSpecialHexDisplay((Coords) packet.getObject(0),
+                        (SpecialHexDisplay) packet.getObject(1));
+                sendSpecialHexDisplayPackets();
+                break;
+        }
+    }
+
+    /**
+     * Process an in-game command
+     */
+    private void processCommand(int connId, String commandString) {
+        String[] args;
+        String commandName;
+        // all tokens are read as strings; if they're numbers, string-ize 'em.
+        // replaced the tokenizer with the split function.
+        args = commandString.split("\\s+");
+
+        // figure out which command this is
+        commandName = args[0].substring(1);
+
+        // process it
+        ServerCommand command = getCommand(commandName);
+        if (command != null) {
+            command.run(connId, args);
+        } else {
+            sendServerChat(connId,
+                    "Command not recognized.  Type /help for a list of commands.");
+        }
+    }
+
+    /**
+     * Send a packet to a pending connection
+     */
+    private void sendToPending(int connId, Packet packet) {
+        IConnection pendingConn = getPendingConnection(connId);
+        if (pendingConn != null) {
+            pendingConn.send(packet);
+        }
+        // What should we do if we've lost this client?
+        // For now, nothing.
+    }
+
+    /**
+     * Send a packet to all connected clients.
+     */
+    void send(Packet packet) {
+        if (connections == null) {
+            return;
+        }
+        for (Enumeration<IConnection> connEnum = connections.elements(); connEnum.hasMoreElements(); ) {
+            IConnection conn = connEnum.nextElement();
+            conn.send(packet);
+        }
+    }
+
+    /**
+     * Send a packet to a specific connection.
+     */
+    public void send(int connId, Packet packet) {
+        if (getConnection(connId) != null) {
+            getConnection(connId).send(packet);
+        }
+        // What should we do if we've lost this client?
+        // For now, nothing.
+    }
+
+    /**
+     * Transmits a chat message to all players
+     */
+    public void sendChat(int connId, String origin, String message) {
+        send(connId, new Packet(Packet.COMMAND_CHAT, formatChatMessage(origin, message)));
+    }
+
+    /**
+     * Transmits a chat message to all players
+     */
+    private void sendChat(String origin, String message) {
+        String chat = formatChatMessage(origin, message);
+        send(new Packet(Packet.COMMAND_CHAT, chat));
+    }
+
+    public void sendServerChat(int connId, String message) {
+        sendChat(connId, ORIGIN, message);
+    }
+
+    public void sendServerChat(String message) {
+        sendChat(ORIGIN, message);
+    }
+
+    public static String formatChatMessage(String origin, String message) {
+        return origin + ": " + message;
+    }
+
+    public void requestTeamChange(int team, IPlayer player) {
+        gamemanager.setRequestedTeam(team);
+        gamemanager.setPlayerChangingTeam(player);
+        gamemanager.setChangePlayersTeam(false);
+    }
+
+    /**
+     * Sends out the player info updates for all players to all connections
+     */
+    private void transmitAllPlayerUpdates() {
+        for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
+            final IPlayer player = i.nextElement();
+            if (null != player) {
+                send(createPlayerUpdatePacket(player.getId()));
+            }
+        }
+    }
+
+    /**
+     * When the load command is used, there is a list of already connected
+     * players which have assigned names and player id numbers with the id
+     * numbers matching the connection numbers. When a new game is loaded, this
+     * mapping may need to be updated. This method takes a map of player names
+     * to their current ids, and uses the list of players to figure out what the
+     * current ids should change to.
+     *
+     * @param nameToIdMap
+     *            This maps a player name to the current connection ID
+     * @param idToNameMap
+     *            This maps a current conn ID to a player name, and is just the
+     *            inverse mapping from nameToIdMap
+     */
+    public void remapConnIds(Map<String, Integer> nameToIdMap, Map<Integer, String> idToNameMap) {
+        // Keeps track of connections without Ids
+        List<IConnection> unassignedConns = new ArrayList<>();
+        // Keep track of which ids are used
+        Set<Integer> usedPlayerIds = new HashSet<>();
+        Set<String> currentPlayerNames = new HashSet<>();
+        for (IPlayer p : game.getPlayersVector()) {
+            currentPlayerNames.add(p.getName());
+        }
+        // Map the old connection Id to new value
+        Map<Integer,Integer> connIdRemapping = new HashMap<>();
+        for (IPlayer p : game.getPlayersVector()) {
+            // Check to see if this player was already connected
+            Integer oldId = nameToIdMap.get(p.getName());
+            if ((oldId != null) && (oldId != p.getId())) {
+                connIdRemapping.put(oldId, p.getId());
+            }
+            // If the old and new Ids match, make sure we remove ghost status
+            if ((oldId != null) && (oldId == p.getId())) {
+                p.setGhost(false);
+            }
+            // Check to see if this player's Id is taken
+            String oldName = idToNameMap.get(p.getId());
+            if ((oldName != null) && !oldName.equals(p.getName())) {
+                // If this name doesn't belong to a current player, unassign it
+                if (!currentPlayerNames.contains(oldName)) {
+                    unassignedConns.add(connectionIds.get(p.getId()));
+                    // Make sure we don't add this to unassigned connections twice
+                    connectionIds.remove(p.getId());
+                }
+                // If it does belong to a current player, it'll get handled
+                // when that player comes up
+            }
+            // Keep track of what Ids are used
+            usedPlayerIds.add(p.getId());
+        }
+
+        // Remap old connection Ids to new ones
+        for (Integer currConnId : connIdRemapping.keySet()) {
+            Integer newId = connIdRemapping.get(currConnId);
+            IConnection conn = connectionIds.get(currConnId);
+            conn.setId(newId);
+            // If this Id is used, make sure we reassign that connection
+            if (connectionIds.containsKey(newId)) {
+                unassignedConns.add(connectionIds.get(newId));
+            }
+            // Map the new Id
+            connectionIds.put(newId, conn);
+
+            game.getPlayer(newId).setGhost(false);
+            send(newId, new Packet(Packet.COMMAND_LOCAL_PN, newId));
+        }
+
+        // It's possible we have players not in the saved game, add 'em
+        for (IConnection conn : unassignedConns) {
+            int newId = 0;
+            while (usedPlayerIds.contains(newId)) {
+                newId++;
+            }
+            String name = idToNameMap.get(conn.getId());
+            conn.setId(newId);
+            IPlayer newPlayer = game.addNewPlayer(newId, name);
+            newPlayer.setObserver(true);
+            connectionIds.put(newId,  conn);
+            send(newId, new Packet(Packet.COMMAND_LOCAL_PN, newId));
+        }
+
+        // Ensure all clients are up-to-date on player info
+        transmitAllPlayerUpdates();
+    }
+
+    /**
+     * automatically save the game
+     */
+    public void autoSave() {
+        String fileName = "autosave";
+        if (PreferenceManager.getClientPreferences().stampFilenames()) {
+            fileName = StringUtil.addDateTimeStamp(fileName);
+        }
+        saveGame(fileName, game.getOptions().booleanOption(OptionsConstants.BASE_AUTOSAVE_MSG));
+    }
+
+    /**
+     * save the game and send it to the specified connection
+     *
+     * @param connId     The <code>int</code> connection id to send to
+     * @param sFile      The <code>String</code> filename to use
+     * @param sLocalPath The <code>String</code> path to the file to be used on the
+     *                   client
+     */
+    public void sendSaveGame(int connId, String sFile, String sLocalPath) {
+        saveGame(sFile, false);
+        String sFinalFile = sFile;
+        if (!sFinalFile.endsWith(".sav.gz")) {
+            if (sFinalFile.endsWith(".sav")) {
+                sFinalFile = sFile + ".gz";
+            } else {
+                sFinalFile = sFile + ".sav.gz";
+            }
+        }
+        sLocalPath = sLocalPath.replaceAll("\\|", " ");
+        String localFile = "savegames" + File.separator + sFinalFile;
+        try (InputStream in = new FileInputStream(localFile); InputStream bin = new BufferedInputStream(in)) {
+            List<Integer> data = new ArrayList<>();
+            int input;
+            while ((input = bin.read()) != -1) {
+                data.add(input);
+            }
+            send(connId, new Packet(Packet.COMMAND_SEND_SAVEGAME, new Object[]{
+                    sFinalFile, data, sLocalPath}));
+            sendChat(connId, "***Server", "Save game has been sent to you.");
+        } catch (Exception e) {
+            MegaMek.getLogger().error("Unable to load file: " + localFile, e);
+        }
+    }
+
+    /**
+     * save the game
+     *
+     * @param sFile    The <code>String</code> filename to use
+     * @param sendChat A <code>boolean</code> value whether or not to announce the
+     *                 saving to the server chat.
+     */
+    public void saveGame(String sFile, boolean sendChat) {
+        // We need to strip the .gz if it exists,
+        // otherwise we'll double up on it.
+        if (sFile.endsWith(".gz")) {
+            sFile = sFile.replace(".gz", "");
+        }
+        XStream xstream = new XStream();
+
+        // This will make save games much smaller
+        // by using a more efficient means of referencing
+        // objects in the XML graph
+        xstream.setMode(XStream.ID_REFERENCES);
+
+        String sFinalFile = sFile;
+        if (!sFinalFile.endsWith(".sav")) {
+            sFinalFile = sFile + ".sav";
+        }
+        File sDir = new File("savegames");
+        if (!sDir.exists()) {
+            sDir.mkdir();
+        }
+
+        sFinalFile = sDir + File.separator + sFinalFile;
+
+        try (OutputStream os = new FileOutputStream(sFinalFile + ".gz");
+             OutputStream gzo = new GZIPOutputStream(os);
+             Writer writer = new OutputStreamWriter(gzo, StandardCharsets.UTF_8)) {
+
+            xstream.toXML(game, writer);
+        } catch (Exception e) {
+            MegaMek.getLogger().error("Unable to save file: " + sFinalFile, e);
+        }
+
+        if (sendChat) {
+            sendChat("MegaMek", "Game saved to " + sFinalFile);
+        }
+    }
+
+    /**
+     * save the game
+     *
+     * @param sFile The <code>String</code> filename to use
+     */
+    public void saveGame(String sFile) {
+        saveGame(sFile, true);
+    }
+
+    /**
+     * send a packet to the connection tells it load a locally saved game
+     *
+     * @param connId The <code>int</code> connection id to send to
+     * @param sFile  The <code>String</code> filename to use
+     */
+    public void sendLoadGame(int connId, String sFile) {
+        String sFinalFile = sFile;
+        if (!sFinalFile.endsWith(".sav") && !sFinalFile.endsWith(".sav.gz")) {
+            sFinalFile = sFile + ".sav";
+        }
+        if (!sFinalFile.endsWith(".gz")) {
+            sFinalFile = sFinalFile + ".gz";
+        }
+        send(connId, new Packet(Packet.COMMAND_LOAD_SAVEGAME, new Object[]{sFinalFile}));
+    }
+
+    /**
+     * load the game
+     *
+     * @param f The <code>File</code> to load
+     * @return A <code>boolean</code> value whether or not the loading was successful
+     */
+    public boolean loadGame(File f) {
+        return loadGame(f, true);
+    }
+
+    /**
+     * load the game
+     *
+     * @param f
+     *            The <code>File</code> to load
+     * @param sendInfo
+     *            Determines whether the connections should be updated with
+     *            current info. This may be false if some reconnection remapping
+     *            needs to be done first.
+     * @return A <code>boolean</code> value whether or not the loading was successful
+     */
+    public boolean loadGame(File f, boolean sendInfo) {
+        MegaMek.getLogger().info("s: loading saved game file '" + f + "'");
+
+        IGame newGame;
+        try (InputStream is = new FileInputStream(f); InputStream gzi = new GZIPInputStream(is)) {
+            XStream xstream = SerializationHelper.getXStream();
+            newGame = (IGame) xstream.fromXML(gzi);
+        } catch (Exception e) {
+            MegaMek.getLogger().error("Unable to load file: " + f, e);
+            return false;
+        }
+
+        setGame(newGame);
+
+        if (!sendInfo) {
+            return true;
+        }
+
+        // update all the clients with the new game info
+        for (IConnection conn : connections) {
+            sendCurrentInfo(conn.getId());
+        }
+        return true;
+    }
+
+    /**
+     * Sends a player the info they need to look at the current phase. This is
+     * triggered when a player first connects to the server.
+     */
+    public void sendCurrentInfo(int connId) {
+        // why are these two outside the player != null check below?
+        transmitAllPlayerConnects(connId);
+        send(connId, createGameSettingsPacket());
+        send(connId, createPlanetaryConditionsPacket());
+
+        IPlayer player = game.getPlayer(connId);
+        if (null != player) {
+            send(connId,
+                    new Packet(Packet.COMMAND_SENDING_MINEFIELDS, player
+                            .getMinefields()));
+
+            if (game.getPhase() == Phase.PHASE_LOUNGE) {
+                send(connId, createMapSettingsPacket());
+                send(createMapSizesPacket());
+                // Send Entities *after* the Lounge Phase Change
+                send(connId,
+                        new Packet(Packet.COMMAND_PHASE_CHANGE, game.getPhase()));
+                if (game.doBlind()) {
+                    send(connId, createFilteredFullEntitiesPacket(player));
+                } else {
+                    send(connId, createFullEntitiesPacket());
+                }
+            } else {
+                send(connId, new Packet(Packet.COMMAND_ROUND_UPDATE, game.getRoundCount()));
+                send(connId, createBoardPacket());
+                send(connId, createAllReportsPacket(player));
+
+                // Send entities *before* other phase changes.
+                if (game.doBlind()) {
+                    send(connId, createFilteredFullEntitiesPacket(player));
+                } else {
+                    send(connId, createFullEntitiesPacket());
+                }
+                player.setDone(game.getEntitiesOwnedBy(player) <= 0);
+                send(connId, new Packet(Packet.COMMAND_PHASE_CHANGE, game.getPhase()));
+            }
+            if ((game.getPhase() == IGame.Phase.PHASE_FIRING)
+                    || (game.getPhase() == IGame.Phase.PHASE_TARGETING)
+                    || (game.getPhase() == IGame.Phase.PHASE_OFFBOARD)
+                    || (game.getPhase() == IGame.Phase.PHASE_PHYSICAL)) {
+                // can't go above, need board to have been sent
+                send(connId, gamemanager.createAttackPacket(game.getActionsVector(), 0));
+                send(connId, gamemanager.createAttackPacket(game.getChargesVector(), 1));
+                send(connId, gamemanager.createAttackPacket(game.getRamsVector(), 1));
+                send(connId, gamemanager.createAttackPacket(game.getTeleMissileAttacksVector(), 1));
+            }
+
+            if (game.phaseHasTurns(game.getPhase()) && game.hasMoreTurns()) {
+                send(connId, createTurnVectorPacket());
+                send(connId, createTurnIndexPacket(connId));
+            } else if (game.getPhase() != IGame.Phase.PHASE_LOUNGE) {
+                endCurrentPhase();
+            }
+
+            send(connId, createArtilleryPacket(player));
+            send(connId, createFlarePacket());
+            send(connId, createSpecialHexDisplayPacket(connId));
+
+        } // Found the player.
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    private ReportManager reportmanager;
+
+    public ReportManager getReportmanager() {
+        return reportmanager;
+    }
+
+    private static class EntityTargetPair {
+        Entity ent;
+
+        Targetable target;
+
+        EntityTargetPair (Entity e, Targetable t) {
+            ent = e;
+            target = t;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if ((null == o) || (getClass() != o.getClass())) {
+                return false;
+            }
+            final EntityTargetPair other = (EntityTargetPair) o;
+            return Objects.equals(ent, other.ent) && Objects.equals(target, other.target);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(ent, target);
+        }
+
+    }
+    /**
+     * The DamageType enumeration is used for the damageEntity function.
+     */
+    public enum DamageType {
+        NONE, FRAGMENTATION, FLECHETTE, ACID, INCENDIARY, IGNORE_PASSENGER, ANTI_TSM, ANTI_INFANTRY, NAIL_RIVET,
+        NONPENETRATING
+    }
+
+    // public static final String LEGAL_CHARS =
+    // "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-";
+    private static final String DEFAULT_BOARD = MapSettings.BOARD_SURPRISE;
+
+    private IGame game = new Game();
+
+    private MapSettings mapSettings = MapSettings.getInstance();
+
+
+
+    // Track buildings that are affected by an entity's movement.
+    private Hashtable<Building, Boolean> affectedBldgs = new Hashtable<>();
+
+    // Track Physical Action results, HACK to deal with opposing pushes
+    // canceling each other
+    private Vector<PhysicalResult> physicalResults = new Vector<>();
+
+    private Vector<DynamicTerrainProcessor> terrainProcessors = new Vector<>();
+
+
+
+    private static EntityVerifier entityVerifier;
+
+    private ArrayList<int[]> scheduledNukes = new ArrayList<>();
+
+
+
+    private List<DemolitionCharge> explodingCharges = new ArrayList<>();
+
+
+
+
+
+
+
+    /**
+     * Sets the game for this server. Restores any transient fields, and sets
+     * all players as ghosts. This should only be called during server
+     * initialization before any players have connected.
+     */
+    public void setGame(IGame g) {
+        // game listeners are transient so we need to save and restore them
+        Vector<GameListener> gameListenersClone = new Vector<>(getGame().getGameListeners());
+
+        game = g;
+
+        for (GameListener listener : gameListenersClone) {
+            getGame().addGameListener(listener);
+        }
+
+        List<Integer> orphanEntities = new ArrayList<>();
+                
+        // reattach the transient fields and ghost the players
+        for (Iterator<Entity> e = game.getEntities(); e.hasNext(); ) {
+            Entity ent = e.next();
+            ent.setGame(game);
+            
+            if(ent.getOwner() == null) {
+                orphanEntities.add(ent.getId());
+                continue;
+            }
+            
+            if (ent instanceof Mech) {
+                ((Mech) ent).setBAGrabBars();
+                ((Mech) ent).setProtomechClampMounts();
+            }
+            if (ent instanceof Tank) {
+                ((Tank) ent).setBAGrabBars();
+            }
+        }
+        
+        game.removeEntities(orphanEntities, IEntityRemovalConditions.REMOVE_UNKNOWN);
+        
+        game.setOutOfGameEntitiesVector(game.getOutOfGameEntitiesVector());
+        for (Enumeration<IPlayer> e = game.getPlayers(); e.hasMoreElements(); ) {
+            IPlayer p = e.nextElement();
+            p.setGame(game);
+            p.setGhost(true);
+        }
+        // might need to restore weapon type for some attacks that take multiple
+        // turns (like artillery)
+        for (Enumeration<AttackHandler> a = game.getAttacks(); a
+                .hasMoreElements(); ) {
+            AttackHandler handler = a.nextElement();
+            if (handler instanceof WeaponHandler) {
+                ((WeaponHandler) handler).restore();
+            }
+        }
+    }
+
+    /**
+     * Returns the current game object
+     */
+    public IGame getGame() {
+        return game;
+    }
+
 
     /**
      * Allow the player to set whatever parameters he is able to
@@ -905,72 +1775,7 @@ public class Server implements Runnable {
 
     }
 
-    /**
-     * Sends a player the info they need to look at the current phase. This is
-     * triggered when a player first connects to the server.
-     */
-    public void sendCurrentInfo(int connId) {
-        // why are these two outside the player != null check below?
-        transmitAllPlayerConnects(connId);
-        send(connId, createGameSettingsPacket());
-        send(connId, createPlanetaryConditionsPacket());
 
-        IPlayer player = game.getPlayer(connId);
-        if (null != player) {
-            send(connId,
-                 new Packet(Packet.COMMAND_SENDING_MINEFIELDS, player
-                         .getMinefields()));
-
-            if (game.getPhase() == Phase.PHASE_LOUNGE) {
-                send(connId, createMapSettingsPacket());
-                send(createMapSizesPacket());
-                // Send Entities *after* the Lounge Phase Change
-                send(connId,
-                        new Packet(Packet.COMMAND_PHASE_CHANGE, game.getPhase()));
-                if (game.doBlind()) {
-                    send(connId, createFilteredFullEntitiesPacket(player));
-                } else {
-                    send(connId, createFullEntitiesPacket());
-                }
-            } else {
-                send(connId, new Packet(Packet.COMMAND_ROUND_UPDATE, game.getRoundCount()));
-                send(connId, createBoardPacket());
-                send(connId, createAllReportsPacket(player));
-
-                // Send entities *before* other phase changes.
-                if (game.doBlind()) {
-                    send(connId, createFilteredFullEntitiesPacket(player));
-                } else {
-                    send(connId, createFullEntitiesPacket());
-                }
-                player.setDone(game.getEntitiesOwnedBy(player) <= 0);
-                send(connId, new Packet(Packet.COMMAND_PHASE_CHANGE, game.getPhase()));
-            }
-            if ((game.getPhase() == IGame.Phase.PHASE_FIRING)
-                    || (game.getPhase() == IGame.Phase.PHASE_TARGETING)
-                    || (game.getPhase() == IGame.Phase.PHASE_OFFBOARD)
-                    || (game.getPhase() == IGame.Phase.PHASE_PHYSICAL)) {
-                // can't go above, need board to have been sent
-                send(connId, createAttackPacket(game.getActionsVector(), 0));
-                send(connId, createAttackPacket(game.getChargesVector(), 1));
-                send(connId, createAttackPacket(game.getRamsVector(), 1));
-                send(connId, createAttackPacket(game.getTeleMissileAttacksVector(), 1));
-            }
-            
-            if (game.phaseHasTurns(game.getPhase()) && game.hasMoreTurns()) {
-                send(connId, createTurnVectorPacket());
-                send(connId, createTurnIndexPacket(connId));
-            } else if (game.getPhase() != IGame.Phase.PHASE_LOUNGE) {
-                endCurrentPhase();
-            }
-
-            send(connId, createArtilleryPacket(player));
-            send(connId, createFlarePacket());
-            send(connId, createSpecialHexDisplayPacket(connId));
-
-        } // Found the player.
-
-    }
 
     /**
      * Resend entities to the player called by SeeAll command
@@ -1040,19 +1845,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * Checks each player to see if he has no entities, and if true, sets the
-     * observer flag for that player. An exception is that there are no
-     * observers during the lounge phase.
-     */
-    public void checkForObservers() {
-        for (Enumeration<IPlayer> e = game.getPlayers(); e.hasMoreElements(); ) {
-            IPlayer p = e.nextElement();
-            p.setObserver((game.getEntitiesOwnedBy(p) < 1)
-                          && (game.getPhase() != IGame.Phase.PHASE_LOUNGE));
-        }
-    }
-
-    /**
      * Reset the game back to the lounge.
      * TODO : couldn't this be a hazard if there are other things executing at the same time?
      */
@@ -1091,253 +1883,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * automatically save the game
-     */
-    public void autoSave() {
-        String fileName = "autosave";
-        if (PreferenceManager.getClientPreferences().stampFilenames()) {
-            fileName = StringUtil.addDateTimeStamp(fileName);
-        }
-        saveGame(fileName, game.getOptions().booleanOption(OptionsConstants.BASE_AUTOSAVE_MSG));
-    }
-
-    /**
-     * save the game and send it to the specified connection
-     *
-     * @param connId     The <code>int</code> connection id to send to
-     * @param sFile      The <code>String</code> filename to use
-     * @param sLocalPath The <code>String</code> path to the file to be used on the
-     *                   client
-     */
-    public void sendSaveGame(int connId, String sFile, String sLocalPath) {
-        saveGame(sFile, false);
-        String sFinalFile = sFile;
-        if (!sFinalFile.endsWith(".sav.gz")) {
-            if (sFinalFile.endsWith(".sav")) {
-                sFinalFile = sFile + ".gz";
-            } else {
-                sFinalFile = sFile + ".sav.gz";
-            }
-        }
-        sLocalPath = sLocalPath.replaceAll("\\|", " ");
-        String localFile = "savegames" + File.separator + sFinalFile;
-        try (InputStream in = new FileInputStream(localFile); InputStream bin = new BufferedInputStream(in)) {
-            List<Integer> data = new ArrayList<>();
-            int input;
-            while ((input = bin.read()) != -1) {
-                data.add(input);
-            }
-            send(connId, new Packet(Packet.COMMAND_SEND_SAVEGAME, new Object[]{
-                    sFinalFile, data, sLocalPath}));
-            sendChat(connId, "***Server", "Save game has been sent to you.");
-        } catch (Exception e) {
-            MegaMek.getLogger().error("Unable to load file: " + localFile, e);
-        }
-    }
-
-    /**
-     * save the game
-     *
-     * @param sFile    The <code>String</code> filename to use
-     * @param sendChat A <code>boolean</code> value whether or not to announce the
-     *                 saving to the server chat.
-     */
-    public void saveGame(String sFile, boolean sendChat) {
-        // We need to strip the .gz if it exists,
-        // otherwise we'll double up on it.
-        if (sFile.endsWith(".gz")) {
-            sFile = sFile.replace(".gz", "");
-        }
-        XStream xstream = new XStream();
-
-        // This will make save games much smaller
-        // by using a more efficient means of referencing
-        // objects in the XML graph
-        xstream.setMode(XStream.ID_REFERENCES);
-
-        String sFinalFile = sFile;
-        if (!sFinalFile.endsWith(".sav")) {
-            sFinalFile = sFile + ".sav";
-        }
-        File sDir = new File("savegames");
-        if (!sDir.exists()) {
-            sDir.mkdir();
-        }
-
-        sFinalFile = sDir + File.separator + sFinalFile;
-
-        try (OutputStream os = new FileOutputStream(sFinalFile + ".gz");
-             OutputStream gzo = new GZIPOutputStream(os);
-             Writer writer = new OutputStreamWriter(gzo, StandardCharsets.UTF_8)) {
-
-            xstream.toXML(game, writer);
-        } catch (Exception e) {
-            MegaMek.getLogger().error("Unable to save file: " + sFinalFile, e);
-        }
-
-        if (sendChat) {
-            sendChat("MegaMek", "Game saved to " + sFinalFile);
-        }
-    }
-
-    /**
-     * save the game
-     *
-     * @param sFile The <code>String</code> filename to use
-     */
-    public void saveGame(String sFile) {
-        saveGame(sFile, true);
-    }
-
-    /**
-     * send a packet to the connection tells it load a locally saved game
-     *
-     * @param connId The <code>int</code> connection id to send to
-     * @param sFile  The <code>String</code> filename to use
-     */
-    public void sendLoadGame(int connId, String sFile) {
-        String sFinalFile = sFile;
-        if (!sFinalFile.endsWith(".sav") && !sFinalFile.endsWith(".sav.gz")) {
-            sFinalFile = sFile + ".sav";
-        }
-        if (!sFinalFile.endsWith(".gz")) {
-            sFinalFile = sFinalFile + ".gz";
-        }
-        send(connId, new Packet(Packet.COMMAND_LOAD_SAVEGAME, new Object[]{sFinalFile}));
-    }
-
-    /**
-     * load the game
-     *
-     * @param f The <code>File</code> to load
-     * @return A <code>boolean</code> value whether or not the loading was successful
-     */
-    public boolean loadGame(File f) {
-        return loadGame(f, true);
-    }
-
-    /**
-     * load the game
-     *
-     * @param f
-     *            The <code>File</code> to load
-     * @param sendInfo
-     *            Determines whether the connections should be updated with
-     *            current info. This may be false if some reconnection remapping
-     *            needs to be done first.
-     * @return A <code>boolean</code> value whether or not the loading was successful
-     */
-    public boolean loadGame(File f, boolean sendInfo) {
-        MegaMek.getLogger().info("s: loading saved game file '" + f + "'");
-
-        IGame newGame;
-        try (InputStream is = new FileInputStream(f); InputStream gzi = new GZIPInputStream(is)) {
-            XStream xstream = SerializationHelper.getXStream();
-            newGame = (IGame) xstream.fromXML(gzi);
-        } catch (Exception e) {
-            MegaMek.getLogger().error("Unable to load file: " + f, e);
-            return false;
-        }
-
-        setGame(newGame);
-
-        if (!sendInfo) {
-            return true;
-        }
-
-        // update all the clients with the new game info
-        for (IConnection conn : connections) {
-            sendCurrentInfo(conn.getId());
-        }
-        return true;
-    }
-
-    /**
-     * When the load command is used, there is a list of already connected
-     * players which have assigned names and player id numbers with the id
-     * numbers matching the connection numbers. When a new game is loaded, this
-     * mapping may need to be updated. This method takes a map of player names
-     * to their current ids, and uses the list of players to figure out what the
-     * current ids should change to.
-     *
-     * @param nameToIdMap
-     *            This maps a player name to the current connection ID
-     * @param idToNameMap
-     *            This maps a current conn ID to a player name, and is just the
-     *            inverse mapping from nameToIdMap
-     */
-    public void remapConnIds(Map<String, Integer> nameToIdMap, Map<Integer, String> idToNameMap) {
-        // Keeps track of connections without Ids
-        List<IConnection> unassignedConns = new ArrayList<>();
-       // Keep track of which ids are used
-        Set<Integer> usedPlayerIds = new HashSet<>();
-        Set<String> currentPlayerNames = new HashSet<>();
-        for (IPlayer p : game.getPlayersVector()) {
-            currentPlayerNames.add(p.getName());
-        }
-        // Map the old connection Id to new value
-        Map<Integer,Integer> connIdRemapping = new HashMap<>();
-        for (IPlayer p : game.getPlayersVector()) {
-            // Check to see if this player was already connected
-            Integer oldId = nameToIdMap.get(p.getName());
-            if ((oldId != null) && (oldId != p.getId())) {
-                connIdRemapping.put(oldId, p.getId());
-            }
-            // If the old and new Ids match, make sure we remove ghost status
-            if ((oldId != null) && (oldId == p.getId())) {
-                p.setGhost(false);
-            }
-            // Check to see if this player's Id is taken
-            String oldName = idToNameMap.get(p.getId());
-            if ((oldName != null) && !oldName.equals(p.getName())) {
-                // If this name doesn't belong to a current player, unassign it
-                if (!currentPlayerNames.contains(oldName)) {
-                    unassignedConns.add(connectionIds.get(p.getId()));
-                    // Make sure we don't add this to unassigned connections twice
-                    connectionIds.remove(p.getId());
-                }
-                // If it does belong to a current player, it'll get handled
-                // when that player comes up
-            }
-            // Keep track of what Ids are used
-            usedPlayerIds.add(p.getId());
-        }
-
-        // Remap old connection Ids to new ones
-        for (Integer currConnId : connIdRemapping.keySet()) {
-            Integer newId = connIdRemapping.get(currConnId);
-            IConnection conn = connectionIds.get(currConnId);
-            conn.setId(newId);
-            // If this Id is used, make sure we reassign that connection
-            if (connectionIds.containsKey(newId)) {
-                unassignedConns.add(connectionIds.get(newId));
-            }
-            // Map the new Id
-            connectionIds.put(newId, conn);
-
-            game.getPlayer(newId).setGhost(false);
-            send(newId, new Packet(Packet.COMMAND_LOCAL_PN, newId));
-        }
-
-        // It's possible we have players not in the saved game, add 'em
-        for (IConnection conn : unassignedConns) {
-            int newId = 0;
-            while (usedPlayerIds.contains(newId)) {
-                newId++;
-            }
-            String name = idToNameMap.get(conn.getId());
-            conn.setId(newId);
-            IPlayer newPlayer = game.addNewPlayer(newId, name);
-            newPlayer.setObserver(true);
-            connectionIds.put(newId,  conn);
-            send(newId, new Packet(Packet.COMMAND_LOCAL_PN, newId));
-        }
-
-        // Ensure all clients are up-to-date on player info
-        transmitAllPlayerUpdates();
-    }
-
-    /**
      * Shortcut to game.getPlayer(id)
      */
     public IPlayer getPlayer(int id) {
@@ -1364,7 +1909,7 @@ public class Server implements Runnable {
         for (Entity entity : toRemove) {
             int id = entity.getId();
             game.removeEntity(id, IEntityRemovalConditions.REMOVE_NEVER_JOINED);
-            send(createRemoveEntityPacket(id, IEntityRemovalConditions.REMOVE_NEVER_JOINED));
+            send(gamemanager.createRemoveEntityPacket(id, IEntityRemovalConditions.REMOVE_NEVER_JOINED));
         }
     }
 
@@ -1438,7 +1983,7 @@ public class Server implements Runnable {
             }
             entityUpdate(entity.getId());
             game.removeEntity(entity.getId(), condition);
-            send(createRemoveEntityPacket(entity.getId(), condition));
+            send(gamemanager.createRemoveEntityPacket(entity.getId(), condition));
         }
     }
 
@@ -1489,7 +2034,7 @@ public class Server implements Runnable {
 
             entityUpdate(entity.getId());
             game.removeEntity(entity.getId(), condition);
-            send(createRemoveEntityPacket(entity.getId(), condition));
+            send(gamemanager.createRemoveEntityPacket(entity.getId(), condition));
         }
 
         // do some housekeeping on all the remaining
@@ -1685,12 +2230,6 @@ public class Server implements Runnable {
         }
         // Let player know about entitystatus.txt file
         reportmanager.addReport(new Report(7095, Report.PUBLIC));
-    }
-
-    public void requestTeamChange(int team, IPlayer player) {
-        gamemanager.setRequestedTeam(team);
-        gamemanager.setPlayerChangingTeam(player);
-        gamemanager.setChangePlayersTeam(false);
     }
 
     public void allowTeamChange() {
@@ -1986,12 +2525,12 @@ public class Server implements Runnable {
         switch (phase) {
             case PHASE_LOUNGE:
                 reportmanager.clearReports();
-                mapSettings.setBoardsAvailableVector(scanForBoards(new BoardDimensions(
+                mapSettings.setBoardsAvailableVector(gamemanager.scanForBoards(new BoardDimensions(
                         mapSettings.getBoardWidth(), mapSettings.getBoardHeight())));
                 mapSettings.setNullBoards(DEFAULT_BOARD);
                 send(createMapSettingsPacket());
                 send(createMapSizesPacket());
-                checkForObservers();
+                game.checkForObservers();
                 transmitAllPlayerUpdates();
                 break;
             case PHASE_INITIATIVE:
@@ -2003,7 +2542,7 @@ public class Server implements Runnable {
                 reportmanager.clearReports();
                 game.resetEntityRound();
                 resetEntityPhase(phase);
-                checkForObservers();
+                game.checkForObservers();
                 transmitAllPlayerUpdates();
 
                 // roll 'em
@@ -2035,7 +2574,7 @@ public class Server implements Runnable {
                 MegaMek.getLogger().info("Round " + game.getRoundCount() + " memory usage: " + MegaMek.getMemoryUsed());
                 break;
             case PHASE_DEPLOY_MINEFIELDS:
-                checkForObservers();
+                game.checkForObservers();
                 transmitAllPlayerUpdates();
                 resetActivePlayersDone();
                 game.setIneligible(phase);
@@ -2057,7 +2596,7 @@ public class Server implements Runnable {
                 break;
             case PHASE_SET_ARTYAUTOHITHEXES:
                 game.deployOffBoardEntities();
-                checkForObservers();
+                game.checkForObservers();
                 transmitAllPlayerUpdates();
                 resetActivePlayersDone();
                 game.setIneligible(phase);
@@ -2113,7 +2652,7 @@ public class Server implements Runnable {
                     updateVisibilityIndicator(null);
                 }
                 resetEntityPhase(phase);
-                checkForObservers();
+                game.checkForObservers();
                 transmitAllPlayerUpdates();
                 resetActivePlayersDone();
                 game.setIneligible(phase);
@@ -2168,7 +2707,7 @@ public class Server implements Runnable {
                 // TODO (Sam): also changed here
                 sendChangedHexes(gamemanager.getHexUpdateSet());
 
-                checkForObservers();
+                game.checkForObservers();
                 transmitAllPlayerUpdates();
                 entityAllUpdate();
                 break;
@@ -4286,7 +4825,7 @@ public class Server implements Runnable {
                     // Clean out the entity.
                     unit.setDestroyed(true);
                     game.moveToGraveyard(unit.getId());
-                    send(createRemoveEntityPacket(unit.getId()));
+                    send(gamemanager.createRemoveEntityPacket(unit.getId()));
                 }
             } else {
                 // avoided damage
@@ -4322,7 +4861,7 @@ public class Server implements Runnable {
                 // Clean out the entity.
                 unit.setDestroyed(true);
                 game.moveToGraveyard(unit.getId());
-                send(createRemoveEntityPacket(unit.getId()));
+                send(gamemanager.createRemoveEntityPacket(unit.getId()));
             }
         }
 
@@ -4523,7 +5062,7 @@ public class Server implements Runnable {
                             // Clean out the dead entity.
                             entity.setDestroyed(true);
                             game.moveToGraveyard(entity.getId());
-                            send(createRemoveEntityPacket(entity.getId()));
+                            send(gamemanager.createRemoveEntityPacket(entity.getId()));
                         } else { // Infantry that aren't dead are damaged.
                             entityUpdate(entity.getId());
                         }
@@ -4684,14 +5223,14 @@ public class Server implements Runnable {
                 if (game.getOptions().booleanOption(OptionsConstants.BASE_PUSH_OFF_BOARD)) {
                     // Yup. One dead entity.
                     game.removeEntity(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED);
-                    send(createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
+                    send(gamemanager.createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
                     r = new Report(2030, Report.PUBLIC);
                     r.addDesc(entity);
                     reportmanager.addReport(r);
 
                     for (Entity e : entity.getLoadedUnits()) {
                         game.removeEntity(e.getId(), IEntityRemovalConditions.REMOVE_PUSHED);
-                        send(createRemoveEntityPacket(e.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
+                        send(gamemanager.createRemoveEntityPacket(e.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
                     }
                     Entity swarmer = game.getEntity(entity.getSwarmAttackerId());
                     if (swarmer != null) {
@@ -4701,7 +5240,7 @@ public class Server implements Runnable {
                             send(createTurnVectorPacket());
                         }
                         game.removeEntity(swarmer.getId(), IEntityRemovalConditions.REMOVE_PUSHED);
-                        send(createRemoveEntityPacket(swarmer.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
+                        send(gamemanager.createRemoveEntityPacket(swarmer.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
                     }
                     // The entity's movement is completed.
                     return true;
@@ -5177,7 +5716,7 @@ public class Server implements Runnable {
                         // Clean out the entity.
                         target.setDestroyed(true);
                         game.moveToGraveyard(target.getId());
-                        send(createRemoveEntityPacket(target.getId()));
+                        send(gamemanager.createRemoveEntityPacket(target.getId()));
                     }
                     // Update the target's position,
                     // unless it is off the game map.
@@ -5452,7 +5991,7 @@ public class Server implements Runnable {
         if (entity.isDoomed()) {
             entity.setDestroyed(true);
             game.moveToGraveyard(entity.getId());
-            send(createRemoveEntityPacket(entity.getId()));
+            send(gamemanager.createRemoveEntityPacket(entity.getId()));
 
             // The entity's movement is completed.
             return true;
@@ -5748,7 +6287,7 @@ public class Server implements Runnable {
             // Clean out the entity.
             target.setDestroyed(true);
             game.moveToGraveyard(target.getId());
-            send(createRemoveEntityPacket(target.getId()));
+            send(gamemanager.createRemoveEntityPacket(target.getId()));
         }
         // Update the target's position,
         // unless it is off the game map.
@@ -6123,7 +6662,7 @@ public class Server implements Runnable {
                 passenger.setRetreatedDirection(fleeDirection);
                 game.removeEntity(passenger.getId(),
                                   IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                send(createRemoveEntityPacket(passenger.getId(),
+                send(gamemanager.createRemoveEntityPacket(passenger.getId(),
                                               IEntityRemovalConditions.REMOVE_IN_RETREAT));
             }
         }
@@ -6146,7 +6685,7 @@ public class Server implements Runnable {
                 mw.setRetreatedDirection(fleeDirection);
             }
             game.removeEntity(mw.getId(), condition);
-            send(createRemoveEntityPacket(mw.getId(), condition));
+            send(gamemanager.createRemoveEntityPacket(mw.getId(), condition));
             r.addDesc(mw);
             r.indent();
             reportmanager.addReport(r);
@@ -6172,11 +6711,11 @@ public class Server implements Runnable {
             r.addDesc(swarmer);
             reportmanager.addReport(r);
             game.removeEntity(swarmerId, IEntityRemovalConditions.REMOVE_CAPTURED);
-            send(createRemoveEntityPacket(swarmerId, IEntityRemovalConditions.REMOVE_CAPTURED));
+            send(gamemanager.createRemoveEntityPacket(swarmerId, IEntityRemovalConditions.REMOVE_CAPTURED));
         }
         entity.setRetreatedDirection(fleeDirection);
         game.removeEntity(entity.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
-        send(createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
+        send(gamemanager.createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
         return vReport;
     }
 
@@ -8268,7 +8807,7 @@ public class Server implements Runnable {
                 if (entity.isDoomed()) {
                     entity.setDestroyed(true);
                     game.moveToGraveyard(entity.getId());
-                    send(createRemoveEntityPacket(entity.getId()));
+                    send(gamemanager.createRemoveEntityPacket(entity.getId()));
 
                     // The entity's movement is completed.
                     return;
@@ -9151,7 +9690,7 @@ public class Server implements Runnable {
         if (!game.isOutOfGame(entity)) {
             entityUpdate(entity.getId(), movePath, true, losCache);
             if (entity.isDoomed()) {
-                send(createRemoveEntityPacket(entity.getId(),
+                send(gamemanager.createRemoveEntityPacket(entity.getId(),
                         entity.getRemovalCondition()));
             }
         }
@@ -9219,12 +9758,12 @@ public class Server implements Runnable {
 
         // if we generated a charge attack, report it now
         if (charge != null) {
-            send(createAttackPacket(charge, 1));
+            send(gamemanager.createAttackPacket(charge, 1));
         }
 
         // if we generated a ram attack, report it now
         if (ram != null) {
-            send(createAttackPacket(ram, 1));
+            send(gamemanager.createAttackPacket(ram, 1));
         }
         if ((entity instanceof Mech) && entity.hasEngine() && ((Mech) entity).isIndustrial()
                 && !entity.hasEnvironmentalSealing()
@@ -10535,7 +11074,7 @@ public class Server implements Runnable {
                             vPhaseReport.addAll(destroyEntity(te,"Structural Integrity Collapse"));
                             ftr.setSI(0);
                             if (null != ae) {
-                                creditKill(te, ae);
+                                game.creditKill(te, ae);
                             }
                         }
                     }
@@ -10621,7 +11160,7 @@ public class Server implements Runnable {
                         vPhaseReport.add(r);
                     } else {
                         vPhaseReport.addAll(destroyEntity(te, "damage", false));
-                        creditKill(te, ae);
+                        game.creditKill(te, ae);
                         Report.addNewline(vPhaseReport);
                     }
                 }
@@ -12260,7 +12799,7 @@ public class Server implements Runnable {
                     send(createTurnVectorPacket());
                 }
                 game.removeEntity(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED);
-                send(createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
+                send(gamemanager.createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
                 // entity forced from the field
                 r = new Report(2230);
                 r.subject = entity.getId();
@@ -13134,7 +13673,7 @@ public class Server implements Runnable {
                     }
                 }
                 if (firingAtNewHex) {
-                    clearArtillerySpotters(firingEntity.getId(), aaa.getWeaponId());
+                    game.clearArtillerySpotters(firingEntity.getId(), aaa.getWeaponId());
                 }
                 Iterator<Entity> spotters = game.getSelectedEntities(new EntitySelector() {
                             public int player = firingEntity.getOwnerId();
@@ -13209,7 +13748,7 @@ public class Server implements Runnable {
         }
         entityUpdate(entity.getId());
 
-        Packet p = createAttackPacket(vector, 0);
+        Packet p = gamemanager.createAttackPacket(vector, 0);
         if (game.isPhaseSimultaneous()) {
             // Update attack only to player who declared it & observers
             for (IPlayer player : game.getPlayersVector()) {
@@ -13252,7 +13791,7 @@ public class Server implements Runnable {
      */
     public void assignAMS() {
         // Get all of the coords that would be protected by APDS
-        Hashtable<Coords, List<Mounted>> apdsCoords = getAPDSProtectedCoords();
+        Hashtable<Coords, List<Mounted>> apdsCoords = game.getAPDSProtectedCoords();
         // Map target to a list of missile attacks directed at it
         Hashtable<Entity, Vector<WeaponHandler>> htAttacks = new Hashtable<>();
         // Keep track of each APDS, and which attacks it could affect
@@ -13524,63 +14063,6 @@ public class Server implements Runnable {
                 amsTargets.add(targetedWAA);
             }
         }
-    }
-
-    /**
-     * Convenience method for computing a mapping of which Coords are
-     * "protected" by an APDS. Protection implies that the coords is within the
-     * range/arc of an active APDS.
-     *
-     * @return
-     */
-    private Hashtable<Coords, List<Mounted>> getAPDSProtectedCoords() {
-        // Get all of the coords that would be protected by APDS
-        Hashtable<Coords, List<Mounted>> apdsCoords = new Hashtable<>();
-        for (Entity e : game.getEntitiesVector()) {
-            // Ignore Entitys without positions
-            if (e.getPosition() == null) {
-                continue;
-            }
-            Coords origPos = e.getPosition();
-            for (Mounted ams : e.getActiveAMS()) {
-                // Ignore non-APDS AMS
-                if (!ams.isAPDS()) {
-                    continue;
-                }
-                // Add the current hex as a defended location
-                List<Mounted> apdsList = apdsCoords.computeIfAbsent(origPos, k -> new ArrayList<>());
-                apdsList.add(ams);
-                // Add each coords that is within arc/range as protected
-                int maxDist = 3;
-                if (e instanceof BattleArmor) {
-                    int numTroopers = ((BattleArmor) e)
-                            .getNumberActiverTroopers();
-                    switch (numTroopers) {
-                        case 1:
-                            maxDist = 1;
-                            break;
-                        case 2:
-                        case 3:
-                            maxDist = 2;
-                            break;
-                    // Anything above is the same as the default
-                    }
-                }
-                for (int dist = 1; dist <= maxDist; dist++) {
-                    List<Coords> coords = e.getPosition().allAtDistance(dist);
-                    for (Coords pos : coords) {
-                        // Check that we're in the right arc
-                        if (Compute.isInArc(game, e.getId(), e.getEquipmentNum(ams),
-                                new HexTarget(pos, game.getBoard(), HexTarget.TYPE_HEX_CLEAR))) {
-                            apdsList = apdsCoords.computeIfAbsent(pos, k -> new ArrayList<>());
-                            apdsList.add(ams);
-                        }
-                    }
-                }
-
-            }
-        }
-        return apdsCoords;
     }
 
     /**
@@ -20950,7 +21432,7 @@ public class Server implements Runnable {
                     vDesc.addAll(destroyEntity((Entity)ship, "fatal damage threshold"));
                     ship.doDisbandDamage();
                     if (prevAE != Entity.NONE) {
-                        creditKill(en, game.getEntity(prevAE));
+                        game.creditKill(en, game.getEntity(prevAE));
                     }
                 }
             }
@@ -21539,7 +22021,7 @@ public class Server implements Runnable {
                     a.doDisbandDamage();
                     a.setCapArmor(0);
                     if (hit.getAttackerId() != Entity.NONE) {
-                        creditKill(te, game.getEntity(hit.getAttackerId()));
+                        game.creditKill(te, game.getEntity(hit.getAttackerId()));
                     }
                 }
                 // check for aero crits from natural 12 or threshold; LAMs take damage as mechs
@@ -22200,7 +22682,7 @@ public class Server implements Runnable {
                         }
                         a.setSI(0);
                         if (hit.getAttackerId() != Entity.NONE) {
-                            creditKill(a, game.getEntity(hit.getAttackerId()));
+                            game.creditKill(a, game.getEntity(hit.getAttackerId()));
                         }
                     }
                     checkAeroCrits(vDesc, a, hit, damage_orig, critThresh, critSI, ammoExplosion, nukeS2S);
@@ -26210,7 +26692,7 @@ public class Server implements Runnable {
                     vDesc.addAll(destroyEntity(a, "Structural Integrity Collapse"));
                     a.setSI(0);
                     if (hit.getAttackerId() != Entity.NONE) {
-                        creditKill(a, game.getEntity(hit.getAttackerId()));
+                        game.creditKill(a, game.getEntity(hit.getAttackerId()));
                     }
                 } else if (!critSI) {
                     critSI = true;
@@ -27024,7 +27506,7 @@ public class Server implements Runnable {
                 // We can safely remove these, as they can't be targeted
                 game.removeEntity(mw.getId(), condition);
                 entityUpdate(mw.getId());
-                send(createRemoveEntityPacket(mw.getId(), condition));
+                send(gamemanager.createRemoveEntityPacket(mw.getId(), condition));
                 r = new Report(6370);
                 r.subject = mw.getId();
                 r.addDesc(mw);
@@ -27087,7 +27569,7 @@ public class Server implements Runnable {
                         entity.unload(other);
                         // Safe to remove, as they aren't targeted
                         game.moveToGraveyard(other.getId());
-                        send(createRemoveEntityPacket(other.getId(), condition));
+                        send(gamemanager.createRemoveEntityPacket(other.getId(), condition));
                         r = new Report(6370);
                         r.subject = other.getId();
                         r.addDesc(other);
@@ -27104,7 +27586,7 @@ public class Server implements Runnable {
                         entity.unload(other);
                         // Safe to remove, as they aren't targeted
                         game.moveToGraveyard(other.getId());
-                        send(createRemoveEntityPacket(other.getId(), condition));
+                        send(gamemanager.createRemoveEntityPacket(other.getId(), condition));
                         r = new Report(6375);
                         r.subject = other.getId();
                         r.addDesc(other);
@@ -27138,7 +27620,7 @@ public class Server implements Runnable {
                     // Can't remove this here, otherwise later attacks will fail
                     //game.moveToGraveyard(transport.getId());
                     //entityUpdate(transport.getId());
-                    //send(createRemoveEntityPacket(transport.getId(), condition));
+                    //send(gamemanager.createRemoveEntityPacket(transport.getId(), condition));
                     r = new Report(6365);
                     r.subject = transport.getId();
                     r.addDesc(transport);
@@ -28344,145 +28826,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * Scans the boards directory for map boards of the appropriate size and
-     * returns them.
-     *
-     * @return A list of relative paths to the board files, without the '.board'
-     * extension.
-     */
-    private List<String> scanForBoardsInDir(final File boardDir, final String basePath,
-                                            final BoardDimensions dimensions, List<String> boards) {
-        if (boardDir == null) {
-            throw new IllegalArgumentException("must provide searchDir");
-        } else if (basePath == null) {
-            throw new IllegalArgumentException("must provide basePath");
-        } else if (dimensions == null) {
-            throw new IllegalArgumentException("must provide dimensions");
-        } else if (boards == null) {
-            throw new IllegalArgumentException("must provide boards");
-        }
-
-        String[] fileList = boardDir.list();
-        if (fileList != null) {
-            for (String filename : fileList) {
-                File filePath = new MegaMekFile(boardDir, filename).getFile();
-                if (filePath.isDirectory()) {
-                    scanForBoardsInDir(new MegaMekFile(boardDir, filename).getFile(),
-                            basePath.concat(File.separator).concat(filename), dimensions, boards);
-                } else {
-                    if (filename.endsWith(".board")) { //$NON-NLS-1$
-                        if (Board.boardIsSize(filePath, dimensions)) {
-                            boards.add(basePath.concat(File.separator)
-                                    .concat(filename.substring(0, filename.lastIndexOf("."))));
-                        }
-                    }
-                }
-            }
-        }
-        return boards;
-    }
-
-    /**
-     * Recursively scan the specified path to determine the board sizes
-     * available.
-     *
-     * @param searchDir The directory to search below this path (may be null for all
-     *                  in base path).
-     * @param sizes     Where to store the discovered board sizes
-     */
-    private void getBoardSizesInDir(final File searchDir, TreeSet<BoardDimensions> sizes) {
-        if (searchDir == null) {
-            throw new IllegalArgumentException("must provide searchDir");
-        }
-
-        if (sizes == null) {
-            throw new IllegalArgumentException("must provide sizes");
-        }
-
-        String[] file_list = searchDir.list();
-
-        if (file_list != null) {
-            for (String filename : file_list) {
-                File query_file = new File(searchDir, filename);
-
-                if (query_file.isDirectory()) {
-                    getBoardSizesInDir(query_file, sizes);
-                } else {
-                    try {
-                        if (filename.endsWith(".board")) { //$NON-NLS-1$
-                            BoardDimensions size = Board.getSize(query_file);
-                            if (size == null) {
-                                throw new Exception();
-                            }
-                            sizes.add(Board.getSize(query_file));
-                        }
-                    } catch (Exception e) {
-                        MegaMek.getLogger().error("Error parsing board: " + query_file.getAbsolutePath(), e);
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Get a list of the available board sizes from the boards data directory.
-     *
-     * @return A Set containing all the available board sizes.
-     */
-    private Set<BoardDimensions> getBoardSizes() {
-        TreeSet<BoardDimensions> board_sizes = new TreeSet<>();
-
-        File boards_dir = Configuration.boardsDir();
-        // Slightly overkill sanity check...
-        if (boards_dir.isDirectory()) {
-            getBoardSizesInDir(boards_dir, board_sizes);
-        }
-        boards_dir = new File(Configuration.userdataDir(), Configuration.boardsDir().toString());
-        if (boards_dir.isDirectory()) {
-            getBoardSizesInDir(boards_dir, board_sizes);
-        }
-
-        return board_sizes;
-    }
-
-    /**
-     * Scan for map boards with the specified dimensions.
-     *
-     * @param dimensions The desired board dimensions.
-     * @return A list of path names, minus the '.board' extension, relative to
-     * the boards data directory.
-     */
-    private ArrayList<String> scanForBoards(final BoardDimensions dimensions) {
-        ArrayList<String> boards = new ArrayList<>();
-
-        File boardDir = Configuration.boardsDir();
-        boards.add(MapSettings.BOARD_GENERATED);
-        // just a check...
-        if (!boardDir.isDirectory()) {
-            return boards;
-        }
-
-        // scan files
-        List<String> tempList = new ArrayList<>();
-        Comparator<String> sortComp = StringUtil.stringComparator();
-        scanForBoardsInDir(boardDir, "", dimensions, tempList);
-        // Check boards in userData dir
-        boardDir = new File(Configuration.userdataDir(), Configuration.boardsDir().toString());
-        if (boardDir.isDirectory()) {
-            scanForBoardsInDir(boardDir, "", dimensions, tempList);
-        }
-        // if there are any boards, add these:
-        if (tempList.size() > 0) {
-            boards.add(MapSettings.BOARD_RANDOM);
-            boards.add(MapSettings.BOARD_SURPRISE);
-            tempList.sort(sortComp);
-            boards.addAll(tempList);
-        }
-
-        return boards;
-    }
-
-    /**
      * In a double-blind game, update only visible entities. Otherwise, update
      * everyone
      */
@@ -28544,7 +28887,7 @@ public class Server implements Runnable {
                 send(p.getId(), pack);
             }
             // send an entity delete to everyone else
-            pack = createRemoveEntityPacket(nEntityID,
+            pack = gamemanager.createRemoveEntityPacket(nEntityID,
                                             eTarget.getRemovalCondition());
             for (int x = 0; x < playersVector.size(); x++) {
                 if (!vCanSee.contains(playersVector.elementAt(x))) {
@@ -28583,7 +28926,7 @@ public class Server implements Runnable {
                 send(p.getId(), pack);
             }
             // send an entity delete to everyone else
-            pack = createRemoveEntityPacket(eLoaded.getId(),
+            pack = gamemanager.createRemoveEntityPacket(eLoaded.getId(),
                                             eLoaded.getRemovalCondition());
             for (int x = 0; x < playersVector.size(); x++) {
                 if (!vCanSee.contains(playersVector.elementAt(x))) {
@@ -28633,7 +28976,7 @@ public class Server implements Runnable {
         Vector<IPlayer> vCanSee = new Vector<>();
         vCanSee.addElement(entity.getOwner());
         if (bTeamVision) {
-            addTeammates(vCanSee, entity.getOwner());
+            game.addTeammates(vCanSee, entity.getOwner());
         }
 
         // Deal with players who can see all.
@@ -28668,9 +29011,9 @@ public class Server implements Runnable {
                     vCanSee.addElement(spotter.getOwner());
                 }
                 if (bTeamVision) {
-                    addTeammates(vCanSee, spotter.getOwner());
+                    game.addTeammates(vCanSee, spotter.getOwner());
                 }
-                addObservers(vCanSee);
+                game.addObservers(vCanSee);
             }
         }
         return vCanSee;
@@ -28721,39 +29064,13 @@ public class Server implements Runnable {
                     vCanDetect.addElement(spotter.getOwner());
                 }
                 if (bTeamVision) {
-                    addTeammates(vCanDetect, spotter.getOwner());
+                    game.addTeammates(vCanDetect, spotter.getOwner());
                 }
-                addObservers(vCanDetect);
+                game.addObservers(vCanDetect);
             }
             }
 
         return vCanDetect;
-    }
-
-    /**
-     * Adds teammates of a player to the Vector. Utility function for whoCanSee.
-     */
-    private void addTeammates(Vector<IPlayer> vector, IPlayer player) {
-        Vector<IPlayer> playersVector = game.getPlayersVector();
-        for (int j = 0; j < playersVector.size(); j++) {
-            IPlayer p = playersVector.elementAt(j);
-            if (!player.isEnemyOf(p) && !vector.contains(p)) {
-                vector.addElement(p);
-            }
-        }
-    }
-
-    /**
-     * Adds observers to the Vector. Utility function for whoCanSee.
-     */
-    private void addObservers(Vector<IPlayer> vector) {
-        Vector<IPlayer> playersVector = game.getPlayersVector();
-        for (int j = 0; j < playersVector.size(); j++) {
-            IPlayer p = playersVector.elementAt(j);
-            if (p.isObserver() && !vector.contains(p)) {
-                vector.addElement(p);
-            }
-        }
     }
 
     /**
@@ -28895,36 +29212,6 @@ public class Server implements Runnable {
     }
 
     /**
-     *
-     * @return a vector which has as its keys the round number and as its
-     *         elements vectors that contain all the reports for the specified player
-     *         that round. The reports returned this way are properly filtered for
-     *         double blind.
-     */
-    private Vector<Vector<Report>> filterPastReports(
-            Vector<Vector<Report>> pastReports, IPlayer p) {
-        // Only actually bother with the filtering if double-blind is in effect.
-        if (!game.doBlind()) {
-            return pastReports;
-        }
-        // Perform filtering
-        Vector<Vector<Report>> filteredReports = new Vector<>();
-        for (Vector<Report> roundReports : pastReports) {
-            Vector<Report> filteredRoundReports = new Vector<>();
-            for (Report r : roundReports) {
-                if (r.isObscuredRecipient(p.getName())) {
-                    r = reportmanager.filterReport(game, r, null, true);
-                }
-                if (r != null) {
-                    filteredRoundReports.addElement(r);
-                }
-            }
-            filteredReports.addElement(filteredRoundReports);
-        }
-        return filteredReports;
-    }
-
-    /**
      * Updates entities graphical "visibility indications" which are used in
      * double-blind games.
      *
@@ -28990,7 +29277,7 @@ public class Server implements Runnable {
             if (hasClientWithoutEntity) {
                 entityUpdate(e.getId(), new Vector<>(), false, losCache);
             } else {
-                sendVisibilityIndicator(e);
+                gamemanager.sendVisibilityIndicator(e);
             }
         }
     }
@@ -29693,7 +29980,7 @@ public class Server implements Runnable {
 
         // during deployment this absolutely must be called before game.removeEntity(), otherwise the game hangs
         // when a unit is removed. Cause unknown.
-        send(createRemoveEntityPacket(ids, IEntityRemovalConditions.REMOVE_NEVER_JOINED));
+        send(gamemanager.createRemoveEntityPacket(ids, IEntityRemovalConditions.REMOVE_NEVER_JOINED));
 
         // Prevents deployment hanging. Only do this during deployment.
         if (game.getPhase() == IGame.Phase.PHASE_DEPLOYMENT) {
@@ -29797,7 +30084,7 @@ public class Server implements Runnable {
             IOption originalOption = game.getOptions().getOption(option.getName());
             if (originalOption != null) {
                 if ("maps_include_subdir".equals(originalOption.getName())) {
-                    mapSettings.setBoardsAvailableVector(scanForBoards(new BoardDimensions(
+                    mapSettings.setBoardsAvailableVector(gamemanager.scanForBoards(new BoardDimensions(
                             mapSettings.getBoardWidth(), mapSettings.getBoardHeight())));
                     mapSettings.removeUnavailable();
                     mapSettings.setNullBoards(DEFAULT_BOARD);
@@ -29849,18 +30136,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * Sends out the player info updates for all players to all connections
-     */
-    private void transmitAllPlayerUpdates() {
-        for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
-            final IPlayer player = i.nextElement();
-            if (null != player) {
-                send(createPlayerUpdatePacket(player.getId()));
-            }
-        }
-    }
-
-    /**
      * Sends out the player ready stats for all players to all connections
      */
     private void transmitAllPlayerDones() {
@@ -29906,7 +30181,7 @@ public class Server implements Runnable {
     }
 
     private Packet createMapSizesPacket() {
-        Set<BoardDimensions> sizes = getBoardSizes();
+        Set<BoardDimensions> sizes = gamemanager.getBoardSizes();
         return new Packet(Packet.COMMAND_SENDING_AVAILABLE_MAP_SIZES, sizes);
     }
 
@@ -29978,7 +30253,7 @@ public class Server implements Runnable {
      */
     private Packet createAllReportsPacket(IPlayer p) {
         return new Packet(Packet.COMMAND_SENDING_REPORTS_ALL,
-                filterPastReports(game.getAllReports(), p));
+                reportmanager.filterPastReports(game, game.getAllReports(), p));
     }
 
     /**
@@ -30038,61 +30313,7 @@ public class Server implements Runnable {
         data[1] = entities;
         return new Packet(Packet.COMMAND_ENTITY_ADD, data);
     }
-
-    /**
-     * Creates a packet detailing the removal of an entity. Maintained for
-     * backwards compatibility.
-     *
-     * @param entityId - the <code>int</code> ID of the entity being removed.
-     * @return A <code>Packet</code> to be sent to clients.
-     */
-    private Packet createRemoveEntityPacket(int entityId) {
-        return createRemoveEntityPacket(entityId, IEntityRemovalConditions.REMOVE_SALVAGEABLE);
-    }
-
-    /**
-     * Creates a packet detailing the removal of an entity.
-     *
-     * @param entityId  - the <code>int</code> ID of the entity being removed.
-     * @param condition - the <code>int</code> condition the unit was in. This value
-     *                  must be one of constants in
-     *                  <code>IEntityRemovalConditions</code>, or an
-     *                  <code>IllegalArgumentException</code> will be thrown.
-     * @return A <code>Packet</code> to be sent to clients.
-     */
-    private Packet createRemoveEntityPacket(int entityId, int condition) {
-        List<Integer> ids = new ArrayList<>(1);
-        ids.add(entityId);
-        return createRemoveEntityPacket(ids, condition);
-    }
-
-    /**
-     * Creates a packet detailing the removal of a list of entities.
-     *
-     * @param entityIds - the <code>int</code> ID of each entity being removed.
-     * @param condition - the <code>int</code> condition the units were in. This value
-     *                  must be one of constants in
-     *                  <code>IEntityRemovalConditions</code>, or an
-     *                  <code>IllegalArgumentException</code> will be thrown.
-     * @return A <code>Packet</code> to be sent to clients.
-     */
-    private Packet createRemoveEntityPacket(List<Integer> entityIds, int condition) {
-        if ((condition != IEntityRemovalConditions.REMOVE_UNKNOWN)
-                && (condition != IEntityRemovalConditions.REMOVE_IN_RETREAT)
-                && (condition != IEntityRemovalConditions.REMOVE_PUSHED)
-                && (condition != IEntityRemovalConditions.REMOVE_SALVAGEABLE)
-                && (condition != IEntityRemovalConditions.REMOVE_EJECTED)
-                && (condition != IEntityRemovalConditions.REMOVE_CAPTURED)
-                && (condition != IEntityRemovalConditions.REMOVE_DEVASTATED)
-                && (condition != IEntityRemovalConditions.REMOVE_NEVER_JOINED)) {
-            throw new IllegalArgumentException("Unknown unit condition: " + condition);
-        }
-        Object[] array = new Object[2];
-        array[0] = entityIds;
-        array[1] = condition;
-        return new Packet(Packet.COMMAND_ENTITY_REMOVE, array);
-    }
-
+    
     /**
      * Creates a packet indicating end of game, including detailed unit status
      */
@@ -30102,45 +30323,6 @@ public class Server implements Runnable {
         array[1] = game.getVictoryPlayerId();
         array[2] = game.getVictoryTeam();
         return new Packet(Packet.COMMAND_END_OF_GAME, array);
-    }
-
-    public static String ORIGIN = "***Server";
-
-    public static String formatChatMessage(String origin, String message) {
-        return origin + ": " + message;
-    }
-
-    /**
-     * Transmits a chat message to all players
-     */
-    public void sendChat(int connId, String origin, String message) {
-        send(connId, new Packet(Packet.COMMAND_CHAT, formatChatMessage(origin, message)));
-    }
-
-    /**
-     * Transmits a chat message to all players
-     */
-    private void sendChat(String origin, String message) {
-        String chat = formatChatMessage(origin, message);
-        send(new Packet(Packet.COMMAND_CHAT, chat));
-    }
-
-    public void sendServerChat(int connId, String message) {
-        sendChat(connId, ORIGIN, message);
-    }
-
-    public void sendServerChat(String message) {
-        sendChat(ORIGIN, message);
-    }
-
-    /**
-     * Creates a packet containing a hex, and the coordinates it goes at.
-     */
-    private Packet createHexChangePacket(Coords coords, IHex hex) {
-        final Object[] data = new Object[2];
-        data[0] = coords;
-        data[1] = hex;
-        return new Packet(Packet.COMMAND_CHANGE_HEX, data);
     }
 
     public void sendSmokeCloudAdded(SmokeCloud cloud) {
@@ -30153,7 +30335,7 @@ public class Server implements Runnable {
      * Sends notification to clients that the specified hex has changed.
      */
     public void sendChangedHex(Coords coords) {
-        send(createHexChangePacket(coords, game.getBoard().getHex(coords)));
+        send(gamemanager.createHexChangePacket(coords, game.getBoard().getHex(coords)));
     }
 
     /**
@@ -30189,39 +30371,6 @@ public class Server implements Runnable {
      */
     public void sendChangedMines(Coords coords) {
         send(createMineChangePacket(coords));
-    }
-
-    public void sendVisibilityIndicator(Entity e) {
-        final Object[] data = new Object[6];
-        data[0] = e.getId();
-        data[1] = e.isEverSeenByEnemy();
-        data[2] = e.isVisibleToEnemy();
-        data[3] = e.isDetectedByEnemy();
-        data[4] = e.getWhoCanSee();
-        data[5] = e.getWhoCanDetect();
-        send(new Packet(Packet.COMMAND_ENTITY_VISIBILITY_INDICATOR, data));
-    }
-
-    /**
-     * Creates a packet for an attack
-     */
-    private Packet createAttackPacket(List<?> vector, int charges) {
-        final Object[] data = new Object[2];
-        data[0] = vector;
-        data[1] = charges;
-        return new Packet(Packet.COMMAND_ENTITY_ATTACK, data);
-    }
-
-    /**
-     * Creates a packet for an attack
-     */
-    private Packet createAttackPacket(EntityAction ea, int charge) {
-        Vector<EntityAction> vector = new Vector<>(1);
-        vector.addElement(ea);
-        Object[] data = new Object[2];
-        data[0] = vector;
-        data[1] = charge;
-        return new Packet(Packet.COMMAND_ENTITY_ATTACK, data);
     }
 
     /**
@@ -30287,18 +30436,7 @@ public class Server implements Runnable {
         return new Packet(Packet.COMMAND_SENDING_FLARES, game.getFlares());
     }
 
-    /**
-     * Send a packet to all connected clients.
-     */
-    private void send(Packet packet) {
-        if (connections == null) {
-            return;
-        }
-        for (Enumeration<IConnection> connEnum = connections.elements(); connEnum.hasMoreElements(); ) {
-            IConnection conn = connEnum.nextElement();
-            conn.send(packet);
-        }
-    }
+
 
     // WOR
     public void send_Nova_Change(int Id, String net) {
@@ -30329,375 +30467,6 @@ public class Server implements Runnable {
                 packet = createReportPacket(p);
             }
             conn.send(packet);
-        }
-    }
-
-    /**
-     * Send a packet to a specific connection.
-     */
-    public void send(int connId, Packet packet) {
-        if (getConnection(connId) != null) {
-            getConnection(connId).send(packet);
-        }
-        // What should we do if we've lost this client?
-        // For now, nothing.
-    }
-
-    /**
-     * Send a packet to a pending connection
-     */
-    private void sendToPending(int connId, Packet packet) {
-        IConnection pendingConn = getPendingConnection(connId);
-        if (pendingConn != null) {
-            pendingConn.send(packet);
-        }
-        // What should we do if we've lost this client?
-        // For now, nothing.
-    }
-
-    /**
-     * Process an in-game command
-     */
-    private void processCommand(int connId, String commandString) {
-        String[] args;
-        String commandName;
-        // all tokens are read as strings; if they're numbers, string-ize 'em.
-        // replaced the tokenizer with the split function.
-        args = commandString.split("\\s+");
-
-        // figure out which command this is
-        commandName = args[0].substring(1);
-
-        // process it
-        ServerCommand command = getCommand(commandName);
-        if (command != null) {
-            command.run(connId, args);
-        } else {
-            sendServerChat(connId,
-                    "Command not recognized.  Type /help for a list of commands.");
-        }
-    }
-
-    // Easter eggs. Happy April Fool's Day!!
-    private static final String DUNE_CALL = "They tried and failed?";
-
-    private static final String DUNE_RESPONSE = "They tried and died!";
-
-    private static final String STAR_WARS_CALL = "I'd just as soon kiss a Wookiee.";
-
-    private static final String STAR_WARS_RESPONSE = "I can arrange that!";
-
-    private static final String INVADER_ZIM_CALL = "What does the G stand for?";
-
-    private static final String INVADER_ZIM_RESPONSE = "I don't know.";
-
-    private static final String WARGAMES_CALL = "Shall we play a game?";
-
-    private static final String WARGAMES_RESPONSE = "Let's play global thermonuclear war.";
-
-    /**
-     * Process a packet from a connection.
-     *
-     * @param connId
-     *            - the <code>int</code> ID the connection that received the
-     *            packet.
-     * @param packet
-     *            - the <code>Packet</code> to be processed.
-     */
-    protected void handle(int connId, Packet packet) {
-        IPlayer player = game.getPlayer(connId);
-        // Check player. Please note, the connection may be pending.
-        if ((null == player) && (null == getPendingConnection(connId))) {
-            MegaMek.getLogger().error("Server does not recognize player at connection " + connId);
-            return;
-        }
-
-        if (packet == null) {
-            MegaMek.getLogger().error("Got null packet");
-            return;
-        }
-        // act on it
-        switch (packet.getCommand()) {
-            case Packet.COMMAND_CLIENT_VERSIONS:
-                receivePlayerVersion(packet, connId);
-                break;
-            case Packet.COMMAND_CLOSE_CONNECTION:
-                // We have a client going down!
-                IConnection c = getConnection(connId);
-                if (c != null) {
-                    c.close();
-                }
-                break;
-            case Packet.COMMAND_CLIENT_NAME:
-                receivePlayerName(packet, connId);
-                break;
-            case Packet.COMMAND_PLAYER_UPDATE:
-                receivePlayerInfo(packet, connId);
-                game.validatePlayerInfo(connId);
-                send(createPlayerUpdatePacket(connId));
-                break;
-            case Packet.COMMAND_PLAYER_READY:
-                game.receivePlayerDone(packet, connId);
-                send(createPlayerDonePacket(connId));
-                checkReady();
-                break;
-            case Packet.COMMAND_REROLL_INITIATIVE:
-                receiveInitiativeRerollRequest(packet, connId);
-                // send(createPlayerDonePacket(connId));
-                break;
-            case Packet.COMMAND_FORWARD_INITIATIVE:
-                receiveForwardIni(connId);
-                break;
-            case Packet.COMMAND_CHAT:
-                String chat = (String) packet.getObject(0);
-                if (chat.startsWith("/")) {
-                    processCommand(connId, chat);
-                } else if (packet.getData().length > 1) {
-                    connId = (int) packet.getObject(1);
-                    if (connId == IPlayer.PLAYER_NONE) {
-                        sendServerChat(chat);
-                    } else {
-                        sendServerChat(connId, chat);
-                    }
-                } else {
-                    sendChat(player.getName(), chat);
-                }
-                // Easter eggs. Happy April Fool's Day!!
-                if (DUNE_CALL.equalsIgnoreCase(chat)) {
-                    sendServerChat(DUNE_RESPONSE);
-                } else if (STAR_WARS_CALL.equalsIgnoreCase(chat)) {
-                    sendServerChat(STAR_WARS_RESPONSE);
-                } else if (INVADER_ZIM_CALL.equalsIgnoreCase(chat)) {
-                    sendServerChat(INVADER_ZIM_RESPONSE);
-                } else if (WARGAMES_CALL.equalsIgnoreCase(chat)) {
-                    sendServerChat(WARGAMES_RESPONSE);
-                }
-                break;
-            case Packet.COMMAND_BLDG_EXPLODE:
-                DemolitionCharge charge = (DemolitionCharge)packet.getData()[0];
-                if (charge.playerId == connId) {
-                    if (!explodingCharges.contains(charge)) {
-                        explodingCharges.add(charge);
-                        IPlayer p = game.getPlayer(connId);
-                        sendServerChat(p.getName() + " has touched off explosives "
-                                + "(handled in end phase)!");
-                    }
-                }
-                break;
-            case Packet.COMMAND_ENTITY_MOVE:
-                receiveMovement(packet, connId);
-                break;
-            case Packet.COMMAND_ENTITY_DEPLOY:
-                receiveDeployment(packet, connId);
-                break;
-            case Packet.COMMAND_ENTITY_DEPLOY_UNLOAD:
-                receiveDeploymentUnload(packet, connId);
-                break;
-            case Packet.COMMAND_DEPLOY_MINEFIELDS:
-                receiveDeployMinefields(packet, connId);
-                break;
-            case Packet.COMMAND_ENTITY_ATTACK:
-                receiveAttack(packet, connId);
-                break;
-            case Packet.COMMAND_ENTITY_GTA_HEX_SELECT:
-                game.receiveGroundToAirHexSelectPacket(packet, connId);
-                break;
-            case Packet.COMMAND_ENTITY_ADD:
-                receiveEntityAdd(packet, connId);
-                resetPlayersDone();
-                break;
-            case Packet.COMMAND_ENTITY_UPDATE:
-                receiveEntityUpdate(packet, connId);
-                resetPlayersDone();
-                break;
-            case Packet.COMMAND_ENTITY_LOAD:
-                receiveEntityLoad(packet, connId);
-                resetPlayersDone();
-                transmitAllPlayerDones();
-                break;
-            case Packet.COMMAND_ENTITY_MODECHANGE:
-                receiveEntityModeChange(packet, connId);
-                break;
-            case Packet.COMMAND_ENTITY_SENSORCHANGE:
-                receiveEntitySensorChange(packet, connId);
-                break;
-            case Packet.COMMAND_ENTITY_SINKSCHANGE:
-                receiveEntitySinksChange(packet, connId);
-                break;
-            case Packet.COMMAND_ENTITY_ACTIVATE_HIDDEN:
-                receiveEntityActivateHidden(packet, connId);
-                break;
-            case Packet.COMMAND_ENTITY_NOVA_NETWORK_CHANGE:
-                receiveEntityNovaNetworkModeChange(packet, connId);
-                break;
-            case Packet.COMMAND_ENTITY_MOUNTED_FACINGCHANGE:
-                receiveEntityMountedFacingChange(packet, connId);
-                break;
-            case Packet.COMMAND_ENTITY_CALLEDSHOTCHANGE:
-                receiveEntityCalledShotChange(packet, connId);
-                break;
-            case Packet.COMMAND_ENTITY_SYSTEMMODECHANGE:
-                receiveEntitySystemModeChange(packet, connId);
-                break;
-            case Packet.COMMAND_ENTITY_AMMOCHANGE:
-                receiveEntityAmmoChange(packet, connId);
-                break;
-            case Packet.COMMAND_ENTITY_REMOVE:
-                receiveEntityDelete(packet, connId);
-                resetPlayersDone();
-                break;
-            case Packet.COMMAND_ENTITY_WORDER_UPDATE:
-                Object[] data = packet.getData();
-                Entity ent = game.getEntity((Integer) data[0]);
-                if (ent != null) {
-                    Entity.WeaponSortOrder order = (Entity.WeaponSortOrder) data[1];
-                    ent.setWeaponSortOrder(order);
-                    // Used by the client but is set in setWeaponSortOrder
-                    ent.setWeapOrderChanged(false);
-                    if (order == Entity.WeaponSortOrder.CUSTOM) {
-                        @SuppressWarnings("unchecked")
-                        // Unchecked cause of limitations in Java when casting
-                        // to a collection
-                        Map<Integer, Integer> customWeaponOrder = (Map<Integer, Integer>) data[2];
-                        ent.setCustomWeaponOrder(customWeaponOrder);
-                    }
-                }
-                break;
-            case Packet.COMMAND_SENDING_GAME_SETTINGS:
-                if (receiveGameOptions(packet, connId)) {
-                    resetPlayersDone();
-                    transmitAllPlayerDones();
-                    send(createGameSettingsPacket());
-                    receiveGameOptionsAux(packet, connId);
-                }
-                break;
-            case Packet.COMMAND_SENDING_MAP_SETTINGS:
-                if (game.getPhase().isBefore(Phase.PHASE_DEPLOYMENT)) {
-                    MapSettings newSettings = (MapSettings) packet.getObject(0);
-                    if (!mapSettings.equalMapGenParameters(newSettings)) {
-                        sendServerChat("Player " + player.getName() + " changed map settings");
-                    }
-                    mapSettings = newSettings;
-                    mapSettings.setBoardsAvailableVector(scanForBoards(new BoardDimensions(
-                            mapSettings.getBoardWidth(), mapSettings.getBoardHeight())));
-                    mapSettings.removeUnavailable();
-                    mapSettings.setNullBoards(DEFAULT_BOARD);
-                    mapSettings.replaceBoardWithRandom(MapSettings.BOARD_RANDOM);
-                    mapSettings.removeUnavailable();
-                    // if still only nulls left, use BOARD_GENERATED
-                    if (mapSettings.getBoardsSelected().next() == null) {
-                        mapSettings.setNullBoards((MapSettings.BOARD_GENERATED));
-                    }
-                    resetPlayersDone();
-                    transmitAllPlayerDones();
-                    send(createMapSettingsPacket());
-                }
-                break;
-            case Packet.COMMAND_SENDING_MAP_DIMENSIONS:
-                if (game.getPhase().isBefore(Phase.PHASE_DEPLOYMENT)) {
-                    MapSettings newSettings = (MapSettings) packet.getObject(0);
-                    if (!mapSettings.equalMapGenParameters(newSettings)) {
-                        sendServerChat("Player " + player.getName() + " changed map dimensions");
-                    }
-                    mapSettings = newSettings;
-                    mapSettings.setBoardsAvailableVector(scanForBoards(new BoardDimensions(
-                            mapSettings.getBoardWidth(), mapSettings.getBoardHeight())));
-                    mapSettings.removeUnavailable();
-                    mapSettings.setNullBoards(DEFAULT_BOARD);
-                    mapSettings.replaceBoardWithRandom(MapSettings.BOARD_RANDOM);
-                    mapSettings.removeUnavailable();
-                    // if still only nulls left, use BOARD_GENERATED
-                    if (mapSettings.getBoardsSelected().next() == null) {
-                        mapSettings.setNullBoards((MapSettings.BOARD_GENERATED));
-                    }
-                    resetPlayersDone();
-                    transmitAllPlayerDones();
-                    send(createMapSettingsPacket());
-                }
-                break;
-            case Packet.COMMAND_SENDING_PLANETARY_CONDITIONS:
-                // MapSettings newSettings = (MapSettings) packet.getObject(0);
-                if (game.getPhase().isBefore(Phase.PHASE_DEPLOYMENT)) {
-                    PlanetaryConditions conditions = (PlanetaryConditions) packet.getObject(0);
-                    sendServerChat("Player " + player.getName() + " changed planetary conditions");
-                    game.setPlanetaryConditions(conditions);
-                    resetPlayersDone();
-                    transmitAllPlayerDones();
-                    send(createPlanetaryConditionsPacket());
-                }
-                break;
-            case Packet.COMMAND_UNLOAD_STRANDED:
-                receiveUnloadStranded(packet, connId);
-                break;
-            case Packet.COMMAND_SET_ARTYAUTOHITHEXES:
-                receiveArtyAutoHitHexes(packet, connId);
-                break;
-            case Packet.COMMAND_CUSTOM_INITIATIVE:
-                receiveCustomInit(packet, connId);
-                resetPlayersDone();
-                transmitAllPlayerDones();
-                break;
-            case Packet.COMMAND_LOAD_GAME:
-                try {
-                    sendServerChat(game.getPlayer(connId).getName() + " loaded a new game.");
-                    setGame((IGame) packet.getObject(0));
-                    for (IConnection conn : connections) {
-                        sendCurrentInfo(conn.getId());
-                    }
-                } catch (Exception e) {
-                    MegaMek.getLogger().error("Error loading save game sent from client", e);
-                }
-                break;
-            case Packet.COMMAND_SQUADRON_ADD:
-                receiveSquadronAdd(packet, connId);
-                resetPlayersDone();
-                transmitAllPlayerDones();
-                break;
-            case Packet.COMMAND_RESET_ROUND_DEPLOYMENT:
-                game.setupRoundDeployment();
-                break;
-            case Packet.COMMAND_SPECIAL_HEX_DISPLAY_DELETE:
-                game.getBoard().removeSpecialHexDisplay((Coords) packet.getObject(0),
-                        (SpecialHexDisplay) packet.getObject(1));
-                sendSpecialHexDisplayPackets();
-                break;
-            case Packet.COMMAND_SPECIAL_HEX_DISPLAY_APPEND:
-                game.getBoard().addSpecialHexDisplay((Coords) packet.getObject(0),
-                        (SpecialHexDisplay) packet.getObject(1));
-                sendSpecialHexDisplayPackets();
-                break;
-        }
-    }
-
-    /**
-     * Listen for incoming clients.
-     */
-    public void run() {
-        Thread currentThread = Thread.currentThread();
-        MegaMek.getLogger().info("s: listening for clients...");
-        while (connector == currentThread) {
-            try {
-                Socket s = serverSocket.accept();
-                synchronized (serverLock) {
-                    int id = getFreeConnectionId();
-                    MegaMek.getLogger().info("s: accepting player connection #" + id + "...");
-
-                    IConnection c = ConnectionFactory.getInstance().createServerConnection(s, id);
-                    c.addConnectionListener(connectionListener);
-                    c.open();
-                    connectionsPending.addElement(c);
-                    ConnectionHandler ch = new ConnectionHandler(c);
-                    Thread newConnThread = new Thread(ch, "Connection " + id);
-                    newConnThread.start();
-                    connectionHandlers.put(id, ch);
-
-                    greeting(id);
-                    ConnectionWatchdog w = new ConnectionWatchdog(this, id);
-                    watchdogTimer.schedule(w, 1000, 500);
-                }
-            } catch (InterruptedIOException ignored) {
-                // ignore , just SOTimeout blowing..
-            } catch (IOException ignored) { }
         }
     }
 
@@ -32204,51 +31973,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * For all current artillery attacks in the air from this entity with this
-     * weapon, clear the list of spotters. Needed because firing another round
-     * before first lands voids spotting.
-     *
-     * @param entityID the <code>int</code> id of the entity
-     * @param weaponID the <code>int</code> id of the weapon
-     */
-    private void clearArtillerySpotters(int entityID, int weaponID) {
-        for (Enumeration<AttackHandler> i = game.getAttacks(); i.hasMoreElements(); ) {
-            WeaponHandler wh = (WeaponHandler) i.nextElement();
-            if ((wh.waa instanceof ArtilleryAttackAction)
-                && (wh.waa.getEntityId() == entityID)
-                && (wh.waa.getWeaponId() == weaponID)) {
-                ArtilleryAttackAction aaa = (ArtilleryAttackAction) wh.waa;
-                aaa.setSpotterIds(null);
-            }
-        }
-    }
-
-    /**
-     * Credits a Kill for an entity, if the target got killed.
-     *
-     * @param target   The <code>Entity</code> that got killed.
-     * @param attacker The <code>Entity</code> that did the killing.
-     */
-    public void creditKill(Entity target, Entity attacker) {
-        // Kills should be credited for each individual fighter, instead of the
-        // squadron
-        if (target instanceof FighterSquadron) {
-            return;
-        }
-        // If a squadron scores a kill, assign it randomly to one of the member fighters
-        if (attacker instanceof FighterSquadron) {
-            Entity killer = attacker.getLoadedUnits().get(Compute.randomInt(attacker.getLoadedUnits().size()));
-            if (killer != null) {
-                attacker = killer;
-            }
-        }
-        if ((target.isDoomed() || target.getCrew().isDoomed())
-            && !target.getGaveKillCredit() && (attacker != null)) {
-            attacker.addKill(target);
-        }
-    }
-
-    /**
      * Resolve a Physical Attack
      *
      * @param pr  The <code>PhysicalResult</code> of the physical attack
@@ -32342,7 +32066,7 @@ public class Server implements Runnable {
             Entity targetEntity = (Entity) target;
             targetEntity.setStruck(true);
             targetEntity.addAttackedByThisTurn(target.getTargetId());
-            creditKill(targetEntity, game.getEntity(cen));
+            game.creditKill(targetEntity, game.getEntity(cen));
         }
     }
 
@@ -32549,7 +32273,7 @@ public class Server implements Runnable {
                     vDesc.addElement(r);
                     game.removeEntity(pilot.getId(),
                                       IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                    send(createRemoveEntityPacket(pilot.getId(),
+                    send(gamemanager.createRemoveEntityPacket(pilot.getId(),
                                                   IEntityRemovalConditions.REMOVE_IN_RETREAT));
                     // }
                 }
@@ -32558,7 +32282,7 @@ public class Server implements Runnable {
                         || game.getBoard().inAtmosphere()) {
                     game.removeEntity(pilot.getId(),
                                       IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                    send(createRemoveEntityPacket(pilot.getId(),
+                    send(gamemanager.createRemoveEntityPacket(pilot.getId(),
                                                   IEntityRemovalConditions.REMOVE_IN_RETREAT));
                 }
 
@@ -32626,7 +32350,7 @@ public class Server implements Runnable {
                     entity.getElevation()));
             if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_EJECTED_PILOTS_FLEE)) {
                 game.removeEntity(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                send(createRemoveEntityPacket(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
+                send(gamemanager.createRemoveEntityPacket(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
             }
         } //End ground vehicles
 
@@ -32641,7 +32365,7 @@ public class Server implements Runnable {
         if (!autoEject) {
             game.removeEntity(entity.getId(),
                     IEntityRemovalConditions.REMOVE_EJECTED);
-            send(createRemoveEntityPacket(entity.getId(),
+            send(gamemanager.createRemoveEntityPacket(entity.getId(),
                     IEntityRemovalConditions.REMOVE_EJECTED));
         }
         return vDesc;
@@ -32784,7 +32508,7 @@ public class Server implements Runnable {
             entityUpdate(pods.getId());
             if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_EJECTED_PILOTS_FLEE)) {
                 game.removeEntity(pods.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                send(createRemoveEntityPacket(pods.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
+                send(gamemanager.createRemoveEntityPacket(pods.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
             }
         } // End Escape Pod/Lifeboat Ejection
         else {
@@ -32879,7 +32603,7 @@ public class Server implements Runnable {
                     entity.getElevation()));
             if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_EJECTED_PILOTS_FLEE)) {
                 game.removeEntity(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                send(createRemoveEntityPacket(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
+                send(gamemanager.createRemoveEntityPacket(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
             }
         }
         // If we get here, end movement and return the report
@@ -32981,7 +32705,7 @@ public class Server implements Runnable {
             } else if (game.getPlanetaryConditions().getGravity() > 1.2) {
                 rollTarget.addModifier(2, "High-G");
             }
-        
+
             //Vacuum shouldn't apply to ASF ejection since they're designed for it, but the rules don't specify
             //High and low pressures make more sense to apply to all
             if (game.getPlanetaryConditions().getAtmosphere() == PlanetaryConditions.ATMO_VACUUM) {
@@ -33127,7 +32851,7 @@ public class Server implements Runnable {
                     targetCoords, entity.getElevation()));
             if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_EJECTED_PILOTS_FLEE)) {
                 game.removeEntity(pilot.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                send(createRemoveEntityPacket(pilot.getId(),
+                send(gamemanager.createRemoveEntityPacket(pilot.getId(),
                         IEntityRemovalConditions.REMOVE_IN_RETREAT));
             }
         } // End entity-is-Mek or Aero
@@ -33155,7 +32879,7 @@ public class Server implements Runnable {
                     entity.getPosition(), entity.getElevation()));
             if(game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_EJECTED_PILOTS_FLEE)) {
                 game.removeEntity(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                send(createRemoveEntityPacket(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
+                send(gamemanager.createRemoveEntityPacket(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
             }
         }
 
@@ -34236,24 +33960,9 @@ public class Server implements Runnable {
         }
     }
 
-    /**
-     * @return a <code>String</code> representing the hostname
-     */
-    public String getHost() {
-        try {
-            return InetAddress.getLocalHost().getHostName();
-        } catch (UnknownHostException e) {
-            e.printStackTrace();
-            return "";
-        }
-    }
 
-    /**
-     * @return the <code>int</code> this server is listening on
-     */
-    public int getPort() {
-        return serverSocket.getLocalPort();
-    }
+
+
 
     /**
      * Loops through all the attacks the game has. Checks if they care about
@@ -34352,12 +34061,7 @@ public class Server implements Runnable {
         game.setAttacksVector(keptAttacks);
     }
 
-    /**
-     * @return the current server instance
-     */
-    public static Server getServerInstance() {
-        return serverInstance;
-    }
+
 
     /**
      * create a <code>SmokeCloud</code> object and add it to the server list
@@ -34524,58 +34228,7 @@ public class Server implements Runnable {
         game.resetActions();
     }
 
-    public void reportRoll(Roll roll) {
-        Report r = new Report(1230);
-        r.add(roll.getReport());
-        reportmanager.addReport(r);
-    }
 
-    private void registerWithServerBrowser(boolean register, String urlString) {
-        try {
-            URL url = new URL(urlString);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-            DataOutputStream printout = new DataOutputStream(
-                    conn.getOutputStream());
-            String content;
-            content = "port="
-                      + URLEncoder.encode(
-                              Integer.toString(serverSocket.getLocalPort()), "UTF-8");
-            if (register) {
-                for (IConnection iconn : connections) {
-                    content += "&players[]=" + (game.getPlayer(iconn.getId()).getName());
-                }
-                if ((game.getPhase() != Phase.PHASE_LOUNGE)
-                        && (game.getPhase() != Phase.PHASE_UNKNOWN)) {
-                    content += "&close=yes";
-                }
-                content += "&version=" + MegaMek.VERSION;
-                if (isPassworded()) {
-                    content += "&pw=yes";
-                }
-            } else {
-                content += "&delete=yes";
-            }
-            if (serverAccessKey != null) {
-                content += "&key=" + serverAccessKey;
-            }
-            printout.writeBytes(content);
-            printout.flush();
-            BufferedReader rd = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-            String line;
-            if (conn.getResponseCode() == 200) {
-                while ((line = rd.readLine()) != null) {
-                    if (serverAccessKey == null) {
-                        serverAccessKey = line;
-                    }
-                }
-            }
-            rd.close();
-            printout.close();
-        } catch (Exception ignored) {
-        }
-    }
 
     public Set<Coords> getHexUpdateSet() {
         return gamemanager.getHexUpdateSet();

@@ -54,6 +54,7 @@ import megamek.common.options.GameOptions;
 import megamek.common.options.OptionsConstants;
 import megamek.common.weapons.AttackHandler;
 import megamek.common.weapons.Weapon;
+import megamek.common.weapons.WeaponHandler;
 import megamek.server.SmokeCloud;
 import megamek.server.victory.Victory;
 
@@ -4599,6 +4600,151 @@ public class Game implements Serializable, IGame {
         }
         removeDeadAttacks();
     }
+
+    /**
+     * Checks each player to see if he has no entities, and if true, sets the
+     * observer flag for that player. An exception is that there are no
+     * observers during the lounge phase.
+     */
+    public void checkForObservers() {
+        for (Enumeration<IPlayer> e = getPlayers(); e.hasMoreElements(); ) {
+            IPlayer p = e.nextElement();
+            p.setObserver((getEntitiesOwnedBy(p) < 1)
+                    && (getPhase() != IGame.Phase.PHASE_LOUNGE));
+        }
+    }
+
+    /**
+     * Adds teammates of a player to the Vector. Utility function for whoCanSee.
+     */
+    public void addTeammates(Vector<IPlayer> vector, IPlayer player) {
+        Vector<IPlayer> playersVector = getPlayersVector();
+        for (int j = 0; j < playersVector.size(); j++) {
+            IPlayer p = playersVector.elementAt(j);
+            if (!player.isEnemyOf(p) && !vector.contains(p)) {
+                vector.addElement(p);
+            }
+        }
+    }
+
+    /**
+     * Adds observers to the Vector. Utility function for whoCanSee.
+     */
+    public void addObservers(Vector<IPlayer> vector) {
+        Vector<IPlayer> playersVector = getPlayersVector();
+        for (int j = 0; j < playersVector.size(); j++) {
+            IPlayer p = playersVector.elementAt(j);
+            if (p.isObserver() && !vector.contains(p)) {
+                vector.addElement(p);
+            }
+        }
+    }
+
+    /**
+     * Convenience method for computing a mapping of which Coords are
+     * "protected" by an APDS. Protection implies that the coords is within the
+     * range/arc of an active APDS.
+     *
+     * @return
+     */
+    public Hashtable<Coords, List<Mounted>> getAPDSProtectedCoords() {
+        // Get all of the coords that would be protected by APDS
+        Hashtable<Coords, List<Mounted>> apdsCoords = new Hashtable<>();
+        for (Entity e : getEntitiesVector()) {
+            // Ignore Entitys without positions
+            if (e.getPosition() == null) {
+                continue;
+            }
+            Coords origPos = e.getPosition();
+            for (Mounted ams : e.getActiveAMS()) {
+                // Ignore non-APDS AMS
+                if (!ams.isAPDS()) {
+                    continue;
+                }
+                // Add the current hex as a defended location
+                List<Mounted> apdsList = apdsCoords.computeIfAbsent(origPos, k -> new ArrayList<>());
+                apdsList.add(ams);
+                // Add each coords that is within arc/range as protected
+                int maxDist = 3;
+                if (e instanceof BattleArmor) {
+                    int numTroopers = ((BattleArmor) e)
+                            .getNumberActiverTroopers();
+                    switch (numTroopers) {
+                        case 1:
+                            maxDist = 1;
+                            break;
+                        case 2:
+                        case 3:
+                            maxDist = 2;
+                            break;
+                        // Anything above is the same as the default
+                    }
+                }
+                for (int dist = 1; dist <= maxDist; dist++) {
+                    List<Coords> coords = e.getPosition().allAtDistance(dist);
+                    for (Coords pos : coords) {
+                        // Check that we're in the right arc
+                        if (Compute.isInArc(this, e.getId(), e.getEquipmentNum(ams),
+                                new HexTarget(pos, getBoard(), HexTarget.TYPE_HEX_CLEAR))) {
+                            apdsList = apdsCoords.computeIfAbsent(pos, k -> new ArrayList<>());
+                            apdsList.add(ams);
+                        }
+                    }
+                }
+
+            }
+        }
+        return apdsCoords;
+    }
+
+    /**
+     * For all current artillery attacks in the air from this entity with this
+     * weapon, clear the list of spotters. Needed because firing another round
+     * before first lands voids spotting.
+     *
+     * @param entityID the <code>int</code> id of the entity
+     * @param weaponID the <code>int</code> id of the weapon
+     */
+    public void clearArtillerySpotters(int entityID, int weaponID) {
+        for (Enumeration<AttackHandler> i = getAttacks(); i.hasMoreElements(); ) {
+            WeaponHandler wh = (WeaponHandler) i.nextElement();
+            if ((wh.waa instanceof ArtilleryAttackAction)
+                    && (wh.waa.getEntityId() == entityID)
+                    && (wh.waa.getWeaponId() == weaponID)) {
+                ArtilleryAttackAction aaa = (ArtilleryAttackAction) wh.waa;
+                aaa.setSpotterIds(null);
+            }
+        }
+    }
+
+    /**
+     * Credits a Kill for an entity, if the target got killed.
+     *
+     * @param target   The <code>Entity</code> that got killed.
+     * @param attacker The <code>Entity</code> that did the killing.
+     */
+    public void creditKill(Entity target, Entity attacker) {
+        // Kills should be credited for each individual fighter, instead of the
+        // squadron
+        if (target instanceof FighterSquadron) {
+            return;
+        }
+        // If a squadron scores a kill, assign it randomly to one of the member fighters
+        if (attacker instanceof FighterSquadron) {
+            Entity killer = attacker.getLoadedUnits().get(Compute.randomInt(attacker.getLoadedUnits().size()));
+            if (killer != null) {
+                attacker = killer;
+            }
+        }
+        if ((target.isDoomed() || target.getCrew().isDoomed())
+                && !target.getGaveKillCredit() && (attacker != null)) {
+            attacker.addKill(target);
+        }
+    }
+
+
+
+
 
 
 

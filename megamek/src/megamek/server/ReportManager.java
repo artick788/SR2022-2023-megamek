@@ -251,6 +251,44 @@ public class ReportManager {
         return null;
     }
 
+    /**
+     *
+     * @return a vector which has as its keys the round number and as its
+     *         elements vectors that contain all the reports for the specified player
+     *         that round. The reports returned this way are properly filtered for
+     *         double blind.
+     */
+    public Vector<Vector<Report>> filterPastReports(IGame game,
+            Vector<Vector<Report>> pastReports, IPlayer p) {
+        // Only actually bother with the filtering if double-blind is in effect.
+        if (!game.doBlind()) {
+            return pastReports;
+        }
+        // Perform filtering
+        Vector<Vector<Report>> filteredReports = new Vector<>();
+        for (Vector<Report> roundReports : pastReports) {
+            Vector<Report> filteredRoundReports = new Vector<>();
+            for (Report r : roundReports) {
+                if (r.isObscuredRecipient(p.getName())) {
+                    r = filterReport(game, r, null, true);
+                }
+                if (r != null) {
+                    filteredRoundReports.addElement(r);
+                }
+            }
+            filteredReports.addElement(filteredRoundReports);
+        }
+        return filteredReports;
+    }
+
+    public void reportRoll(Roll roll) {
+        Report r = new Report(1230);
+        r.add(roll.getReport());
+        addReport(r);
+    }
+
+
+
 
 
 }

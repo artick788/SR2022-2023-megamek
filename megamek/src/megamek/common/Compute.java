@@ -162,7 +162,7 @@ public class Compute {
         if (Server.getServerInstance() != null) {
             if (Server.getServerInstance().getGame().getOptions()
                       .booleanOption(OptionsConstants.BASE_RNG_LOG)) {
-                Server.getServerInstance().reportRoll(roll);
+                Server.getServerInstance().getReportmanager().reportRoll(roll);
             }
         }
         return roll.getIntValue();
@@ -176,7 +176,7 @@ public class Compute {
         if (Server.getServerInstance() != null) {
             if (Server.getServerInstance().getGame().getOptions()
                       .booleanOption(OptionsConstants.BASE_RNG_LOG)) {
-                Server.getServerInstance().reportRoll(roll);
+                Server.getServerInstance().getReportmanager().reportRoll(roll);
             }
         }
         return roll.getIntValue();
@@ -190,7 +190,7 @@ public class Compute {
         if (Server.getServerInstance() != null) {
             if (Server.getServerInstance().getGame().getOptions()
                       .booleanOption(OptionsConstants.BASE_RNG_LOG)) {
-                Server.getServerInstance().reportRoll(roll);
+                Server.getServerInstance().getReportmanager().reportRoll(roll);
             }
         }
         return roll.getIntValue();
