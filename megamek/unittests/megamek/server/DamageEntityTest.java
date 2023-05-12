@@ -7,6 +7,7 @@ import megamek.common.loaders.EntityLoadingException;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+import org.junit.Assert;
 import org.mockito.Mockito;
 
 import java.io.IOException;
@@ -43,8 +44,27 @@ public class DamageEntityTest {
     }
 
     @Test
-    public void testDamageEntity() throws EntityLoadingException {
-        getJsonTestData("TestDamageEntity.json");
+    public void testDamageEntity() throws EntityLoadingException, IOException {
+        String jsonFile = "TestDamageEntity.json";
+        File f = new File(jsonFile);
+        ObjectMapper mapper = new ObjectMapper();
+        TestSerializer ts = mapper.readValue(f, TestSerializer.class);
+
+        for (CaseSerializer cs: ts.getCases()){
+            String mechFile = cs.getMechFile();
+            File mech = new File(mechFile);
+            MechFileParser mfp = new MechFileParser(mech);
+            Entity e = mfp.getEntity();
+            e.setOwner(m_Player);
+            Vector<ReportSerializer> expected = cs.getReports();
+            Vector<Report> actual = damageEntityWrapper(e, ts);
+            Assert.assertEquals(expected.size(), actual.size());
+            for (int i = 0; i < expected.size(); i++){
+                Assert.assertEquals(expected.get(i).getMessageID(), actual.get(i).messageId);
+                Assert.assertEquals(expected.get(i).getType(), actual.get(i).type);
+                Assert.assertEquals(expected.get(i).getPlayer(), actual.get(i).player);
+            }
+        }
     }
 
     public void getJsonTestData(String jsonFile) throws EntityLoadingException {

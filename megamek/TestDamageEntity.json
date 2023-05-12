@@ -1,0 +1,340 @@
+{
+  "damageType" : "FRAGMENTATION",
+  "throughFront" : true,
+  "areaSatEntry" : false,
+  "damageIs" : true,
+  "cases" : [ {
+    "mechFile" : "data/mechfiles/mechs/3050U/Exterminator EXT-4A.mtf",
+    "reports" : [ {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6395
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2180
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2190
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6410
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6365
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6050
+    } ],
+    "MechFile" : "data/mechfiles/mechs/3050U/Exterminator EXT-4A.mtf",
+    "Reports" : [ {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6395
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2180
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2190
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6410
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6365
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6050
+    } ]
+  }, {
+    "mechFile" : "data/mechfiles/mechs/3039u/Archer ARC-2K.mtf",
+    "reports" : [ {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6395
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2180
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2190
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6410
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6365
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6050
+    } ],
+    "MechFile" : "data/mechfiles/mechs/3039u/Archer ARC-2K.mtf",
+    "Reports" : [ {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6395
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2180
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2190
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6410
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6365
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6050
+    } ]
+  }, {
+    "mechFile" : "data/mechfiles/mechs/3039u/Centurion CN9-A.mtf",
+    "reports" : [ {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6395
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2180
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2190
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6410
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6365
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6050
+    } ],
+    "MechFile" : "data/mechfiles/mechs/3039u/Centurion CN9-A.mtf",
+    "Reports" : [ {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6395
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2180
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2190
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6410
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6365
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6050
+    } ]
+  } ],
+  "underWater" : false,
+  "nukeS2S" : false,
+  "damage" : 20,
+  "ammoExplosion" : true,
+  "testName" : "DamageEntityTest",
+  "TestName" : "DamageEntityTest",
+  "Damage" : 20,
+  "AmmoExplosion" : true,
+  "DamageType" : "FRAGMENTATION",
+  "DamageIs" : true,
+  "AreaSatEntry" : false,
+  "ThroughFront" : true,
+  "UnderWater" : false,
+  "NukeS2S" : false,
+  "Cases" : [ {
+    "mechFile" : "data/mechfiles/mechs/3050U/Exterminator EXT-4A.mtf",
+    "reports" : [ {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6395
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2180
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2190
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6410
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6365
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6050
+    } ],
+    "MechFile" : "data/mechfiles/mechs/3050U/Exterminator EXT-4A.mtf",
+    "Reports" : [ {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6395
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2180
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2190
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6410
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6365
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6050
+    } ]
+  }, {
+    "mechFile" : "data/mechfiles/mechs/3039u/Archer ARC-2K.mtf",
+    "reports" : [ {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6395
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2180
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2190
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6410
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6365
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6050
+    } ],
+    "MechFile" : "data/mechfiles/mechs/3039u/Archer ARC-2K.mtf",
+    "Reports" : [ {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6395
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2180
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2190
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6410
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6365
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6050
+    } ]
+  }, {
+    "mechFile" : "data/mechfiles/mechs/3039u/Centurion CN9-A.mtf",
+    "reports" : [ {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6395
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2180
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2190
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6410
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6365
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6050
+    } ],
+    "MechFile" : "data/mechfiles/mechs/3039u/Centurion CN9-A.mtf",
+    "Reports" : [ {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6395
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2180
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 2190
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6410
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6365
+    }, {
+      "type" : 2,
+      "player" : -1,
+      "messageID" : 6050
+    } ]
+  } ]
+}
