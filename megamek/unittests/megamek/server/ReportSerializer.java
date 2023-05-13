@@ -42,19 +42,6 @@ public class ReportSerializer {
         return m_Type;
     }
 
-    public void setMessageID(int messageID){
-        m_MessageID = messageID;
-    }
-
-
-    public void setPlayer(int player){
-        m_Player = player;
-    }
-
-    public void setType(int type){
-        m_Type = type;
-    }
-
     public String toString(){
         return "ReportSerializer: " + m_MessageID + ", " + m_Player + ", " + m_Type;
     }

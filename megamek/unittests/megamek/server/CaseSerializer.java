@@ -6,20 +6,25 @@ import java.util.Vector;
 
 public class CaseSerializer {
 
-    @JsonProperty("MechFile")
+    @JsonProperty("mechFile")
     private String m_MechFile;
 
-    @JsonProperty("Reports")
+    @JsonProperty("reportCount")
+    private int m_ReportCount;
+
+    @JsonProperty("reports")
     private Vector<ReportSerializer> m_Reports;
 
     public CaseSerializer(){
         m_MechFile = "";
         m_Reports = new Vector<ReportSerializer>();
+        m_ReportCount = 0;
     }
 
     public CaseSerializer(String mechFile){
         m_MechFile = mechFile;
         m_Reports = new Vector<ReportSerializer>();
+        m_ReportCount = 0;
     }
 
     public String getMechFile(){
@@ -30,15 +35,8 @@ public class CaseSerializer {
         return m_Reports;
     }
 
-    public void setMechFile(String mechFile){
-        m_MechFile = mechFile;
-    }
-
-    public void setReports(Vector<ReportSerializer> reports){
-        m_Reports = reports;
-    }
-
     public void addReport(ReportSerializer report){
         m_Reports.add(report);
+        m_ReportCount++;
     }
 }

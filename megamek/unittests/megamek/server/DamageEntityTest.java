@@ -46,6 +46,10 @@ public class DamageEntityTest {
     @Test
     public void testDamageEntity() throws EntityLoadingException, IOException {
         String jsonFile = "TestDamageEntity.json";
+        getJsonTestData(jsonFile);
+    }
+
+    public void runTestWithJsonData(String jsonFile) throws IOException, EntityLoadingException {
         File f = new File(jsonFile);
         ObjectMapper mapper = new ObjectMapper();
         TestSerializer ts = mapper.readValue(f, TestSerializer.class);
@@ -58,6 +62,7 @@ public class DamageEntityTest {
             e.setOwner(m_Player);
             Vector<ReportSerializer> expected = cs.getReports();
             Vector<Report> actual = damageEntityWrapper(e, ts);
+
             Assert.assertEquals(expected.size(), actual.size());
             for (int i = 0; i < expected.size(); i++){
                 Assert.assertEquals(expected.get(i).getMessageID(), actual.get(i).messageId);

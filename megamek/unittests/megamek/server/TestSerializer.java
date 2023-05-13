@@ -6,34 +6,37 @@ import java.util.Vector;
 
 public class TestSerializer {
 
-    @JsonProperty("TestName")
+    @JsonProperty("testName")
     private String m_TestName;
 
-    @JsonProperty("Damage")
+    @JsonProperty("damage")
     private int m_Damage;
 
-    @JsonProperty("AmmoExplosion")
+    @JsonProperty("ammoExplosion")
     private boolean m_AmmoExplosion;
 
-    @JsonProperty("DamageType")
+    @JsonProperty("damageType")
     private Server.DamageType m_DamageType;
 
-    @JsonProperty("DamageIs")
+    @JsonProperty("damageIs")
     private boolean m_DamageIs;
 
-    @JsonProperty("AreaSatEntry")
+    @JsonProperty("areaSatEntry")
     private boolean m_AreaSatEntry;
 
-    @JsonProperty("ThroughFront")
+    @JsonProperty("throughFront")
     private boolean m_ThroughFront;
 
-    @JsonProperty("UnderWater")
+    @JsonProperty("underWater")
     private boolean m_UnderWater;
 
-    @JsonProperty("NukeS2S")
+    @JsonProperty("nukeS2S")
     private boolean m_NukeS2S;
 
-    @JsonProperty("Cases")
+    @JsonProperty("caseCount")
+    private int m_CaseCount;
+
+    @JsonProperty("cases")
     private Vector<CaseSerializer> m_Cases;
 
     public TestSerializer(){
@@ -47,6 +50,7 @@ public class TestSerializer {
         m_UnderWater = false;
         m_NukeS2S = false;
         m_Cases = new Vector<CaseSerializer>();
+        m_CaseCount = 0;
     }
 
     public TestSerializer(String testName, int damage, boolean ammoExplosion, Server.DamageType damageType,
@@ -62,6 +66,7 @@ public class TestSerializer {
         m_UnderWater = underWater;
         m_NukeS2S = nukeS2S;
         m_Cases = cases;
+        m_CaseCount = cases.size();
     }
 
     public String getTestName(){
@@ -100,51 +105,16 @@ public class TestSerializer {
         return m_NukeS2S;
     }
 
+    public int getCaseCount(){
+        return m_CaseCount;
+    }
+
     public Vector<CaseSerializer> getCases(){
         return m_Cases;
     }
 
-    public void setTestName(String testName){
-        m_TestName = testName;
-    }
-
-    public void setDamage(int damage){
-        m_Damage = damage;
-    }
-
-    public void setAmmoExplosion(boolean ammoExplosion){
-        m_AmmoExplosion = ammoExplosion;
-    }
-
-    public void setDamageType(Server.DamageType damageType){
-        m_DamageType = damageType;
-    }
-
-    public void setDamageIs(boolean damageIs){
-        m_DamageIs = damageIs;
-    }
-
-    public void setAreaSatEntry(boolean areaSatEntry){
-        m_AreaSatEntry = areaSatEntry;
-    }
-
-    public void setThroughFront(boolean throughFront){
-        m_ThroughFront = throughFront;
-    }
-
-    public void setUnderWater(boolean underWater){
-        m_UnderWater = underWater;
-    }
-
-    public void setNukeS2S(boolean nukeS2S){
-        m_NukeS2S = nukeS2S;
-    }
-
-    public void setCases(Vector<CaseSerializer> cases){
-        m_Cases = cases;
-    }
-
     public void addCase(CaseSerializer caseSerializer){
         m_Cases.add(caseSerializer);
+        m_CaseCount++;
     }
 }
