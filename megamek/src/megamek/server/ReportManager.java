@@ -287,6 +287,167 @@ public class ReportManager {
         addReport(r);
     }
 
+    /**
+     * Write the initiative results to the report
+     */
+    public void writeInitiativeReport(IGame game, boolean abbreviatedReport) {
+        // write to report
+        Report r;
+        boolean deployment = false;
+        if (!abbreviatedReport) {
+            r = new Report(1210);
+            r.type = Report.PUBLIC;
+            if ((game.getLastPhase() == IGame.Phase.PHASE_DEPLOYMENT) || game.isDeploymentComplete()
+                    || !game.shouldDeployThisRound()) {
+                r.messageId = 1000;
+                r.add(game.getRoundCount());
+            } else {
+                deployment = true;
+                if (game.getRoundCount() == 0) {
+                    r.messageId = 1005;
+                } else {
+                    r.messageId = 1010;
+                    r.add(game.getRoundCount());
+                }
+            }
+            addReport(r);
+            // write separator
+            addReport(new Report(1200, Report.PUBLIC));
+        } else {
+            addReport(new Report(1210, Report.PUBLIC));
+        }
+
+        if (game.getOptions().booleanOption(OptionsConstants.RPG_INDIVIDUAL_INITIATIVE)) {
+            r = new Report(1040, Report.PUBLIC);
+            addReport(r);
+            for (Enumeration<GameTurn> e = game.getTurns(); e.hasMoreElements(); ) {
+                GameTurn t = e.nextElement();
+                if (t instanceof GameTurn.SpecificEntityTurn) {
+                    Entity entity = game.getEntity(((GameTurn.SpecificEntityTurn) t).getEntityNum());
+                    r = new Report(1045);
+                    r.subject = entity.getId();
+                    r.addDesc(entity);
+                    r.add(entity.getInitiative().toString());
+                    addReport(r);
+                } else {
+                    IPlayer player = game.getPlayer(t.getPlayerNum());
+                    if (null != player) {
+                        r = new Report(1050, Report.PUBLIC);
+                        r.add(player.getColorForPlayer());
+                        addReport(r);
+                    }
+                }
+            }
+        } else {
+            for (Enumeration<Team> i = game.getTeams(); i.hasMoreElements(); ) {
+                final Team team = i.nextElement();
+
+                // Teams with no active players can be ignored
+                if (team.isObserverTeam()) {
+                    continue;
+                }
+
+                // If there is only one non-observer player, list
+                // them as the 'team', and use the team initiative
+                if (team.getNonObserverSize() == 1) {
+                    final IPlayer player = team.getNonObserverPlayers().nextElement();
+                    r = new Report(1015, Report.PUBLIC);
+                    r.add(player.getColorForPlayer());
+                    r.add(team.getInitiative().toString());
+                    addReport(r);
+                } else {
+                    // Multiple players. List the team, then break it down.
+                    r = new Report(1015, Report.PUBLIC);
+                    r.add(IPlayer.teamNames[team.getId()]);
+                    r.add(team.getInitiative().toString());
+                    addReport(r);
+                    for (Enumeration<IPlayer> j = team.getNonObserverPlayers(); j.hasMoreElements(); ) {
+                        final IPlayer player = j.nextElement();
+                        r = new Report(1015, Report.PUBLIC);
+                        r.indent();
+                        r.add(player.getName());
+                        r.add(player.getInitiative().toString());
+                        addReport(r);
+                    }
+                }
+            }
+
+            if (!game.doBlind()) {
+
+                // The turn order is different in movement phase
+                // if a player has any "even" moving units.
+                r = new Report(1020, Report.PUBLIC);
+
+                boolean hasEven = false;
+                for (Enumeration<GameTurn> i = game.getTurns(); i.hasMoreElements(); ) {
+                    GameTurn turn = i.nextElement();
+                    IPlayer player = game.getPlayer(turn.getPlayerNum());
+                    if (null != player) {
+                        r.add(player.getName());
+                        if (player.getEvenTurns() > 0) {
+                            hasEven = true;
+                        }
+                    }
+                }
+                r.newlines = 2;
+                addReport(r);
+                if (hasEven) {
+                    r = new Report(1021, Report.PUBLIC);
+                    if ((game.getOptions().booleanOption(OptionsConstants.INIT_INF_DEPLOY_EVEN)
+                            || game.getOptions().booleanOption(OptionsConstants.INIT_PROTOS_MOVE_EVEN))
+                            && !(game.getLastPhase() == IGame.Phase.PHASE_END_REPORT)) {
+                        r.choose(true);
+                    } else {
+                        r.choose(false);
+                    }
+                    r.indent();
+                    r.newlines = 2;
+                    addReport(r);
+                }
+            }
+
+        }
+        if (!abbreviatedReport) {
+            // we don't much care about wind direction and such in a hard vacuum
+            if(!game.getBoard().inSpace()) {
+                // Wind direction and strength
+                Report rWindDir = new Report(1025, Report.PUBLIC);
+                rWindDir.add(game.getPlanetaryConditions().getWindDirDisplayableName());
+                rWindDir.newlines = 0;
+                Report rWindStr = new Report(1030, Report.PUBLIC);
+                rWindStr.add(game.getPlanetaryConditions().getWindDisplayableName());
+                rWindStr.newlines = 0;
+                Report rWeather = new Report(1031, Report.PUBLIC);
+                rWeather.add(game.getPlanetaryConditions().getWeatherDisplayableName());
+                rWeather.newlines = 0;
+                Report rLight = new Report(1032, Report.PUBLIC);
+                rLight.add(game.getPlanetaryConditions().getLightDisplayableName());
+                Report rVis = new Report(1033, Report.PUBLIC);
+                rVis.add(game.getPlanetaryConditions().getFogDisplayableName());
+                addReport(rWindDir);
+                addReport(rWindStr);
+                addReport(rWeather);
+                addReport(rLight);
+                addReport(rVis);
+            }
+
+            if (deployment) {
+                addNewLines();
+            }
+        }
+    }
+
+
+    public void create_report(int report_id, int subject, Entity to_adddesc, int to_add, int newlines) {
+        Report r = new Report(report_id);
+        r.subject = subject;
+
+
+
+        r.addDesc(to_adddesc);
+        addReport(r);
+    }
+
 
 
 

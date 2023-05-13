@@ -45,6 +45,7 @@ import megamek.utils.MegaMekXmlUtil;
 public class MapSettings implements Serializable {
     private static final long serialVersionUID = -6163977970758303066L;
 
+    public static final String DEFAULT_BOARD = MapSettings.BOARD_SURPRISE;
     public static final String BOARD_RANDOM = "[RANDOM]";
     public static final String BOARD_SURPRISE = "[SURPRISE]";
     public static final String BOARD_GENERATED = "[GENERATED]";

@@ -111,7 +111,7 @@ public class ScreenLauncherBayHandler extends AmmoBayWeaponHandler {
                         HitData hit = ent.rollHitLocation(squadronToHit.getHitTable(), ToHitData.SIDE_FRONT);
                         hit.setCapital(false);
                         vPhaseReport.addAll(server.damageEntity(ent, hit, attackValue));
-                        server.creditKill(ent, ae);
+                        server.getGame().creditKill(ent, ae);
                     }));
                 } else {
                     ToHitData hexToHit = new ToHitData();
@@ -119,7 +119,7 @@ public class ScreenLauncherBayHandler extends AmmoBayWeaponHandler {
                     HitData hit = entity.rollHitLocation(hexToHit.getHitTable(), ToHitData.SIDE_FRONT);
                     hit.setCapital(false);
                     vPhaseReport.addAll(server.damageEntity(entity, hit, attackValue));
-                    server.creditKill(entity, ae);
+                    server.getGame().creditKill(entity, ae);
                 }
             }
         }

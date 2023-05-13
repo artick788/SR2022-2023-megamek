@@ -1621,4 +1621,12 @@ public interface IGame {
     public void clearArtillerySpotters(int entityID, int weaponID);
 
     public void creditKill(Entity target, Entity attacker);
+
+    public Vector<GameTurn> checkTurnOrderStranded(TurnVectors team_order);
+
+    public boolean isOffboardPlayable();
+
+    public boolean isPhasePlayable(IGame.Phase phase);
+
+    public String saveGame(String sFile);
 }

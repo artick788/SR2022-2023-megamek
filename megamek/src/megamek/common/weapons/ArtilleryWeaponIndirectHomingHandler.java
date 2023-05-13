@@ -262,7 +262,7 @@ public class ArtilleryWeaponIndirectHomingHandler extends
         if (!bMissed && (entityTarget != null)) {
             handleEntityDamage(entityTarget, vPhaseReport, bldg, hits,
                     nCluster, bldgAbsorbs);
-            server.creditKill(entityTarget, ae);
+            server.getGame().creditKill(entityTarget, ae);
         } else if (!bMissed && // The attack is targeting a specific building
                 (target.getTargetType() == Targetable.TYPE_BLDG_TAG)){
             r = new Report(3390);
@@ -313,7 +313,7 @@ public class ArtilleryWeaponIndirectHomingHandler extends
                 vPhaseReport.addAll(server.damageEntity(entity, hit,
                             ratedDamage, false, DamageType.NONE, false, true,
                             throughFront, underWater));
-                server.creditKill(entity, ae);
+                server.getGame().creditKill(entity, ae);
             }
         }
         Report.addNewline(vPhaseReport);

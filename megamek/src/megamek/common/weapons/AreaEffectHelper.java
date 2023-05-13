@@ -584,7 +584,7 @@ public class AreaEffectHelper {
             }
         }
         if (killer != null) {
-            server.creditKill(entity, killer);
+            server.getGame().creditKill(entity, killer);
         }
     }
     

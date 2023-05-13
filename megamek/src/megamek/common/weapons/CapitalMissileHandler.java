@@ -310,7 +310,7 @@ public class CapitalMissileHandler extends AmmoWeaponHandler {
                 if (entityTarget != null) {
                     handleEntityDamage(entityTarget, vPhaseReport, bldg, hits,
                             nCluster, bldgAbsorbs);
-                    server.creditKill(entityTarget, ae);
+                    server.getGame().creditKill(entityTarget, ae);
                     hits -= nCluster;
                     firstHit = false;
                 }

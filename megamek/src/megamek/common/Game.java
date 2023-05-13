@@ -15,7 +15,8 @@
 
 package megamek.common;
 
-import java.io.Serializable;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -29,7 +30,9 @@ import java.util.UUID;
 import java.util.Set;
 import java.util.Vector;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.zip.GZIPOutputStream;
 
+import com.thoughtworks.xstream.XStream;
 import megamek.MegaMek;
 import megamek.client.ui.swing.util.PlayerColour;
 import megamek.common.GameTurn.SpecificEntityTurn;
@@ -4742,7 +4745,144 @@ public class Game implements Serializable, IGame {
         }
     }
 
+    public Vector<GameTurn> checkTurnOrderStranded(TurnVectors team_order) {
+        Vector<GameTurn> turns = new Vector<>(team_order.getTotalTurns()  + team_order.getEvenTurns());
+        // Stranded units only during movement phases, rebuild the turns vector
+        if (getPhase() == IGame.Phase.PHASE_MOVEMENT) {
+            // See if there are any loaded units stranded on immobile transports.
+            Iterator<Entity> strandedUnits = getSelectedEntities(
+                    entity -> isEntityStranded(entity));
+            if (strandedUnits.hasNext()) {
+                // Add a game turn to unload stranded units, if this
+                // is the movement phase.
+                turns = new Vector<>(team_order.getTotalTurns()
+                        + team_order.getEvenTurns() + 1);
+                turns.addElement(new GameTurn.UnloadStrandedTurn(strandedUnits));
+            }
+        }
+        return turns;
+    }
 
+    /**
+     * Skip offboard phase, if there is no homing / semiguided ammo in play
+     */
+    public boolean isOffboardPlayable() {
+        if (!hasMoreTurns()) {
+            return false;
+        }
+
+        for (Iterator<Entity> e = getEntities(); e.hasNext();) {
+            Entity entity = e.next();
+            for (Mounted mounted : entity.getAmmo()) {
+                AmmoType ammoType = (AmmoType) mounted.getType();
+
+                // per errata, TAG will spot for LRMs and such
+                if ((ammoType.getAmmoType() == AmmoType.T_LRM)
+                        || (ammoType.getAmmoType() == AmmoType.T_LRM_IMP)
+                        || (ammoType.getAmmoType() == AmmoType.T_MML)
+                        || (ammoType.getAmmoType() == AmmoType.T_NLRM)
+                        || (ammoType.getAmmoType() == AmmoType.T_MEK_MORTAR)) {
+                    return true;
+                }
+
+                if (((ammoType.getAmmoType() == AmmoType.T_ARROW_IV)
+                        || (ammoType.getAmmoType() == AmmoType.T_LONG_TOM)
+                        || (ammoType.getAmmoType() == AmmoType.T_SNIPER)
+                        || (ammoType.getAmmoType() == AmmoType.T_THUMPER))
+                        && (ammoType.getMunitionType() == AmmoType.M_HOMING)) {
+                    return true;
+                }
+            }
+
+            for (Mounted b : entity.getBombs()) {
+                if (!b.isDestroyed() && (b.getUsableShotsLeft() > 0)
+                        && (((BombType) b.getType()).getBombType() == BombType.B_LG)) {
+                    return true;
+                }
+            }
+        }
+
+        // loop through all current attacks
+        // if there are any that use homing ammo, we are playable
+        // we need to do this because we might have a homing arty shot in flight
+        // when the unit that mounted that ammo is no longer on the field
+        for (Enumeration<AttackHandler> attacks = getAttacks(); attacks.hasMoreElements(); ) {
+            AttackHandler attackHandler = attacks.nextElement();
+            Mounted ammo = attackHandler.getWaa().getEntity(this)
+                    .getEquipment(attackHandler.getWaa().getAmmoId());
+            if (ammo != null) {
+                AmmoType ammoType = (AmmoType) ammo.getType();
+                if (ammoType.getMunitionType() == AmmoType.M_HOMING) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Should we play this phase or skip it?
+     */
+    public boolean isPhasePlayable(IGame.Phase phase) {
+        switch (phase) {
+            case PHASE_INITIATIVE:
+            case PHASE_END:
+                return false;
+            case PHASE_SET_ARTYAUTOHITHEXES:
+            case PHASE_DEPLOY_MINEFIELDS:
+            case PHASE_DEPLOYMENT:
+            case PHASE_MOVEMENT:
+            case PHASE_FIRING:
+            case PHASE_PHYSICAL:
+            case PHASE_TARGETING:
+                return hasMoreTurns();
+            case PHASE_OFFBOARD:
+                return isOffboardPlayable();
+            default:
+                return true;
+        }
+    }
+
+    /**
+     * save the game
+     *
+     * @param sFile    The <code>String</code> filename to use
+     * @return A <code>String</code> of the path to store the game
+     */
+    public String saveGame(String sFile) {
+        // We need to strip the .gz if it exists,
+        // otherwise we'll double up on it.
+        if (sFile.endsWith(".gz")) {
+            sFile = sFile.replace(".gz", "");
+        }
+        XStream xstream = new XStream();
+
+        // This will make save games much smaller
+        // by using a more efficient means of referencing
+        // objects in the XML graph
+        xstream.setMode(XStream.ID_REFERENCES);
+
+        String sFinalFile = sFile;
+        if (!sFinalFile.endsWith(".sav")) {
+            sFinalFile = sFile + ".sav";
+        }
+        File sDir = new File("savegames");
+        if (!sDir.exists()) {
+            sDir.mkdir();
+        }
+
+        sFinalFile = sDir + File.separator + sFinalFile;
+
+        try (OutputStream os = new FileOutputStream(sFinalFile + ".gz");
+             OutputStream gzo = new GZIPOutputStream(os);
+             Writer writer = new OutputStreamWriter(gzo, StandardCharsets.UTF_8)) {
+
+            xstream.toXML(this, writer);
+        } catch (Exception e) {
+            MegaMek.getLogger().error("Unable to save file: " + sFinalFile, e);
+        }
+        return sFinalFile;
+    }
 
 
 

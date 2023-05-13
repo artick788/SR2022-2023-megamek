@@ -737,11 +737,11 @@ public class Server implements Runnable {
             case Packet.COMMAND_PLAYER_UPDATE:
                 receivePlayerInfo(packet, connId);
                 game.validatePlayerInfo(connId);
-                send(createPlayerUpdatePacket(connId));
+                send(gamemanager.createPlayerUpdatePacket(game, connId));
                 break;
             case Packet.COMMAND_PLAYER_READY:
                 game.receivePlayerDone(packet, connId);
-                send(createPlayerDonePacket(connId));
+                send(gamemanager.createPlayerDonePacket(game, connId));
                 checkReady();
                 break;
             case Packet.COMMAND_REROLL_INITIATIVE:
@@ -870,7 +870,7 @@ public class Server implements Runnable {
                 if (receiveGameOptions(packet, connId)) {
                     resetPlayersDone();
                     transmitAllPlayerDones();
-                    send(createGameSettingsPacket());
+                    send(gamemanager.createGameSettingsPacket(game));
                     receiveGameOptionsAux(packet, connId);
                 }
                 break;
@@ -881,10 +881,10 @@ public class Server implements Runnable {
                         sendServerChat("Player " + player.getName() + " changed map settings");
                     }
                     mapSettings = newSettings;
-                    mapSettings.setBoardsAvailableVector(gamemanager.scanForBoards(new BoardDimensions(
+                    mapSettings.setBoardsAvailableVector(BoardUtilities.scanForBoards(new BoardDimensions(
                             mapSettings.getBoardWidth(), mapSettings.getBoardHeight())));
                     mapSettings.removeUnavailable();
-                    mapSettings.setNullBoards(DEFAULT_BOARD);
+                    mapSettings.setNullBoards(MapSettings.DEFAULT_BOARD);
                     mapSettings.replaceBoardWithRandom(MapSettings.BOARD_RANDOM);
                     mapSettings.removeUnavailable();
                     // if still only nulls left, use BOARD_GENERATED
@@ -903,10 +903,10 @@ public class Server implements Runnable {
                         sendServerChat("Player " + player.getName() + " changed map dimensions");
                     }
                     mapSettings = newSettings;
-                    mapSettings.setBoardsAvailableVector(gamemanager.scanForBoards(new BoardDimensions(
+                    mapSettings.setBoardsAvailableVector(BoardUtilities.scanForBoards(new BoardDimensions(
                             mapSettings.getBoardWidth(), mapSettings.getBoardHeight())));
                     mapSettings.removeUnavailable();
-                    mapSettings.setNullBoards(DEFAULT_BOARD);
+                    mapSettings.setNullBoards(MapSettings.DEFAULT_BOARD);
                     mapSettings.replaceBoardWithRandom(MapSettings.BOARD_RANDOM);
                     mapSettings.removeUnavailable();
                     // if still only nulls left, use BOARD_GENERATED
@@ -926,7 +926,7 @@ public class Server implements Runnable {
                     game.setPlanetaryConditions(conditions);
                     resetPlayersDone();
                     transmitAllPlayerDones();
-                    send(createPlanetaryConditionsPacket());
+                    send(gamemanager.createPlanetaryConditionsPacket(game));
                 }
                 break;
             case Packet.COMMAND_UNLOAD_STRANDED:
@@ -1041,7 +1041,7 @@ public class Server implements Runnable {
     /**
      * Transmits a chat message to all players
      */
-    private void sendChat(String origin, String message) {
+    void sendChat(String origin, String message) {
         String chat = formatChatMessage(origin, message);
         send(new Packet(Packet.COMMAND_CHAT, chat));
     }
@@ -1071,7 +1071,7 @@ public class Server implements Runnable {
         for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
             final IPlayer player = i.nextElement();
             if (null != player) {
-                send(createPlayerUpdatePacket(player.getId()));
+                send(gamemanager.createPlayerUpdatePacket(game, player.getId()));
             }
         }
     }
@@ -1200,7 +1200,7 @@ public class Server implements Runnable {
             }
             send(connId, new Packet(Packet.COMMAND_SEND_SAVEGAME, new Object[]{
                     sFinalFile, data, sLocalPath}));
-            sendChat(connId, "***Server", "Save game has been sent to you.");
+            sendChat(connId, ORIGIN, "Save game has been sent to you.");
         } catch (Exception e) {
             MegaMek.getLogger().error("Unable to load file: " + localFile, e);
         }
@@ -1214,38 +1214,7 @@ public class Server implements Runnable {
      *                 saving to the server chat.
      */
     public void saveGame(String sFile, boolean sendChat) {
-        // We need to strip the .gz if it exists,
-        // otherwise we'll double up on it.
-        if (sFile.endsWith(".gz")) {
-            sFile = sFile.replace(".gz", "");
-        }
-        XStream xstream = new XStream();
-
-        // This will make save games much smaller
-        // by using a more efficient means of referencing
-        // objects in the XML graph
-        xstream.setMode(XStream.ID_REFERENCES);
-
-        String sFinalFile = sFile;
-        if (!sFinalFile.endsWith(".sav")) {
-            sFinalFile = sFile + ".sav";
-        }
-        File sDir = new File("savegames");
-        if (!sDir.exists()) {
-            sDir.mkdir();
-        }
-
-        sFinalFile = sDir + File.separator + sFinalFile;
-
-        try (OutputStream os = new FileOutputStream(sFinalFile + ".gz");
-             OutputStream gzo = new GZIPOutputStream(os);
-             Writer writer = new OutputStreamWriter(gzo, StandardCharsets.UTF_8)) {
-
-            xstream.toXML(game, writer);
-        } catch (Exception e) {
-            MegaMek.getLogger().error("Unable to save file: " + sFinalFile, e);
-        }
-
+        String sFinalFile = game.saveGame(sFile);
         if (sendChat) {
             sendChat("MegaMek", "Game saved to " + sFinalFile);
         }
@@ -1330,8 +1299,8 @@ public class Server implements Runnable {
     public void sendCurrentInfo(int connId) {
         // why are these two outside the player != null check below?
         transmitAllPlayerConnects(connId);
-        send(connId, createGameSettingsPacket());
-        send(connId, createPlanetaryConditionsPacket());
+        send(connId, gamemanager.createGameSettingsPacket(game));
+        send(connId, gamemanager.createPlanetaryConditionsPacket(game));
 
         IPlayer player = game.getPlayer(connId);
         if (null != player) {
@@ -1341,25 +1310,25 @@ public class Server implements Runnable {
 
             if (game.getPhase() == Phase.PHASE_LOUNGE) {
                 send(connId, createMapSettingsPacket());
-                send(createMapSizesPacket());
+                send(gamemanager.createMapSizesPacket());
                 // Send Entities *after* the Lounge Phase Change
                 send(connId,
                         new Packet(Packet.COMMAND_PHASE_CHANGE, game.getPhase()));
                 if (game.doBlind()) {
                     send(connId, createFilteredFullEntitiesPacket(player));
                 } else {
-                    send(connId, createFullEntitiesPacket());
+                    send(connId, gamemanager.createFullEntitiesPacket(game));
                 }
             } else {
                 send(connId, new Packet(Packet.COMMAND_ROUND_UPDATE, game.getRoundCount()));
-                send(connId, createBoardPacket());
+                send(connId, gamemanager.createBoardPacket(game));
                 send(connId, createAllReportsPacket(player));
 
                 // Send entities *before* other phase changes.
                 if (game.doBlind()) {
                     send(connId, createFilteredFullEntitiesPacket(player));
                 } else {
-                    send(connId, createFullEntitiesPacket());
+                    send(connId, gamemanager.createFullEntitiesPacket(game));
                 }
                 player.setDone(game.getEntitiesOwnedBy(player) <= 0);
                 send(connId, new Packet(Packet.COMMAND_PHASE_CHANGE, game.getPhase()));
@@ -1376,15 +1345,15 @@ public class Server implements Runnable {
             }
 
             if (game.phaseHasTurns(game.getPhase()) && game.hasMoreTurns()) {
-                send(connId, createTurnVectorPacket());
-                send(connId, createTurnIndexPacket(connId));
+                send(connId, gamemanager.createTurnVectorPacket(game));
+                send(connId, gamemanager.createTurnIndexPacket(game, connId));
             } else if (game.getPhase() != IGame.Phase.PHASE_LOUNGE) {
                 endCurrentPhase();
             }
 
-            send(connId, createArtilleryPacket(player));
-            send(connId, createFlarePacket());
-            send(connId, createSpecialHexDisplayPacket(connId));
+            send(connId, gamemanager.createArtilleryPacket(game, player));
+            send(connId, gamemanager.createFlarePacket(game));
+            send(connId, gamemanager.createSpecialHexDisplayPacket(game, connId));
 
         } // Found the player.
     }
@@ -1474,13 +1443,9 @@ public class Server implements Runnable {
 
     // public static final String LEGAL_CHARS =
     // "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-";
-    private static final String DEFAULT_BOARD = MapSettings.BOARD_SURPRISE;
-
     private IGame game = new Game();
 
     private MapSettings mapSettings = MapSettings.getInstance();
-
-
 
     // Track buildings that are affected by an entity's movement.
     private Hashtable<Building, Boolean> affectedBldgs = new Hashtable<>();
@@ -1491,20 +1456,11 @@ public class Server implements Runnable {
 
     private Vector<DynamicTerrainProcessor> terrainProcessors = new Vector<>();
 
-
-
     private static EntityVerifier entityVerifier;
 
     private ArrayList<int[]> scheduledNukes = new ArrayList<>();
 
-
-
     private List<DemolitionCharge> explodingCharges = new ArrayList<>();
-
-
-
-
-
 
 
     /**
@@ -1740,7 +1696,7 @@ public class Server implements Runnable {
         sendServerChat(connId, motd);
 
         // send info that the player has connected
-        send(createPlayerConnectPacket(connId));
+        send(gamemanager.createPlayerConnectPacket(game, connId));
 
         // tell them their local playerId
         send(connId, new Packet(Packet.COMMAND_LOCAL_PN, connId));
@@ -1775,8 +1731,6 @@ public class Server implements Runnable {
 
     }
 
-
-
     /**
      * Resend entities to the player called by SeeAll command
      */
@@ -1784,7 +1738,7 @@ public class Server implements Runnable {
         if (game.doBlind()) {
             send(connId, createFilteredEntitiesPacket(game.getPlayer(connId), null));
         } else {
-            send(connId, createEntitiesPacket());
+            send(connId, gamemanager.createEntitiesPacket(game));
         }
     }
 
@@ -1820,13 +1774,13 @@ public class Server implements Runnable {
         } else {
             player.setGhost(true);
             player.setDone(true);
-            send(createPlayerUpdatePacket(player.getId()));
+            send(gamemanager.createPlayerUpdatePacket(game, player.getId()));
         }
 
         // make sure the game advances
         if (game.phaseHasTurns(game.getPhase()) && (null != game.getTurn())) {
             if (game.getTurn().isValid(player.getId(), game)) {
-                sendGhostSkipMessage(player);
+                gamemanager.sendGhostSkipMessage(player);
             }
         } else {
             checkReady();
@@ -1851,7 +1805,7 @@ public class Server implements Runnable {
     public void resetGame() {
         // remove all entities
         game.reset();
-        send(createEntitiesPacket());
+        send(gamemanager.createEntitiesPacket(game));
         send(new Packet(Packet.COMMAND_SENDING_MINEFIELDS, new Vector<>()));
 
         // remove ghosts
@@ -1863,7 +1817,7 @@ public class Server implements Runnable {
             } else {
                 // non-ghosts set their starting positions to any
                 p.setStartingPos(Board.START_ANY);
-                send(createPlayerUpdatePacket(p.getId()));
+                send(gamemanager.createPlayerUpdatePacket(game, p.getId()));
             }
         }
         for (IPlayer p : ghosts) {
@@ -1979,7 +1933,7 @@ public class Server implements Runnable {
             // remove its turn.
             if ((game.getPhase() == Phase.PHASE_MOVEMENT) && entity.isSelectableThisTurn()) {
                 game.removeTurnFor(entity);
-                send(createTurnVectorPacket());
+                send(gamemanager.createTurnVectorPacket(game));
             }
             entityUpdate(entity.getId());
             game.removeEntity(entity.getId(), condition);
@@ -2130,8 +2084,7 @@ public class Server implements Runnable {
         reportmanager.addReport(new Report(7000, Report.PUBLIC));
 
         // Declare the victor
-        r = new Report(1210);
-        r.type = Report.PUBLIC;
+        r = new Report(1210, Report.PUBLIC);
         if (game.getVictoryTeam() == IPlayer.TEAM_NONE) {
             IPlayer player = game.getPlayer(game.getVictoryPlayerId());
             if (null == player) {
@@ -2155,9 +2108,8 @@ public class Server implements Runnable {
             if (player.getInitialBV() == 0) {
                 continue;
             }
-            r = new Report();
-            r.type = Report.PUBLIC;
-            r.messageId = 7016;
+
+            r = new Report(7016, Report.PUBLIC);
             r.add(player.getColorForPlayer());
             r.add(player.getBV());
             r.add(Double.toString(Math.round((double) player.getBV() / player.getInitialBV() * 10000.0) / 100.0));
@@ -2252,7 +2204,7 @@ public class Server implements Runnable {
         if (gamemanager.getPlayerChangingTeam() != null) {
             gamemanager.getPlayerChangingTeam().setTeam(gamemanager.getRequestedTeam());
             game.setupTeams();
-            send(createPlayerUpdatePacket(gamemanager.getPlayerChangingTeam().getId()));
+            send(gamemanager.createPlayerUpdatePacket(game, gamemanager.getPlayerChangingTeam().getId()));
             String teamString = "Team " + gamemanager.getRequestedTeam() + "!";
             if (gamemanager.getRequestedTeam() == IPlayer.TEAM_UNASSIGNED) {
                 teamString = " unassigned!";
@@ -2285,7 +2237,7 @@ public class Server implements Runnable {
 
             determineTurnOrder(IGame.Phase.PHASE_INITIATIVE);
             reportmanager.clearReports();
-            writeInitiativeReport(true);
+            reportmanager.writeInitiativeReport(game, true);
             sendReport(true);
             return; // don't end the phase yet, players need to see new report
         }
@@ -2479,12 +2431,12 @@ public class Server implements Runnable {
 
         // brief everybody on the turn update, if they changed
         if (turnsChanged) {
-            send(createTurnVectorPacket());
+            send(gamemanager.createTurnVectorPacket(game));
         }
 
         // move along
         if (outOfOrder) {
-            send(createTurnIndexPacket(playerId));
+            send(gamemanager.createTurnIndexPacket(game, playerId));
         } else {
             changeToNextTurn(playerId);
         }
@@ -2503,7 +2455,7 @@ public class Server implements Runnable {
         // prepare for the phase
         prepareForPhase(phase);
 
-        if (isPhasePlayable(phase)) {
+        if (game.isPhasePlayable(phase)) {
             // tell the players about the new phase
             send(new Packet(Packet.COMMAND_PHASE_CHANGE, phase));
 
@@ -2525,11 +2477,11 @@ public class Server implements Runnable {
         switch (phase) {
             case PHASE_LOUNGE:
                 reportmanager.clearReports();
-                mapSettings.setBoardsAvailableVector(gamemanager.scanForBoards(new BoardDimensions(
+                mapSettings.setBoardsAvailableVector(BoardUtilities.scanForBoards(new BoardDimensions(
                         mapSettings.getBoardWidth(), mapSettings.getBoardHeight())));
-                mapSettings.setNullBoards(DEFAULT_BOARD);
+                mapSettings.setNullBoards(MapSettings.DEFAULT_BOARD);
                 send(createMapSettingsPacket());
-                send(createMapSizesPacket());
+                send(gamemanager.createMapSizesPacket());
                 game.checkForObservers();
                 transmitAllPlayerUpdates();
                 break;
@@ -2558,7 +2510,7 @@ public class Server implements Runnable {
 
                 // setIneligible(phase);
                 determineTurnOrder(phase);
-                writeInitiativeReport(false);
+                reportmanager.writeInitiativeReport(game, false);
 
                 // checks for environmental survival
                 checkForConditionDeath();
@@ -2592,7 +2544,7 @@ public class Server implements Runnable {
                 game.resetTurnIndex();
 
                 // send turns to all players
-                send(createTurnVectorPacket());
+                send(gamemanager.createTurnVectorPacket(game));
                 break;
             case PHASE_SET_ARTYAUTOHITHEXES:
                 game.deployOffBoardEntities();
@@ -2629,7 +2581,7 @@ public class Server implements Runnable {
                 game.resetTurnIndex();
 
                 // send turns to all players
-                send(createTurnVectorPacket());
+                send(gamemanager.createTurnVectorPacket(game));
                 break;
             case PHASE_MOVEMENT:
             case PHASE_DEPLOYMENT:
@@ -2679,11 +2631,11 @@ public class Server implements Runnable {
                 resolveEmergencyCoolantSystem();
                 checkForSuffocation();
                 game.getPlanetaryConditions().determineWind();
-                send(createPlanetaryConditionsPacket());
+                send(gamemanager.createPlanetaryConditionsPacket(game));
 
                 applyBuildingDamage();
                 reportmanager.addReport(game.ageFlares());
-                send(createFlarePacket());
+                send(gamemanager.createFlarePacket(game));
                 resolveAmmoDumps();
                 resolveCrewWakeUp();
                 resolveConsoleCrewSwaps();
@@ -2705,7 +2657,7 @@ public class Server implements Runnable {
                     tp.doEndPhaseChanges(reportmanager.getvPhaseReport());
                 }
                 // TODO (Sam): also changed here
-                sendChangedHexes(gamemanager.getHexUpdateSet());
+                gamemanager.sendChangedHexes(game, gamemanager.getHexUpdateSet());
 
                 game.checkForObservers();
                 transmitAllPlayerUpdates();
@@ -2721,13 +2673,11 @@ public class Server implements Runnable {
                     if (player.getInitialBV() == 0) {
                         continue;
                     }
-                    Report r = new Report();
-                    r.type = Report.PUBLIC;
+                    Report r = new Report(7016, Report.PUBLIC);
                     if (game.doBlind() && game.suppressBlindBV()) {
                         r.type = Report.PLAYER;
                         r.player = player.getId();
                     }
-                    r.messageId = 7016;
                     r.add(player.getColorForPlayer());
                     r.add(player.getBV());
                     r.add(Double.toString(Math.round((double) player.getBV() / player.getInitialBV() * 10000.0) / 100.0));
@@ -2795,92 +2745,12 @@ public class Server implements Runnable {
                     }
                 }
             }
-                send(createFullEntitiesPacket());
+                send(gamemanager.createFullEntitiesPacket(game));
                 send(createReportPacket(null));
                 send(createEndOfGamePacket());
                 break;
             default:
         }
-    }
-
-    /**
-     * Should we play this phase or skip it?
-     */
-    private boolean isPhasePlayable(IGame.Phase phase) {
-        switch (phase) {
-            case PHASE_INITIATIVE:
-            case PHASE_END:
-                return false;
-            case PHASE_SET_ARTYAUTOHITHEXES:
-            case PHASE_DEPLOY_MINEFIELDS:
-            case PHASE_DEPLOYMENT:
-            case PHASE_MOVEMENT:
-            case PHASE_FIRING:
-            case PHASE_PHYSICAL:
-            case PHASE_TARGETING:
-                return game.hasMoreTurns();
-            case PHASE_OFFBOARD:
-                return isOffboardPlayable();
-            default:
-                return true;
-        }
-    }
-
-    /**
-     * Skip offboard phase, if there is no homing / semiguided ammo in play
-     */
-    private boolean isOffboardPlayable() {
-        if (!game.hasMoreTurns()) {
-            return false;
-        }
-        
-        for (Iterator<Entity> e = game.getEntities(); e.hasNext();) {
-            Entity entity = e.next();
-            for (Mounted mounted : entity.getAmmo()) {
-                AmmoType ammoType = (AmmoType) mounted.getType();
-                
-                // per errata, TAG will spot for LRMs and such
-                if ((ammoType.getAmmoType() == AmmoType.T_LRM)
-                        || (ammoType.getAmmoType() == AmmoType.T_LRM_IMP)
-                        || (ammoType.getAmmoType() == AmmoType.T_MML)
-                        || (ammoType.getAmmoType() == AmmoType.T_NLRM)
-                        || (ammoType.getAmmoType() == AmmoType.T_MEK_MORTAR)) {
-                    return true;
-                }
-                
-                if (((ammoType.getAmmoType() == AmmoType.T_ARROW_IV)
-                        || (ammoType.getAmmoType() == AmmoType.T_LONG_TOM)
-                        || (ammoType.getAmmoType() == AmmoType.T_SNIPER)
-                        || (ammoType.getAmmoType() == AmmoType.T_THUMPER))
-                        && (ammoType.getMunitionType() == AmmoType.M_HOMING)) {
-                    return true;
-                }
-            }
-            
-            for (Mounted b : entity.getBombs()) {
-                if (!b.isDestroyed() && (b.getUsableShotsLeft() > 0)
-                    && (((BombType) b.getType()).getBombType() == BombType.B_LG)) {
-                    return true;
-                }
-            }
-        }
-        
-        // loop through all current attacks
-        // if there are any that use homing ammo, we are playable
-        // we need to do this because we might have a homing arty shot in flight
-        // when the unit that mounted that ammo is no longer on the field
-        for (Enumeration<AttackHandler> attacks = game.getAttacks(); attacks.hasMoreElements(); ) {
-            AttackHandler attackHandler = attacks.nextElement();
-            Mounted ammo = attackHandler.getWaa().getEntity(game)
-                    .getEquipment(attackHandler.getWaa().getAmmoId());
-            if (ammo != null) {
-                AmmoType ammoType = (AmmoType) ammo.getType();
-                if (ammoType.getMunitionType() == AmmoType.M_HOMING) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     /**
@@ -2900,9 +2770,9 @@ public class Server implements Runnable {
                 game.setupTeams();
                 applyBoardSettings();
                 game.getPlanetaryConditions().determineWind();
-                send(createPlanetaryConditionsPacket());
+                send(gamemanager.createPlanetaryConditionsPacket(game));
                 // transmit the board to everybody
-                send(createBoardPacket());
+                send(gamemanager.createBoardPacket(game));
                 game.setupRoundDeployment();
                 game.setVictoryContext(new HashMap<>());
                 game.createVictoryConditions();
@@ -3216,7 +3086,7 @@ public class Server implements Runnable {
                 for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
                     IPlayer player = i.nextElement();
                     int connId = player.getId();
-                    send(connId, createArtilleryPacket(player));
+                    send(connId, gamemanager.createArtilleryPacket(game, player));
                 }
 
                 break;
@@ -3230,7 +3100,7 @@ public class Server implements Runnable {
                 for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
                     IPlayer player = i.nextElement();
                     int connId = player.getId();
-                    send(connId, createArtilleryPacket(player));
+                    send(connId, gamemanager.createArtilleryPacket(game, player));
                 }
                 applyBuildingDamage();
                 checkForPSRFromDamage();
@@ -3322,7 +3192,7 @@ public class Server implements Runnable {
         }
         for (int i = 0; i < connections.size(); i++) {
             if (connections.get(i) != null) {
-                connections.get(i).send(createSpecialHexDisplayPacket(i));
+                connections.get(i).send(gamemanager.createSpecialHexDisplayPacket(game, i));
             }
         }
     }
@@ -3333,7 +3203,7 @@ public class Server implements Runnable {
         }
         for (IConnection connection : connections) {
             if (connection != null) {
-                connection.send(createTagInfoUpdatesPacket());
+                connection.send(gamemanager.createTagInfoUpdatesPacket(game));
             }
         }
     }
@@ -3448,8 +3318,8 @@ public class Server implements Runnable {
                 if (switched) {
                     game.swapTurnOrder(currentTurnIndex, nextTurnId);
                     // update the turn packages for all players.
-                    send(createTurnVectorPacket());
-                    send(createTurnIndexPacket(connectionId));
+                    send(gamemanager.createTurnVectorPacket(game));
+                    send(gamemanager.createTurnIndexPacket(game, connectionId));
                     return;
                 }
                 // if nothing changed return without doing anything
@@ -3493,43 +3363,16 @@ public class Server implements Runnable {
         }
 
         if (prevPlayerId != -1) {
-            send(createTurnIndexPacket(prevPlayerId));
+            send(gamemanager.createTurnIndexPacket(game, prevPlayerId));
         } else {
-            send(createTurnIndexPacket(player != null ? player.getId() : IPlayer.PLAYER_NONE));
+            send(gamemanager.createTurnIndexPacket(game, player != null ? player.getId() : IPlayer.PLAYER_NONE));
         }
 
         if ((null != player) && player.isGhost()) {
-            sendGhostSkipMessage(player);
+            gamemanager.sendGhostSkipMessage(player);
         } else if ((null == game.getFirstEntity()) && (null != player) && !minefieldPhase && !artyPhase) {
-            sendTurnErrorSkipMessage(player);
+            gamemanager.sendTurnErrorSkipMessage(player);
         }
-    }
-
-    /**
-     * Sends out a notification message indicating that a ghost player may be
-     * skipped.
-     *
-     * @param ghost - the <code>Player</code> who is ghosted. This value must not
-     *              be <code>null</code>.
-     */
-    private void sendGhostSkipMessage(IPlayer ghost) {
-        String message = "Player '" + ghost.getName() +
-                "' is disconnected.  You may skip his/her current turn with the /skip command.";
-        sendServerChat(message);
-    }
-
-    /**
-     * Sends out a notification message indicating that the current turn is an
-     * error and should be skipped.
-     *
-     * @param skip - the <code>Player</code> who is to be skipped. This value
-     *             must not be <code>null</code>.
-     */
-    private void sendTurnErrorSkipMessage(IPlayer skip) {
-        String message = "Player '" + skip.getName() +
-                "' has no units to move.  You should skip his/her/your current turn with the /skip command. " +
-                "You may want to report this error at https://github.com/MegaMek/megamek/issues";
-        sendServerChat(message);
     }
 
     /**
@@ -3677,24 +3520,6 @@ public class Server implements Runnable {
         transmitAllPlayerUpdates();
     }
 
-    private Vector<GameTurn> checkTurnOrderStranded(TurnVectors team_order) {
-        Vector<GameTurn> turns = new Vector<>(team_order.getTotalTurns()  + team_order.getEvenTurns());
-        // Stranded units only during movement phases, rebuild the turns vector
-        if (game.getPhase() == IGame.Phase.PHASE_MOVEMENT) {
-            // See if there are any loaded units stranded on immobile transports.
-            Iterator<Entity> strandedUnits = game.getSelectedEntities(
-                    entity -> game.isEntityStranded(entity));
-            if (strandedUnits.hasNext()) {
-                // Add a game turn to unload stranded units, if this
-                // is the movement phase.
-                turns = new Vector<>(team_order.getTotalTurns()
-                        + team_order.getEvenTurns() + 1);
-                turns.addElement(new GameTurn.UnloadStrandedTurn(strandedUnits));
-            }
-        }
-        return turns;
-    }
-
     /**
      * Determines the turn oder for a given phase (with individual init)
      *
@@ -3741,7 +3566,7 @@ public class Server implements Runnable {
         TurnVectors team_order = TurnOrdered.generateTurnOrder(entities, game);
 
         // Now, we collect everything into a single vector.
-        Vector<GameTurn> turns = checkTurnOrderStranded(team_order);
+        Vector<GameTurn> turns = game.checkTurnOrderStranded(team_order);
 
         // add the turns (this is easy)
         while (team_order.hasMoreElements()) {
@@ -3760,7 +3585,7 @@ public class Server implements Runnable {
         game.resetTurnIndex();
 
         // send turns to all players
-        send(createTurnVectorPacket());
+        send(gamemanager.createTurnVectorPacket(game));
     }
 
     /**
@@ -3946,7 +3771,7 @@ public class Server implements Runnable {
         TurnVectors team_order = TurnOrdered.generateTurnOrder(game.getTeamsVector(), game);
 
         // Now, we collect everything into a single vector.
-        Vector<GameTurn> turns = checkTurnOrderStranded(team_order);
+        Vector<GameTurn> turns = game.checkTurnOrderStranded(team_order);
 
         // Walk through the global order, assigning turns
         // for individual players to the single vector.
@@ -4076,162 +3901,12 @@ public class Server implements Runnable {
         game.resetTurnIndex();
 
         // send turns to all players
-        send(createTurnVectorPacket());
+        send(gamemanager.createTurnVectorPacket(game));
     }
 
     //private static String getColorForPlayer(IPlayer p) {
     //    return "<B><font color='" + p.getColour().getHexString(0x00F0F0F0) + "'>" + p.getName() + "</font></B>";
     //}
-
-    /**
-     * Write the initiative results to the report
-     */
-    private void writeInitiativeReport(boolean abbreviatedReport) {
-        // write to report
-        Report r;
-        boolean deployment = false;
-        if (!abbreviatedReport) {
-            r = new Report(1210);
-            r.type = Report.PUBLIC;
-            if ((game.getLastPhase() == IGame.Phase.PHASE_DEPLOYMENT) || game.isDeploymentComplete()
-                    || !game.shouldDeployThisRound()) {
-                r.messageId = 1000;
-                r.add(game.getRoundCount());
-            } else {
-                deployment = true;
-                if (game.getRoundCount() == 0) {
-                    r.messageId = 1005;
-                } else {
-                    r.messageId = 1010;
-                    r.add(game.getRoundCount());
-                }
-            }
-            reportmanager.addReport(r);
-            // write separator
-            reportmanager.addReport(new Report(1200, Report.PUBLIC));
-        } else {
-            reportmanager.addReport(new Report(1210, Report.PUBLIC));
-        }
-
-        if (game.getOptions().booleanOption(OptionsConstants.RPG_INDIVIDUAL_INITIATIVE)) {
-            r = new Report(1040, Report.PUBLIC);
-            reportmanager.addReport(r);
-            for (Enumeration<GameTurn> e = game.getTurns(); e.hasMoreElements(); ) {
-                GameTurn t = e.nextElement();
-                if (t instanceof GameTurn.SpecificEntityTurn) {
-                    Entity entity = game.getEntity(((GameTurn.SpecificEntityTurn) t).getEntityNum());
-                    r = new Report(1045);
-                    r.subject = entity.getId();
-                    r.addDesc(entity);
-                    r.add(entity.getInitiative().toString());
-                    reportmanager.addReport(r);
-                } else {
-                    IPlayer player = game.getPlayer(t.getPlayerNum());
-                    if (null != player) {
-                        r = new Report(1050, Report.PUBLIC);
-                        r.add(player.getColorForPlayer());
-                        reportmanager.addReport(r);
-                    }
-                }
-            }
-        } else {
-            for (Enumeration<Team> i = game.getTeams(); i.hasMoreElements(); ) {
-                final Team team = i.nextElement();
-
-                // Teams with no active players can be ignored
-                if (team.isObserverTeam()) {
-                    continue;
-                }
-
-                // If there is only one non-observer player, list
-                // them as the 'team', and use the team initiative
-                if (team.getNonObserverSize() == 1) {
-                    final IPlayer player = team.getNonObserverPlayers().nextElement();
-                    r = new Report(1015, Report.PUBLIC);
-                    r.add(player.getColorForPlayer());
-                    r.add(team.getInitiative().toString());
-                    reportmanager.addReport(r);
-                } else {
-                    // Multiple players. List the team, then break it down.
-                    r = new Report(1015, Report.PUBLIC);
-                    r.add(IPlayer.teamNames[team.getId()]);
-                    r.add(team.getInitiative().toString());
-                    reportmanager.addReport(r);
-                    for (Enumeration<IPlayer> j = team.getNonObserverPlayers(); j.hasMoreElements(); ) {
-                        final IPlayer player = j.nextElement();
-                        r = new Report(1015, Report.PUBLIC);
-                        r.indent();
-                        r.add(player.getName());
-                        r.add(player.getInitiative().toString());
-                        reportmanager.addReport(r);
-                    }
-                }
-            }
-
-            if (!game.doBlind()) {
-
-                // The turn order is different in movement phase
-                // if a player has any "even" moving units.
-                r = new Report(1020, Report.PUBLIC);
-
-                boolean hasEven = false;
-                for (Enumeration<GameTurn> i = game.getTurns(); i.hasMoreElements(); ) {
-                    GameTurn turn = i.nextElement();
-                    IPlayer player = game.getPlayer(turn.getPlayerNum());
-                    if (null != player) {
-                        r.add(player.getName());
-                        if (player.getEvenTurns() > 0) {
-                            hasEven = true;
-                        }
-                    }
-                }
-                r.newlines = 2;
-                reportmanager.addReport(r);
-                if (hasEven) {
-                    r = new Report(1021, Report.PUBLIC);
-                    if ((game.getOptions().booleanOption(OptionsConstants.INIT_INF_DEPLOY_EVEN)
-                            || game.getOptions().booleanOption(OptionsConstants.INIT_PROTOS_MOVE_EVEN))
-                            && !(game.getLastPhase() == IGame.Phase.PHASE_END_REPORT)) {
-                        r.choose(true);
-                    } else {
-                        r.choose(false);
-                    }
-                    r.indent();
-                    r.newlines = 2;
-                    reportmanager.addReport(r);
-                }
-            }
-
-        }
-        if (!abbreviatedReport) {
-            // we don't much care about wind direction and such in a hard vacuum
-            if(!game.getBoard().inSpace()) {
-                // Wind direction and strength
-                Report rWindDir = new Report(1025, Report.PUBLIC);
-                rWindDir.add(game.getPlanetaryConditions().getWindDirDisplayableName());
-                rWindDir.newlines = 0;
-                Report rWindStr = new Report(1030, Report.PUBLIC);
-                rWindStr.add(game.getPlanetaryConditions().getWindDisplayableName());
-                rWindStr.newlines = 0;
-                Report rWeather = new Report(1031, Report.PUBLIC);
-                rWeather.add(game.getPlanetaryConditions().getWeatherDisplayableName());
-                rWeather.newlines = 0;
-                Report rLight = new Report(1032, Report.PUBLIC);
-                rLight.add(game.getPlanetaryConditions().getLightDisplayableName());
-                Report rVis = new Report(1033, Report.PUBLIC);
-                rVis.add(game.getPlanetaryConditions().getFogDisplayableName());
-                reportmanager.addReport(rWindDir);
-                reportmanager.addReport(rWindStr);
-                reportmanager.addReport(rWeather);
-                reportmanager.addReport(rLight);
-                reportmanager.addReport(rVis);
-            }
-
-            if (deployment) {
-                reportmanager.addNewLines();
-            }
-        }
-    }
 
     private void applyDropShipLandingDamage(Coords centralPos, Entity killer) {
         // first cycle through hexes to figure out final elevation
@@ -4269,7 +3944,7 @@ public class Server implements Runnable {
                 hex.removeTerrain(Terrains.FOLIAGE_ELEV);
                 hex.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.ROUGH, 1));
             }
-            sendChangedHex(pos);
+            gamemanager.sendChangedHex(game, pos);
         }
 
         applyDropShipProximityDamage(centralPos, killer);
@@ -4360,7 +4035,7 @@ public class Server implements Runnable {
             // Remove the *last* friendly turn (removing the *first* penalizes
             // the opponent too much, and re-calculating moves is too hard).
             game.removeTurnFor(unit);
-            send(createTurnVectorPacket());
+            send(gamemanager.createTurnVectorPacket(game));
         }
 
         // When loading an Aero into a squadron in the lounge, make sure the
@@ -4423,7 +4098,7 @@ public class Server implements Runnable {
             // Remove the *last* friendly turn (removing the *first* penalizes
             // the opponent too much, and re-calculating moves is too hard).
             game.removeTurnFor(unit);
-            send(createTurnVectorPacket());
+            send(gamemanager.createTurnVectorPacket(game));
         }
 
         loader.towUnit(unit.getId());
@@ -4895,7 +4570,7 @@ public class Server implements Runnable {
         GameTurn newTurn = new GameTurn.EntityClassTurn(unit.getOwner().getId(), turnMask);
         game.insertTurnAfter(newTurn, turnInsertIdx);
         // brief everybody on the turn update
-        send(createTurnVectorPacket());
+        send(gamemanager.createTurnVectorPacket(game));
 
         return true;
     }
@@ -5075,7 +4750,7 @@ public class Server implements Runnable {
 
         // Did we update the turns?
         if (bTurnsChanged) {
-            send(createTurnVectorPacket());
+            send(gamemanager.createTurnVectorPacket(game));
         }
 
         // Are there any building updates?
@@ -5237,7 +4912,7 @@ public class Server implements Runnable {
                         if (!swarmer.isDone()) {
                             game.removeTurnFor(swarmer);
                             swarmer.setDone(true);
-                            send(createTurnVectorPacket());
+                            send(gamemanager.createTurnVectorPacket(game));
                         }
                         game.removeEntity(swarmer.getId(), IEntityRemovalConditions.REMOVE_PUSHED);
                         send(gamemanager.createRemoveEntityPacket(swarmer.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
@@ -5710,7 +5385,7 @@ public class Server implements Runnable {
                         if (!target.isDone()) {
                             // Dead entities don't take turns.
                             game.removeTurnFor(target);
-                            send(createTurnVectorPacket());
+                            send(gamemanager.createTurnVectorPacket(game));
                         } // End target-still-to-move
 
                         // Clean out the entity.
@@ -5736,7 +5411,7 @@ public class Server implements Runnable {
                     // Prevents adding extra turns for multi-turns
                     newTurn.setMultiTurn(true);
                     game.insertNextTurn(newTurn);
-                    send(createTurnVectorPacket());
+                    send(gamemanager.createTurnVectorPacket(game));
                 }
             }
 
@@ -5790,7 +5465,7 @@ public class Server implements Runnable {
                 if (bldg.getCurrentCF(nextPos) > 0) {
                     stopTheSkid = true;
                     if (bldg.rollBasement(nextPos, game.getBoard(), reportmanager.getvPhaseReport())) {
-                        sendChangedHex(nextPos);
+                        gamemanager.sendChangedHex(game, nextPos);
                         Vector<Building> buildings = new Vector<>();
                         buildings.add(bldg);
                         sendChangedBuildings(buildings);
@@ -6196,9 +5871,7 @@ public class Server implements Runnable {
      * @return
      */
     private boolean processCollision(Entity entity, Entity target, Coords src) {
-        Report r;
-
-        r = new Report(9035);
+        Report r = new Report(9035);
         r.subject = entity.getId();
         r.add(entity.getDisplayName());
         r.add(target.getDisplayName());
@@ -6240,7 +5913,7 @@ public class Server implements Runnable {
                         vel--;
                     }
                     game.removeTurnFor(target);
-                    send(createTurnVectorPacket());
+                    send(gamemanager.createTurnVectorPacket(game));
                     processMovement(target, md, null);
                     // for some reason it is not clearing out turn
                 } else {
@@ -6282,7 +5955,7 @@ public class Server implements Runnable {
             if (!target.isDone()) {
                 // Dead entities don't take turns.
                 game.removeTurnFor(target);
-                send(createTurnVectorPacket());
+                send(gamemanager.createTurnVectorPacket(game));
             } // End target-still-to-move
             // Clean out the entity.
             target.setDestroyed(true);
@@ -6537,7 +6210,7 @@ public class Server implements Runnable {
                                              false, 0));
                 }
             }
-            sendChangedHex(hitCoords);
+            gamemanager.sendChangedHex(game, hitCoords);
         }
 
         // check for a stacking violation - which should only happen in the
@@ -6699,7 +6372,7 @@ public class Server implements Runnable {
             if (!swarmer.isDone()) {
                 // Dead entities don't take turns.
                 game.removeTurnFor(swarmer);
-                send(createTurnVectorPacket());
+                send(gamemanager.createTurnVectorPacket(game));
 
             } // End swarmer-still-to-move
 
@@ -7035,7 +6708,7 @@ public class Server implements Runnable {
                         // If not set, BV icons could have wrong facing
                         entity.setSecondaryFacing(step.getFacing());
                         // Update entity position on client
-                        send(e.getOwnerId(), createEntityPacket(entity.getId(), null));
+                        send(e.getOwnerId(), gamemanager.createEntityPacket(game, entity.getId(), null));
                         boolean tookPBS = processPointblankShotCFR(e, entity);
                         // Movement should be interrupted
                         if (tookPBS) {
@@ -7970,7 +7643,7 @@ public class Server implements Runnable {
             if (isOnGround && curHex.containsTerrain(Terrains.BUILDING)) {
                 Building bldg = game.getBoard().getBuildingAt(curPos);
                 if (bldg.rollBasement(curPos, game.getBoard(), reportmanager.getvPhaseReport())) {
-                    sendChangedHex(curPos);
+                    gamemanager.sendChangedHex(game, curPos);
                     Vector<Building> buildings = new Vector<>();
                     buildings.add(bldg);
                     sendChangedBuildings(buildings);
@@ -8414,7 +8087,7 @@ public class Server implements Runnable {
 
                     // Dead entities don't take turns.
                     game.removeTurnFor(swarmer);
-                    send(createTurnVectorPacket());
+                    send(gamemanager.createTurnVectorPacket(game));
 
                     // Return the original status.
                     swarmer.setDone(true);
@@ -8687,7 +8360,7 @@ public class Server implements Runnable {
                         game.insertNextTurn(newTurn);
                     }
                     // brief everybody on the turn update
-                    send(createTurnVectorPacket());
+                    send(gamemanager.createTurnVectorPacket(game));
                 }
             }
 
@@ -9217,7 +8890,7 @@ public class Server implements Runnable {
             } else {
                 // Dislodged swarmers don't get turns.
                 game.removeTurnFor(swarmer);
-                send(createTurnVectorPacket());
+                send(gamemanager.createTurnVectorPacket(game));
 
                 // Update the report and the swarmer's status.
                 r.choose(true);
@@ -9417,7 +9090,7 @@ public class Server implements Runnable {
                 } else {
                     // Dislodged swarmers don't get turns.
                     game.removeTurnFor(swarmer);
-                    send(createTurnVectorPacket());
+                    send(gamemanager.createTurnVectorPacket(game));
 
                     // Update the report and the swarmer's status.
                     r.choose(true);
@@ -9555,7 +9228,7 @@ public class Server implements Runnable {
             newTurn.setMultiTurn(true);
             game.insertNextTurn(newTurn);
             // brief everybody on the turn update
-            send(createTurnVectorPacket());
+            send(gamemanager.createTurnVectorPacket(game));
             // let everyone know about what just happened
             if (reportmanager.getvPhaseReport().size() > 1) {
                 send(entity.getOwner().getId(), createSpecialReportPacket());
@@ -9720,7 +9393,7 @@ public class Server implements Runnable {
                     fs.setOwner(entity.getOwner());
                     // set velocity and heading the same as parent entity
                     game.addEntity(fs);
-                    send(createAddEntityPacket(fs.getId()));
+                    send(gamemanager.createAddEntityPacket(game, fs.getId()));
                     // make him not get a move this turn
                     fs.setDone(true);
                     // place on board
@@ -9752,8 +9425,7 @@ public class Server implements Runnable {
 
         // if using double blind, update the player on new units he might see
         if (game.doBlind()) {
-            send(entity.getOwner().getId(),
-                    createFilteredEntitiesPacket(entity.getOwner(), losCache));
+            send(entity.getOwner().getId(), createFilteredEntitiesPacket(entity.getOwner(), losCache));
         }
 
         // if we generated a charge attack, report it now
@@ -10103,7 +9775,7 @@ public class Server implements Runnable {
                         // These are spotlights at night, you know they're
                         // there.
                         if (hexesAdded) {
-                            send(createIlluminatedHexesPacket());
+                            send(gamemanager.createIlluminatedHexesPacket(game));
                         }
                         SearchlightAttackAction saa = (SearchlightAttackAction) ea;
                         reportmanager.addReport(saa.resolveAction(game));
@@ -10510,7 +10182,7 @@ public class Server implements Runnable {
         createSmoke(coords, smokeType, 3);
         IHex hex = game.getBoard().getHex(coords);
         hex.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.SMOKE, smokeType));
-        sendChangedHex(coords);
+        gamemanager.sendChangedHex(game, coords);
     }
 
     public void deliverSmokeGrenade(Coords coords, Vector<Report> vPhaseReport) {
@@ -10522,7 +10194,7 @@ public class Server implements Runnable {
         IHex hex = game.getBoard().getHex(coords);
         hex.addTerrain(Terrains.getTerrainFactory().createTerrain(
                 Terrains.SMOKE, SmokeCloud.SMOKE_LIGHT));
-        sendChangedHex(coords);
+        gamemanager.sendChangedHex(game, coords);
     }
 
     public void deliverSmokeMortar(Coords coords, Vector<Report> vPhaseReport, int duration) {
@@ -10534,7 +10206,7 @@ public class Server implements Runnable {
         IHex hex = game.getBoard().getHex(coords);
         hex.addTerrain(Terrains.getTerrainFactory().createTerrain(
                 Terrains.SMOKE, SmokeCloud.SMOKE_HEAVY));
-        sendChangedHex(coords);
+        gamemanager.sendChangedHex(game, coords);
     }
 
     public void deliverChaffGrenade(Coords coords, Vector<Report> vPhaseReport) {
@@ -10546,7 +10218,7 @@ public class Server implements Runnable {
         IHex hex = game.getBoard().getHex(coords);
         hex.addTerrain(Terrains.getTerrainFactory().createTerrain(
                 Terrains.SMOKE, SmokeCloud.SMOKE_CHAFF_LIGHT));
-        sendChangedHex(coords);
+        gamemanager.sendChangedHex(game, coords);
     }
 
     /**
@@ -10563,7 +10235,7 @@ public class Server implements Runnable {
         IHex hex = game.getBoard().getHex(coords);
         hex.addTerrain(Terrains.getTerrainFactory().createTerrain(
                 Terrains.SMOKE, SmokeCloud.SMOKE_HEAVY));
-        sendChangedHex(coords);
+        gamemanager.sendChangedHex(game, coords);
         for (int dir = 0; dir <= 5; dir++) {
             Coords tempcoords = coords.translated(dir);
             if (!game.getBoard().contains(tempcoords)) {
@@ -10580,7 +10252,7 @@ public class Server implements Runnable {
             hex = game.getBoard().getHex(tempcoords);
             hex.addTerrain(Terrains.getTerrainFactory().createTerrain(
                     Terrains.SMOKE, SmokeCloud.SMOKE_HEAVY));
-            sendChangedHex(tempcoords);
+            gamemanager.sendChangedHex(game, tempcoords);
         }
     }
 
@@ -10598,7 +10270,7 @@ public class Server implements Runnable {
         IHex hex = game.getBoard().getHex(coords);
         hex.addTerrain(Terrains.getTerrainFactory().createTerrain(
                 Terrains.SMOKE, SmokeCloud.SMOKE_LI_HEAVY));
-        sendChangedHex(coords);
+        gamemanager.sendChangedHex(game, coords);
         for (int dir = 0; dir <= 5; dir++) {
             Coords tempcoords = coords.translated(dir);
             if (!game.getBoard().contains(tempcoords)) {
@@ -10615,7 +10287,7 @@ public class Server implements Runnable {
             hex = game.getBoard().getHex(tempcoords);
             hex.addTerrain(Terrains.getTerrainFactory().createTerrain(
                     Terrains.SMOKE, SmokeCloud.SMOKE_LI_HEAVY));
-            sendChangedHex(tempcoords);
+            gamemanager.sendChangedHex(game, tempcoords);
         }
     }
 
@@ -10707,7 +10379,7 @@ public class Server implements Runnable {
             h.addTerrain(Terrains.getTerrainFactory().createTerrain(
                     Terrains.SCREEN, 1));
         }
-        sendChangedHex(coords);
+        gamemanager.sendChangedHex(game, coords);
     }
 
     /**
@@ -10735,7 +10407,7 @@ public class Server implements Runnable {
         }
         // set velocity and heading the same as parent entity
         game.addEntity(tele);
-        send(createAddEntityPacket(tele.getId()));
+        send(gamemanager.createAddEntityPacket(game, tele.getId()));
         // make him not get a move this turn
         tele.setDone(true);
         // place on board
@@ -11491,7 +11163,7 @@ public class Server implements Runnable {
                 removeMinefield(mf);
             }
             // update the mines at these coords
-            sendChangedMines(c);
+            gamemanager.sendChangedMines(game, c);
         }
     }
 
@@ -12426,7 +12098,7 @@ public class Server implements Runnable {
         if (!swarmer.isDone()) {
             game.removeTurnFor(swarmer);
             swarmer.setDone(true);
-            send(createTurnVectorPacket());
+            send(gamemanager.createTurnVectorPacket(game));
         }
 
         // Update the report and cause a fall.
@@ -12794,9 +12466,9 @@ public class Server implements Runnable {
                 if ((game.getPhase() == Phase.PHASE_MOVEMENT)
                         && !entity.isDone() && (turnsRemoved == 0)) {
                     game.removeTurnFor(entity);
-                    send(createTurnVectorPacket());
+                    send(gamemanager.createTurnVectorPacket(game));
                 } else if (turnsRemoved > 0) {
-                    send(createTurnVectorPacket());
+                    send(gamemanager.createTurnVectorPacket(game));
                 }
                 game.removeEntity(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED);
                 send(gamemanager.createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
@@ -12881,7 +12553,7 @@ public class Server implements Runnable {
             && (entity.getElevation() == 0)) {
             bldg = game.getBoard().getBuildingAt(dest);
             if (bldg.rollBasement(dest, game.getBoard(), vPhaseReport)) {
-                sendChangedHex(dest);
+                gamemanager.sendChangedHex(game, dest);
                 Vector<Building> buildings = new Vector<>();
                 buildings.add(bldg);
                 sendChangedBuildings(buildings);
@@ -13177,8 +12849,8 @@ public class Server implements Runnable {
                 msg += ", Entity was null!";
             }
             MegaMek.getLogger().error(msg);
-            send(connId, createTurnVectorPacket());
-            send(connId, createTurnIndexPacket(turn.getPlayerNum()));
+            send(connId, gamemanager.createTurnVectorPacket(game));
+            send(connId, gamemanager.createTurnIndexPacket(game, turn.getPlayerNum()));
             return;
         }
 
@@ -13235,8 +12907,8 @@ public class Server implements Runnable {
                 msg += ", Entity was null!";
             }
             MegaMek.getLogger().error(msg);
-            send(connId, createTurnVectorPacket());
-            send(connId, createTurnIndexPacket(connId));
+            send(connId, gamemanager.createTurnVectorPacket(game));
+            send(connId, gamemanager.createTurnIndexPacket(game, connId));
             return;
         }
 
@@ -13253,7 +12925,7 @@ public class Server implements Runnable {
                 loaded.getOwnerId(), loaded.getId()), game.getTurnIndex() - 1);
         //game.insertNextTurn(new GameTurn.SpecificEntityTurn(
         //        loaded.getOwnerId(), loaded.getId()));
-        send(createTurnVectorPacket());
+        send(gamemanager.createTurnVectorPacket(game));
     }
 
 
@@ -13382,7 +13054,7 @@ public class Server implements Runnable {
         Building bldg = game.getBoard().getBuildingAt(entity.getPosition());
         if ((bldg != null)) {
             if (bldg.rollBasement(entity.getPosition(), game.getBoard(), reportmanager.getvPhaseReport())) {
-                sendChangedHex(entity.getPosition());
+                gamemanager.sendChangedHex(game, entity.getPosition());
                 Vector<Building> buildings = new Vector<>();
                 buildings.add(bldg);
                 sendChangedBuildings(buildings);
@@ -13532,8 +13204,8 @@ public class Server implements Runnable {
                 msg += ", Entity was null!";
             }
             MegaMek.getLogger().error(msg);
-            send(connId, createTurnVectorPacket());
-            send(connId, createTurnIndexPacket(turn.getPlayerNum()));
+            send(connId, gamemanager.createTurnVectorPacket(game));
+            send(connId, gamemanager.createTurnIndexPacket(game, turn.getPlayerNum()));
             return;
         }
 
@@ -13601,7 +13273,7 @@ public class Server implements Runnable {
                             // immediately after the attack declaration.
                             game.insertNextTurn(new GameTurn.TriggerAPPodTurn(target.getOwnerId(),
                                     target.getId()));
-                            send(createTurnVectorPacket());
+                            send(gamemanager.createTurnVectorPacket(game));
 
                             // We can stop looking.
                             break;
@@ -13618,7 +13290,7 @@ public class Server implements Runnable {
                             // immediately after the attack declaration.
                             game.insertNextTurn(new GameTurn.TriggerBPodTurn(target.getOwnerId(),
                                     target.getId(), weaponName));
-                            send(createTurnVectorPacket());
+                            send(gamemanager.createTurnVectorPacket(game));
 
                             // We can stop looking.
                             break;
@@ -13652,7 +13324,7 @@ public class Server implements Runnable {
                     // If defender is able, add a turn to declare counterattack
                     if (!def.isImmobile()) {
                         game.insertNextTurn(new GameTurn.CounterGrappleTurn(def.getOwnerId(), def.getId()));
-                        send(createTurnVectorPacket());
+                        send(gamemanager.createTurnVectorPacket(game));
                     }
                 }
             }
@@ -13720,7 +13392,7 @@ public class Server implements Runnable {
                 // If we added new hexes, send them to all players.
                 // These are spotlights at night, you know they're there.
                 if (hexesAdded) {
-                    send(createIlluminatedHexesPacket());
+                    send(gamemanager.createIlluminatedHexesPacket(game));
                 }
             }
         }
@@ -13763,27 +13435,6 @@ public class Server implements Runnable {
             send(p);
         }
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     /**
      * Determine which missile attack actions could be affected by AMS, and
@@ -14676,7 +14327,7 @@ public class Server implements Runnable {
             clubType = EquipmentType.get(EquipmentTypeLookup.LIMB_CLUB);
             curHex.addTerrain(Terrains.getTerrainFactory().createTerrain(
                     Terrains.ARMS, curHex.terrainLevel(Terrains.ARMS) - 1));
-            sendChangedHex(entity.getPosition());
+            gamemanager.sendChangedHex(game, entity.getPosition());
             r = new Report(3035);
             r.subject = entity.getId();
             r.addDesc(entity);
@@ -14687,7 +14338,7 @@ public class Server implements Runnable {
             clubType = EquipmentType.get(EquipmentTypeLookup.LIMB_CLUB);
             curHex.addTerrain(Terrains.getTerrainFactory().createTerrain(
                     Terrains.LEGS, curHex.terrainLevel(Terrains.LEGS) - 1));
-            sendChangedHex(entity.getPosition());
+            gamemanager.sendChangedHex(game, entity.getPosition());
             r = new Report(3040);
             r.subject = entity.getId();
             r.addDesc(entity);
@@ -15058,7 +14709,7 @@ public class Server implements Runnable {
                 magma.setTerrainFactor(tf);
             }
         }
-        sendChangedHex(c);
+        gamemanager.sendChangedHex(game, c);
 
         // any attempt to clear an heavy industrial hex may cause an exposion
         checkExplodeIndustrialZone(c, vPhaseReport);
@@ -16713,7 +16364,6 @@ public class Server implements Runnable {
                 r.newlines = 0;
                 reportmanager.addReport(r);
             }
-
         }
 
         // do we hit?
@@ -18025,7 +17675,6 @@ public class Server implements Runnable {
                     DamageType.NONE, false, false, throughFront));
             destroyEntity(ae, "successful attack");
         }
-
     }
 
     /**
@@ -18129,7 +17778,6 @@ public class Server implements Runnable {
             // Resolve the damage.
             resolveRamDamage((IAero) ae, te, toHit, glancing, throughFront);
         }
-
     }
 
     /**
@@ -22904,7 +22552,7 @@ public class Server implements Runnable {
                                                                  Terrains.LEGS,
                                                                  h.terrainLevel(Terrains.LEGS) + 1));
                                 }
-                                sendChangedHex(te.getPosition());
+                                gamemanager.sendChangedHex(game, te.getPosition());
                             }
                         }
 
@@ -24060,7 +23708,7 @@ public class Server implements Runnable {
                 myHex.removeAllTerrains();
                 myHex.clearExits();
 
-                sendChangedHex(myHexCoords);
+                gamemanager.sendChangedHex(game, myHexCoords);
             }
 
             // Lastly, if the next distance is a multiple of 2...
@@ -24208,7 +23856,7 @@ public class Server implements Runnable {
                         }
                     }
 
-                    sendChangedHex(myHexCoords);
+                    gamemanager.sendChangedHex(game, myHexCoords);
                 }
 
                 // Initialize for the next iteration.
@@ -26927,7 +26575,7 @@ public class Server implements Runnable {
                                             hex.terrainLevel(Terrains.LEGS) + 1));
                         }
                     }
-                    sendChangedHex(en.getPosition());
+                    gamemanager.sendChangedHex(game, en.getPosition());
                     return vDesc;
                 } else if ((loc == Mech.LOC_RARM) || (loc == Mech.LOC_LARM)) {
                     CriticalSlot cs = en.getCritical(loc, 0);
@@ -26957,7 +26605,7 @@ public class Server implements Runnable {
                                             hex.terrainLevel(Terrains.ARMS) + 1));
                         }
                     }
-                    sendChangedHex(en.getPosition());
+                    gamemanager.sendChangedHex(game, en.getPosition());
                     return vDesc;
                 } else if (loc == Mech.LOC_HEAD) {
                     // head blown off
@@ -27705,12 +27353,12 @@ public class Server implements Runnable {
                 if (entityHex.terrainLevel(Terrains.ROUGH) < 2) {
                     entityHex.addTerrain(Terrains.getTerrainFactory()
                             .createTerrain(Terrains.ROUGH, 2));
-                    sendChangedHex(curPos);
+                    gamemanager.sendChangedHex(game, curPos);
                 }
             } else if ((entity.getWeight() >= 40) && !entityHex.containsTerrain(Terrains.ROUGH)) {
                 entityHex.addTerrain(Terrains.getTerrainFactory()
                         .createTerrain(Terrains.ROUGH, 1));
-                sendChangedHex(curPos);
+                gamemanager.sendChangedHex(game, curPos);
             }
         }
 
@@ -27736,10 +27384,10 @@ public class Server implements Runnable {
     /**
      * Explodes a piece of equipment on the unit.
      */
-    public Vector<Report> explodeEquipment(Entity en, int loc, Mounted mounted) { 
+    public Vector<Report> explodeEquipment(Entity en, int loc, Mounted mounted) {
         return explodeEquipment(en, loc, mounted, false);
     }
-    
+
     /**
      * Makes a piece of equipment on a mech explode! POW! This expects either
      * ammo, or an explosive weapon. Returns a vector of Report objects.
@@ -28387,7 +28035,7 @@ public class Server implements Runnable {
             if (!swarmer.isDone()) {
                 game.removeTurnFor(swarmer);
                 swarmer.setDone(true);
-                send(createTurnVectorPacket());
+                send(gamemanager.createTurnVectorPacket(game));
             }
         } // End dislodge-infantry
 
@@ -28697,10 +28345,9 @@ public class Server implements Runnable {
         // you can't start fires in some planetary conditions!
         if (null != game.getPlanetaryConditions().cannotStartFire()) {
             if (null != vReport) {
-                Report r = new Report(3007);
+                Report r = new Report(3007, Report.PUBLIC);
                 r.indent(2);
                 r.add(game.getPlanetaryConditions().cannotStartFire());
-                r.type = Report.PUBLIC;
                 vReport.add(r);
             }
             return;
@@ -28708,9 +28355,8 @@ public class Server implements Runnable {
 
         if (!game.getOptions().booleanOption(OptionsConstants.ADVCOMBAT_TACOPS_START_FIRE)) {
             if (null != vReport) {
-                Report r = new Report(3008);
+                Report r = new Report(3008, Report.PUBLIC);
                 r.indent(2);
-                r.type = Report.PUBLIC;
                 vReport.add(r);
             }
             return;
@@ -28721,10 +28367,9 @@ public class Server implements Runnable {
             return;
         }
 
-        Report r = new Report(3005);
+        Report r = new Report(3005, Report.PUBLIC);
         r.indent(2);
         r.add(c.getBoardNum());
-        r.type = Report.PUBLIC;
 
         // Adjust report message for inferno types
         switch (fireLevel) {
@@ -28744,7 +28389,7 @@ public class Server implements Runnable {
             vReport.add(r);
         }
         hex.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.FIRE, fireLevel));
-        sendChangedHex(c);
+        gamemanager.sendChangedHex(game, c);
     }
 
     /**
@@ -28760,7 +28405,7 @@ public class Server implements Runnable {
         }
         hex.removeTerrain(Terrains.FIRE);
         hex.resetFireTurn();
-        sendChangedHex(fireCoords);
+        gamemanager.sendChangedHex(game, fireCoords);
         // fire goes out
         Report r = new Report(5170, Report.PUBLIC);
         r.add(fireCoords.getBoardNum());
@@ -28881,7 +28526,7 @@ public class Server implements Runnable {
             }
 
             // send an entity update to everyone who can see
-            Packet pack = createEntityPacket(nEntityID, movePath);
+            Packet pack = gamemanager.createEntityPacket(game, nEntityID, movePath);
             for (int x = 0; x < vCanSee.size(); x++) {
                 IPlayer p = vCanSee.elementAt(x);
                 send(p.getId(), pack);
@@ -28899,7 +28544,7 @@ public class Server implements Runnable {
             entityUpdateLoadedUnits(eTarget, vCanSee, playersVector);
         } else {
             // But if we're not, then everyone can see.
-            send(createEntityPacket(nEntityID, movePath));
+            send(gamemanager.createEntityPacket(game, nEntityID, movePath));
         }
     }
 
@@ -28920,7 +28565,7 @@ public class Server implements Runnable {
         // so we need to send them.
         for (Entity eLoaded : loader.getLoadedUnits()) {
             // send an entity update to everyone who can see
-            pack = createEntityPacket(eLoaded.getId(), null);
+            pack = gamemanager.createEntityPacket(game, eLoaded.getId(), null);
             for (int x = 0; x < vCanSee.size(); x++) {
                 IPlayer p = vCanSee.elementAt(x);
                 send(p.getId(), pack);
@@ -29068,7 +28713,7 @@ public class Server implements Runnable {
                 }
                 game.addObservers(vCanDetect);
             }
-            }
+        }
 
         return vCanDetect;
     }
@@ -29090,7 +28735,7 @@ public class Server implements Runnable {
         }
 
         // Otherwise, send the full list.
-        send(createEntitiesPacket());
+        send(gamemanager.createEntitiesPacket(game));
     }
 
     /**
@@ -29121,9 +28766,8 @@ public class Server implements Runnable {
             vMyEntities.addAll(vEntities);
             for (Entity a : vMyEntities) {
                 for (Entity b : vMyEntities) {
-                    if (a.isEnemyOf(b)
-                        && Compute.canSee(game, b, a, true, null, allECMInfo)) {
-                        addVisibleEntity(vCanSee, a);
+                    if (a.isEnemyOf(b) && Compute.canSee(game, b, a, true, null, allECMInfo)) {
+                        gamemanager.addVisibleEntity(vCanSee, a);
                         break;
                     }
                 }
@@ -29144,7 +28788,7 @@ public class Server implements Runnable {
         for (Entity e : vEntities) {
             // If it's their own unit, obviously, they can see it.
             if (vMyEntities.contains(e)) {
-                addVisibleEntity(vCanSee, e);
+                gamemanager.addVisibleEntity(vCanSee, e);
                 continue;
             } else if (e.isHidden()) {
                 // If it's NOT friendly and is hidden, they can't see it,
@@ -29168,7 +28812,7 @@ public class Server implements Runnable {
                 }
                 // Otherwise, if they can see the entity in question
                 if (Compute.canSee(game, spotter, e, true, los, allECMInfo)) {
-                    addVisibleEntity(vCanSee, e);
+                    gamemanager.addVisibleEntity(vCanSee, e);
                     break;
                 }
 
@@ -29181,34 +28825,13 @@ public class Server implements Runnable {
                     int ecmRange = e.getECMRange();
                     Coords pos = e.getPosition();
                     if (pos.distance(spotter.getPosition()) <= ecmRange) {
-                        addVisibleEntity(vCanSee, e);
+                        gamemanager.addVisibleEntity(vCanSee, e);
                     }
                 }
             }
         }
 
         return vCanSee;
-    }
-
-    /**
-     * Recursive method to add an <code>Entity</code> and all of its transported
-     * units to the list of units visible to a particular player. It is
-     * important to ensure that if a unit is in the list of visible units then
-     * all of its transported units (and their transported units, and so on) are
-     * also considered visible, otherwise it can lead to issues. This method
-     * also ensures that no duplicate Entities are added.
-     *
-     * @param vCanSee A collection of units that can be see
-     * @param e       An Entity that is seen and needs to be added to the collection
-     *                of seen entities. All of
-     */
-    private void addVisibleEntity(Vector<Entity> vCanSee, Entity e) {
-        if (!vCanSee.contains(e)) {
-            vCanSee.add(e);
-        }
-        for (Entity transported : e.getLoadedUnits()) {
-            addVisibleEntity(vCanSee, transported);
-        }
     }
 
     /**
@@ -29533,7 +29156,7 @@ public class Server implements Runnable {
             }
         }
 
-        send(createAddEntityPacket(entityIds));
+        send(gamemanager.createAddEntityPacket(game, entityIds));
     }
 
     /**
@@ -29568,8 +29191,7 @@ public class Server implements Runnable {
                 entityUpdate(fighter.getId());
             }
         }
-        send(createAddEntityPacket(fs.getId()));
-
+        send(gamemanager.createAddEntityPacket(game, fs.getId()));
     }
 
     /**
@@ -29788,7 +29410,6 @@ public class Server implements Runnable {
         } catch (Exception ex) {
             ex.printStackTrace();
         }
-
     }
 
     /**
@@ -29912,7 +29533,6 @@ public class Server implements Runnable {
         // Load the weapon.
         e.loadWeapon(mWeap, mAmmo);
     }
-    // TODO (Sam): Packet class??? (top to bottom)
 
 
     /**
@@ -30084,15 +29704,14 @@ public class Server implements Runnable {
             IOption originalOption = game.getOptions().getOption(option.getName());
             if (originalOption != null) {
                 if ("maps_include_subdir".equals(originalOption.getName())) {
-                    mapSettings.setBoardsAvailableVector(gamemanager.scanForBoards(new BoardDimensions(
+                    mapSettings.setBoardsAvailableVector(BoardUtilities.scanForBoards(new BoardDimensions(
                             mapSettings.getBoardWidth(), mapSettings.getBoardHeight())));
                     mapSettings.removeUnavailable();
-                    mapSettings.setNullBoards(DEFAULT_BOARD);
+                    mapSettings.setNullBoards(MapSettings.DEFAULT_BOARD);
                     send(createMapSettingsPacket());
                 }
             }
         }
-
     }
 
     /**
@@ -30111,28 +29730,8 @@ public class Server implements Runnable {
         for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
             final IPlayer player = i.nextElement();
 
-            send(connId, createPlayerConnectPacket(player.getId()));
+            send(connId, gamemanager.createPlayerConnectPacket(game, player.getId()));
         }
-    }
-
-    /**
-     * Creates a packet informing that the player has connected
-     */
-    private Packet createPlayerConnectPacket(int playerId) {
-        final Object[] data = new Object[2];
-        data[0] = playerId;
-        data[1] = game.getPlayer(playerId);
-        return new Packet(Packet.COMMAND_PLAYER_ADD, data);
-    }
-
-    /**
-     * Creates a packet containing the player info, for update
-     */
-    private Packet createPlayerUpdatePacket(int playerId) {
-        final Object[] data = new Object[2];
-        data[0] = playerId;
-        data[1] = game.getPlayer(playerId);
-        return new Packet(Packet.COMMAND_PLAYER_UPDATE, data);
     }
 
     /**
@@ -30142,35 +29741,8 @@ public class Server implements Runnable {
         for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
             final IPlayer player = i.nextElement();
 
-            send(createPlayerDonePacket(player.getId()));
+            send(gamemanager.createPlayerDonePacket(game, player.getId()));
         }
-    }
-
-    /**
-     * Creates a packet containing the player ready status
-     */
-    private Packet createPlayerDonePacket(int playerId) {
-        Object[] data = new Object[2];
-        data[0] = playerId;
-        data[1] = game.getPlayer(playerId).isDone();
-        return new Packet(Packet.COMMAND_PLAYER_READY, data);
-    }
-
-    /**
-     * Creates a packet containing the current turn vector
-     */
-    private Packet createTurnVectorPacket() {
-        return new Packet(Packet.COMMAND_SENDING_TURNS, game.getTurnVector());
-    }
-
-    /**
-     * Creates a packet containing the current turn index
-     */
-    private Packet createTurnIndexPacket(int playerId) {
-        final Object[] data = new Object[3];
-        data[0] = game.getTurnIndex();
-        data[1] = playerId;
-        return new Packet(Packet.COMMAND_TURN, data);
     }
 
     /**
@@ -30178,45 +29750,6 @@ public class Server implements Runnable {
      */
     private Packet createMapSettingsPacket() {
         return new Packet(Packet.COMMAND_SENDING_MAP_SETTINGS, mapSettings);
-    }
-
-    private Packet createMapSizesPacket() {
-        Set<BoardDimensions> sizes = gamemanager.getBoardSizes();
-        return new Packet(Packet.COMMAND_SENDING_AVAILABLE_MAP_SIZES, sizes);
-    }
-
-    /**
-     * Creates a packet containing the planetary conditions
-     */
-    private Packet createPlanetaryConditionsPacket() {
-        return new Packet(Packet.COMMAND_SENDING_PLANETARY_CONDITIONS,
-                          game.getPlanetaryConditions());
-    }
-
-    /**
-     * Creates a packet containing the game settings
-     */
-    private Packet createGameSettingsPacket() {
-        return new Packet(Packet.COMMAND_SENDING_GAME_SETTINGS, game.getOptions());
-    }
-
-    /**
-     * Creates a packet containing the game board
-     */
-    private Packet createBoardPacket() {
-        return new Packet(Packet.COMMAND_SENDING_BOARD, game.getBoard());
-    }
-
-    /**
-     * Creates a packet containing a single entity, for update
-     */
-    private Packet createEntityPacket(int entityId, Vector<UnitLocation> movePath) {
-        final Entity entity = game.getEntity(entityId);
-        final Object[] data = new Object[3];
-        data[0] = entityId;
-        data[1] = entity;
-        data[2] = movePath;
-        return new Packet(Packet.COMMAND_ENTITY_UPDATE, data);
     }
 
     /**
@@ -30257,33 +29790,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * Creates a packet containing all current entities
-     */
-    private Packet createEntitiesPacket() {
-        return new Packet(Packet.COMMAND_SENDING_ENTITIES, game.getEntitiesVector());
-    }
-
-    /**
-     * Creates a packet containing all current and out-of-game entities
-     */
-    private Packet createFullEntitiesPacket() {
-        final Object[] data = new Object[2];
-        data[0] = game.getEntitiesVector();
-        data[1] = game.getOutOfGameEntitiesVector();
-        return new Packet(Packet.COMMAND_SENDING_ENTITIES, data);
-    }
-
-    /**
-     * Creates a packet containing all entities visible to the player in a blind
-     * game
-     */
-    private Packet createFilteredEntitiesPacket(IPlayer p, Map<EntityTargetPair,
-            LosEffects> losCache) {
-        return new Packet(Packet.COMMAND_SENDING_ENTITIES,
-                filterEntities(p, game.getEntitiesVector(), losCache));
-    }
-
-    /**
      * Creates a packet containing all entities, including wrecks, visible to
      * the player in a blind game
      */
@@ -30294,26 +29800,6 @@ public class Server implements Runnable {
         return new Packet(Packet.COMMAND_SENDING_ENTITIES, data);
     }
 
-    private Packet createAddEntityPacket(int entityId) {
-        ArrayList<Integer> entityIds = new ArrayList<>(1);
-        entityIds.add(entityId);
-        return createAddEntityPacket(entityIds);
-    }
-
-    /**
-     * Creates a packet detailing the addition of an entity
-     */
-    private Packet createAddEntityPacket(List<Integer> entityIds) {
-        ArrayList<Entity> entities = new ArrayList<>(entityIds.size());
-        for (Integer id : entityIds) {
-            entities.add(game.getEntity(id));
-        }
-        final Object[] data = new Object[2];
-        data[0] = entityIds;
-        data[1] = entities;
-        return new Packet(Packet.COMMAND_ENTITY_ADD, data);
-    }
-    
     /**
      * Creates a packet indicating end of game, including detailed unit status
      */
@@ -30324,119 +29810,6 @@ public class Server implements Runnable {
         array[2] = game.getVictoryTeam();
         return new Packet(Packet.COMMAND_END_OF_GAME, array);
     }
-
-    public void sendSmokeCloudAdded(SmokeCloud cloud) {
-        final Object[] data = new Object[1];
-        data[0] = cloud;
-        send(new Packet(Packet.COMMAND_ADD_SMOKE_CLOUD, data));
-    }
-
-    /**
-     * Sends notification to clients that the specified hex has changed.
-     */
-    public void sendChangedHex(Coords coords) {
-        send(gamemanager.createHexChangePacket(coords, game.getBoard().getHex(coords)));
-    }
-
-    /**
-     * Creates a packet containing a hex, and the coordinates it goes at.
-     */
-    private Packet createHexesChangePacket(Set<Coords> coords, Set<IHex> hex) {
-        final Object[] data = new Object[2];
-        data[0] = coords;
-        data[1] = hex;
-        return new Packet(Packet.COMMAND_CHANGE_HEXES, data);
-    }
-
-    /**
-     * Sends notification to clients that the specified hex has changed.
-     */
-    public void sendChangedHexes(Set<Coords> coords) {
-        Set<IHex> hexes = new LinkedHashSet<>();
-        for (Coords coord : coords) {
-            hexes.add(game.getBoard().getHex(coord));
-        }
-        send(createHexesChangePacket(coords, hexes));
-    }
-
-    /**
-     * Creates a packet containing a vector of mines.
-     */
-    private Packet createMineChangePacket(Coords coords) {
-        return new Packet(Packet.COMMAND_UPDATE_MINEFIELDS, game.getMinefields(coords));
-    }
-
-    /**
-     * Sends notification to clients that the specified hex has changed.
-     */
-    public void sendChangedMines(Coords coords) {
-        send(createMineChangePacket(coords));
-    }
-
-    /**
-     *
-     */
-    private Packet createSpecialHexDisplayPacket(int toPlayer) {
-        Hashtable<Coords, Collection<SpecialHexDisplay>> shdTable = game
-                .getBoard().getSpecialHexDisplayTable();
-        Hashtable<Coords, Collection<SpecialHexDisplay>> shdTable2 = new Hashtable<>();
-        LinkedList<SpecialHexDisplay> tempList;
-        IPlayer player = game.getPlayer(toPlayer);
-        if (player != null) {
-            for (Coords coord : shdTable.keySet()) {
-                tempList = new LinkedList<>();
-                for (SpecialHexDisplay shd : shdTable.get(coord)) {
-                    if (!shd.isObscured(player)) {
-                        tempList.add(0, shd);
-                    }
-                }
-                if (!tempList.isEmpty()) {
-                    shdTable2.put(coord, tempList);
-                }
-            }
-        }
-        return new Packet(Packet.COMMAND_SENDING_SPECIAL_HEX_DISPLAY, shdTable2);
-    }
-
-    private Packet createTagInfoUpdatesPacket() {
-        return new Packet(Packet.COMMAND_SENDING_TAGINFO, game.getTagInfo());
-    }
-
-    /**
-     * Creates a packet containing off board artillery attacks
-     */
-    private Packet createArtilleryPacket(IPlayer p) {
-        Vector<ArtilleryAttackAction> v = new Vector<>();
-        int team = p.getTeam();
-        for (Enumeration<AttackHandler> i = game.getAttacks(); i.hasMoreElements(); ) {
-            WeaponHandler wh = (WeaponHandler) i.nextElement();
-            if (wh.waa instanceof ArtilleryAttackAction) {
-                ArtilleryAttackAction aaa = (ArtilleryAttackAction) wh.waa;
-                if ((aaa.getPlayerId() == p.getId())
-                        || ((team != IPlayer.TEAM_NONE)
-                        && (team == game.getPlayer(aaa.getPlayerId()).getTeam()))
-                        || p.getSeeAll()) {
-                    v.addElement(aaa);
-                }
-            }
-        }
-        return new Packet(Packet.COMMAND_SENDING_ARTILLERYATTACKS, v);
-    }
-
-    private Packet createIlluminatedHexesPacket() {
-        HashSet<Coords> illuminateHexes = game.getIlluminatedPositions();
-        return new Packet(Packet.COMMAND_SENDING_ILLUM_HEXES, illuminateHexes);
-    }
-
-    /**
-     * Creates a packet containing flares
-     */
-    private Packet createFlarePacket() {
-
-        return new Packet(Packet.COMMAND_SENDING_FLARES, game.getFlares());
-    }
-
-
 
     // WOR
     public void send_Nova_Change(int Id, String net) {
@@ -31186,7 +30559,7 @@ public class Server implements Runnable {
             bldg.setCurrentCF(runningCFTotal, coords);
             bldg.setPhaseCF(runningCFTotal, coords);
         }
-        sendChangedHex(coords);
+        gamemanager.sendChangedHex(game, coords);
         Vector<Building> buildings = new Vector<>();
         buildings.add(bldg);
         sendChangedBuildings(buildings);
@@ -31243,11 +30616,11 @@ public class Server implements Runnable {
             if (topFloor && numFloors > 1) {
                 curHex.removeTerrain(Terrains.BLDG_ELEV);
                 curHex.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.BLDG_ELEV, numFloors - 1));
-                sendChangedHex(coords);
+                gamemanager.sendChangedHex(game, coords);
             } else {
                 bldg.setCurrentCF(0, coords);
                 bldg.setPhaseCF(0, coords);
-                send(createCollapseBuildingPacket(coords));
+                send(gamemanager.createCollapseBuildingPacket(coords));
                 game.getBoard().collapseBuilding(coords);
             }
 
@@ -31364,7 +30737,7 @@ public class Server implements Runnable {
             // Update the building.
             bldg.setCurrentCF(0, coords);
             bldg.setPhaseCF(0, coords);
-            send(createCollapseBuildingPacket(coords));
+            send(gamemanager.createCollapseBuildingPacket(coords));
             game.getBoard().collapseBuilding(coords);
         }
         // if more than half of the hexes are gone, collapse all
@@ -31378,40 +30751,6 @@ public class Server implements Runnable {
         }
 
     } // End private void collapseBuilding( Building )
-
-    /**
-     * Tell the clients to replace the given building with rubble hexes.
-     *
-     * @param coords - the <code>Coords</code> that has collapsed.
-     * @return a <code>Packet</code> for the command.
-     */
-    private Packet createCollapseBuildingPacket(Coords coords) {
-        Vector<Coords> coordsV = new Vector<>();
-        coordsV.addElement(coords);
-        return createCollapseBuildingPacket(coordsV);
-    }
-
-    /**
-     * Tell the clients to replace the given building hexes with rubble hexes.
-     *
-     * @param coords - a <code>Vector</code> of <code>Coords</code>s that has
-     *               collapsed.
-     * @return a <code>Packet</code> for the command.
-     */
-    private Packet createCollapseBuildingPacket(Vector<Coords> coords) {
-        return new Packet(Packet.COMMAND_BLDG_COLLAPSE, coords);
-    }
-
-    /**
-     * Tell the clients to update the CFs of the given buildings.
-     *
-     * @param buildings - a <code>Vector</code> of <code>Building</code>s that need to
-     *                  be updated.
-     * @return a <code>Packet</code> for the command.
-     */
-    private Packet createUpdateBuildingPacket(Vector<Building> buildings) {
-        return new Packet(Packet.COMMAND_BLDG_UPDATE, buildings);
-    }
 
     /**
      * Apply this phase's damage to all buildings. Buildings may collapse due to
@@ -31840,7 +31179,7 @@ public class Server implements Runnable {
     }
 
     public void sendChangedBuildings(Vector<Building> buildings) {
-        send(createUpdateBuildingPacket(buildings));
+        send(gamemanager.createUpdateBuildingPacket(buildings));
     }
 
     /**
@@ -32231,7 +31570,7 @@ public class Server implements Runnable {
             //Pilot flight suits are vacuum-rated. MechWarriors wear shorts...
             pilot.setSpaceSuit(entity.isAero());
             game.addEntity(pilot);
-            send(createAddEntityPacket(pilot.getId()));
+            send(gamemanager.createAddEntityPacket(game, pilot.getId()));
             // make him not get a move this turn
             pilot.setDone(true);
             int living = 0;
@@ -32341,7 +31680,7 @@ public class Server implements Runnable {
             // Add Entity to game
             game.addEntity(crew);
             // Tell clients about new entity
-            send(createAddEntityPacket(crew.getId()));
+            send(gamemanager.createAddEntityPacket(game, crew.getId()));
             // Sent entity info to clients
             entityUpdate(crew.getId());
             // Check if the crew lands in a minefield
@@ -32503,7 +31842,7 @@ public class Server implements Runnable {
             // No movement this turn
             pods.setDone(true);
             // Tell clients about new entity
-            send(createAddEntityPacket(pods.getId()));
+            send(gamemanager.createAddEntityPacket(game, pods.getId()));
             // Sent entity info to clients
             entityUpdate(pods.getId());
             if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_EJECTED_PILOTS_FLEE)) {
@@ -32594,7 +31933,7 @@ public class Server implements Runnable {
             // No movement this turn
             crew.setDone(true);
             // Tell clients about new entity
-            send(createAddEntityPacket(crew.getId()));
+            send(gamemanager.createAddEntityPacket(game, crew.getId()));
             // Sent entity info to clients
             entityUpdate(crew.getId());
             // Check if the crew lands in a minefield
@@ -32773,7 +32112,7 @@ public class Server implements Runnable {
                         break;
                     }
                 }
-                send(createAddEntityPacket(guerrilla.getId()));
+                send(gamemanager.createAddEntityPacket(game, guerrilla.getId()));
                 ((Infantry) e).setIsCallingSupport(false);
                 /*
                 // Update the entity
@@ -32836,7 +32175,7 @@ public class Server implements Runnable {
                 pilot.setNextVelocity(entity.getVelocity());
             }
             game.addEntity(pilot);
-            send(createAddEntityPacket(pilot.getId()));
+            send(gamemanager.createAddEntityPacket(game, pilot.getId()));
             // make him not get a move this turn
             pilot.setDone(true);
             // Add the pilot as an infantry unit on the battlefield.
@@ -32865,7 +32204,7 @@ public class Server implements Runnable {
             crew.setDeployed(true);
             crew.setId(game.getNextEntityId());
             game.addEntity(crew);
-            send(createAddEntityPacket(crew.getId()));
+            send(gamemanager.createAddEntityPacket(game, crew.getId()));
             // Make them not get a move this turn
             crew.setDone(true);
             // Place on board
@@ -33137,7 +32476,7 @@ public class Server implements Runnable {
         Vector<Report> vPhaseReport = new Vector<>();
         IHex hex = game.getBoard().getHex(c);
         hex.removeTerrain(Terrains.ICE);
-        sendChangedHex(c);
+        gamemanager.sendChangedHex(game, c);
         // if there is water below the ice
         if (hex.terrainLevel(Terrains.WATER) > 0) {
             // drop entities on the surface into the water
@@ -33175,7 +32514,7 @@ public class Server implements Runnable {
         vDesc.add(r);
         if (hex.containsTerrain(Terrains.SNOW)) {
             hex.removeTerrain(Terrains.SNOW);
-            sendChangedHex(c);
+            gamemanager.sendChangedHex(game, c);
         }
         if (hex.containsTerrain(Terrains.ICE)) {
             vDesc.addAll(resolveIceBroken(c));
@@ -33185,7 +32524,7 @@ public class Server implements Runnable {
             && !hex.containsTerrain(Terrains.WATER)) {
             hex.addTerrain(Terrains.getTerrainFactory().createTerrain(
                     Terrains.MUD, 1));
-            sendChangedHex(c);
+            gamemanager.sendChangedHex(game, c);
         }
         return vDesc;
     }
@@ -33202,7 +32541,7 @@ public class Server implements Runnable {
                 // better find a rope
                 hex.removeTerrain(Terrains.SWAMP);
                 hex.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.SWAMP, 2));
-                sendChangedHex(c);
+                gamemanager.sendChangedHex(game, c);
                 r = new Report(2440);
                 r.indent(1);
                 vDesc.add(r);
@@ -33748,8 +33087,7 @@ public class Server implements Runnable {
                         r.newlines = 1;
                         reportmanager.addReport(r);
                     }
-                }             
-                
+                }
                 
                 // damage the building
                 Vector<Report> buildingReport = damageBuilding(bldg, actualDamage, coords);
@@ -33946,7 +33284,7 @@ public class Server implements Runnable {
                     IHex hex = game.getBoard().getHex(c);
                     hex.addTerrain(Terrains.getTerrainFactory().createTerrain(
                             Terrains.FORTIFIED, 1));
-                    sendChangedHex(c);
+                    gamemanager.sendChangedHex(game, c);
                     // Clear the dig in for any units in same hex, since they
                     // get it for free by fort
                     for (Entity ent2 : game.getEntitiesVector(c)) {
@@ -33959,10 +33297,6 @@ public class Server implements Runnable {
             }
         }
     }
-
-
-
-
 
     /**
      * Loops through all the attacks the game has. Checks if they care about
@@ -34061,8 +33395,6 @@ public class Server implements Runnable {
         game.setAttacksVector(keptAttacks);
     }
 
-
-
     /**
      * create a <code>SmokeCloud</code> object and add it to the server list
      *
@@ -34073,7 +33405,7 @@ public class Server implements Runnable {
     public void createSmoke(Coords coords, int level, int duration) {
         SmokeCloud cloud = new SmokeCloud(coords, level, duration);
         game.addSmokeCloud(cloud);
-        sendSmokeCloudAdded(cloud);
+        gamemanager.sendSmokeCloudAdded(cloud);
     }
 
     /**
@@ -34086,7 +33418,7 @@ public class Server implements Runnable {
     public void createSmoke(ArrayList<Coords> coords, int level, int duration) {
         SmokeCloud cloud = new SmokeCloud(coords, level, duration);
         game.addSmokeCloud(cloud);
-        sendSmokeCloudAdded(cloud);
+        gamemanager.sendSmokeCloudAdded(cloud);
     }
 
     /**
@@ -34110,7 +33442,7 @@ public class Server implements Runnable {
             IHex nextHex = game.getBoard().getHex(coords);
             if ((nextHex != null) && nextHex.containsTerrain(Terrains.SMOKE)) {
                 nextHex.removeTerrain(Terrains.SMOKE);
-                sendChangedHex(coords);
+                gamemanager.sendChangedHex(game, coords);
             }
         }
     }
@@ -34228,9 +33560,23 @@ public class Server implements Runnable {
         game.resetActions();
     }
 
-
-
     public Set<Coords> getHexUpdateSet() {
         return gamemanager.getHexUpdateSet();
+    }
+
+    /**
+     * Creates a packet containing all entities visible to the player in a blind game
+     */
+    private Packet createFilteredEntitiesPacket(IPlayer p, Map<EntityTargetPair, LosEffects> losCache) {
+        return new Packet(Packet.COMMAND_SENDING_ENTITIES,
+                filterEntities(p, game.getEntitiesVector(), losCache));
+    }
+
+    public void sendChangedHex(Coords coords) {
+        gamemanager.sendChangedHex(game, coords);
+    }
+
+    public void sendChangedMines(Coords coords) {
+        gamemanager.sendChangedMines(game, coords);
     }
 }
