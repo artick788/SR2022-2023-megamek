@@ -130,7 +130,7 @@ public abstract class MMRandom {
      * Uses com.sun.java.util.collections.Random
      */
     static class SunRandom extends MMRandom {
-        Random random = new Random();
+        Random random = new Random(1234);
 
         @Override
         public int randomInt(int maxValue) {

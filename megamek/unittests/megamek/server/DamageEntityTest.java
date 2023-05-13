@@ -15,6 +15,8 @@ import java.util.ArrayList;
 import java.io.File;
 import java.util.Vector;
 
+import java.util.Random;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 
@@ -46,7 +48,7 @@ public class DamageEntityTest {
     @Test
     public void testDamageEntity() throws EntityLoadingException, IOException {
         String jsonFile = "TestDamageEntity.json";
-        getJsonTestData(jsonFile);
+        runTestWithJsonData(jsonFile);
     }
 
     public void runTestWithJsonData(String jsonFile) throws IOException, EntityLoadingException {
@@ -77,6 +79,10 @@ public class DamageEntityTest {
         mechFiles.add("data/mechfiles/mechs/3050U/Exterminator EXT-4A.mtf");
         mechFiles.add("data/mechfiles/mechs/3039u/Archer ARC-2K.mtf");
         mechFiles.add("data/mechfiles/mechs/3039u/Centurion CN9-A.mtf");
+        mechFiles.add("data/mechfiles/mechs/3039u/Enforcer ENF-4R.mtf");
+        mechFiles.add("data/mechfiles/mechs/3039u/Griffin GRF-1N.mtf");
+        mechFiles.add("data/mechfiles/mechs/Arano Restoration/Atlas AS7-D-HT.mtf");
+        mechFiles.add("data/mechfiles/mechs/3075/Balius A.mtf");
 
         File f;
         MechFileParser mfp;
