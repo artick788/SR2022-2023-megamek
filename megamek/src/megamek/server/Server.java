@@ -21443,7 +21443,6 @@ public class Server implements Runnable {
         if (!(te instanceof Mech) && !(te instanceof Protomech) && eiStatus) {
             damage += 1;
         }
-
         // check for case on Aeros
         if (te instanceof Aero) {
             Aero a = (Aero) te;
@@ -22884,6 +22883,23 @@ public class Server implements Runnable {
                 damageIS, areaSatArty, throughFront, underWater, nukeS2S);
     }
 
+    /**
+     * Calculates the damage given to a BattleArmor type
+     *
+     * @param te            the target entity
+     * @param hit           the hit data for the location hit
+     * @param damage        the damage to apply
+     * @param ammoExplosion ammo explosion type damage is applied directly to the IS,
+     *                      hurts the pilot, causes auto-ejects, and can blow the unit to
+     *                      smithereens
+     * @param bFrag         The DamageType of the attack.
+     * @param damageIS      Should the target location's internal structure be damaged
+     *                      directly?
+     * @param throughFront  Is the damage coming through the hex the unit is facing?
+     * @param underWater    Is the damage coming from an underwater attack?
+     * @param nukeS2S       is this a ship-to-ship nuke?
+     * @return a <code>Vector</code> of <code>Report</code>s
+     */
     private Vector<Report> damageBattleArmor(Entity te, HitData hit, int damage,
                                              boolean ammoExplosion, DamageType bFrag, boolean damageIS,
                                              boolean throughFront, boolean underWater,
@@ -32426,19 +32442,13 @@ public class Server implements Runnable {
             }
 
             if (autoEject) {
-                r = new Report(6395);
-                r.subject = entity.getId();
-                r.addDesc(entity);
-                r.indent(2);
-                vDesc.addElement(r);
+                vDesc.addElement(ReportFactory.createReport(6395, 2, entity));
             }
 
             // okay, print the info
             PilotingRollData rollTarget = getEjectModifiers(game, entity,
                     entity.getCrew().getCurrentPilotIndex(), autoEject);
-            r = new Report(2180);
-            r.subject = entity.getId();
-            r.addDesc(entity);
+            r = ReportFactory.createReport(2180,1, entity);
             r.add(rollTarget.getLastPlainDesc(), true);
             r.indent();
             vDesc.addElement(r);
@@ -32529,10 +32539,7 @@ public class Server implements Runnable {
                 if (game.getBoard().contains(targetCoords)) {
                     pilot.setPosition(targetCoords);
                     // report safe ejection
-                    r = new Report(6400);
-                    r.subject = entity.getId();
-                    r.indent(3);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6400, 3, entity));
                     // Update the entity
                     entityUpdate(pilot.getId());
                     // check if the pilot lands in a minefield
