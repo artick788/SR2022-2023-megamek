@@ -5,6 +5,7 @@ import megamek.client.ui.swing.util.PlayerColour;
 import megamek.common.*;
 import megamek.common.actions.ArtilleryAttackAction;
 import megamek.common.actions.EntityAction;
+import megamek.common.actions.WeaponAttackAction;
 import megamek.common.net.Packet;
 import megamek.common.options.OptionsConstants;
 import megamek.common.util.BoardUtilities;
@@ -195,6 +196,39 @@ public class GameManager {
 
 
 
+    /**
+     * Reveals a minefield for all players on a team.
+     *
+     * @param team The <code>team</code> whose minefield should be revealed
+     * @param mf   The <code>Minefield</code> to be revealed
+     */
+    public void revealMinefield(Team team, Minefield mf) {
+        Enumeration<IPlayer> players = team.getPlayers();
+        while (players.hasMoreElements()) {
+            IPlayer player = players.nextElement();
+            if (!player.containsMinefield(mf)) {
+                player.addMinefield(mf);
+                send(player.getId(), new Packet(Packet.COMMAND_REVEAL_MINEFIELD, mf));
+            }
+        }
+    }
+
+    /**
+     * Removes the minefield from a player.
+     *
+     * @param player The <code>Player</code> whose minefield should be removed
+     * @param mf     The <code>Minefield</code> to be removed
+     */
+    public void removeMinefield(IPlayer player, Minefield mf) {
+        if (player.containsMinefield(mf)) {
+            player.removeMinefield(mf);
+            send(player.getId(), new Packet(Packet.COMMAND_REMOVE_MINEFIELD, mf));
+        }
+    }
+
+
+
+
 
 
 
@@ -305,6 +339,72 @@ public class GameManager {
                 "You may want to report this error at https://github.com/MegaMek/megamek/issues";
         sendServerChat(message);
     }
+
+    /**
+     * send a packet to the connection tells it load a locally saved game
+     *
+     * @param connId The <code>int</code> connection id to send to
+     * @param sFile  The <code>String</code> filename to use
+     */
+    public void sendLoadGame(int connId, String sFile) {
+        String sFinalFile = sFile;
+        if (!sFinalFile.endsWith(".sav") && !sFinalFile.endsWith(".sav.gz")) {
+            sFinalFile = sFile + ".sav";
+        }
+        if (!sFinalFile.endsWith(".gz")) {
+            sFinalFile = sFinalFile + ".gz";
+        }
+        send(connId, new Packet(Packet.COMMAND_LOAD_SAVEGAME, new Object[]{sFinalFile}));
+    }
+
+    public void sendDominoEffectCFR(Entity e) {
+        send(e.getOwnerId(), new Packet(Packet.COMMAND_CLIENT_FEEDBACK_REQUEST,
+                new Object[] { Packet.COMMAND_CFR_DOMINO_EFFECT, e.getId() }));
+    }
+
+    public void sendAMSAssignCFR(Entity e, Mounted ams, List<WeaponAttackAction> waas) {
+        send(e.getOwnerId(),
+                new Packet(Packet.COMMAND_CLIENT_FEEDBACK_REQUEST,
+                        new Object[] { Packet.COMMAND_CFR_AMS_ASSIGN,
+                                e.getId(), e.getEquipmentNum(ams), waas }));
+    }
+
+    public void sendAPDSAssignCFR(Entity e, List<Integer> apdsDists,
+                                   List<WeaponAttackAction> waas) {
+        send(e.getOwnerId(), new Packet(Packet.COMMAND_CLIENT_FEEDBACK_REQUEST,
+                new Object[] { Packet.COMMAND_CFR_APDS_ASSIGN, e.getId(),
+                        apdsDists, waas }));
+    }
+
+    public void sendPointBlankShotCFR(Entity hidden, Entity target) {
+        // Send attacker/target IDs to PBS Client
+        send(hidden.getOwnerId(),
+                new Packet(Packet.COMMAND_CLIENT_FEEDBACK_REQUEST,
+                        new Object[] { Packet.COMMAND_CFR_HIDDEN_PBS,
+                                hidden.getId(), target.getId() }));
+    }
+
+    public void sendTeleguidedMissileCFR(int playerId, List<Integer> targetIds, List<Integer> toHitValues) {
+        // Send target id numbers and to-hit values to Client
+        send(playerId, new Packet(Packet.COMMAND_CLIENT_FEEDBACK_REQUEST,
+                new Object[] { Packet.COMMAND_CFR_TELEGUIDED_TARGET, targetIds, toHitValues}));
+    }
+
+    public void sendTAGTargetCFR(int playerId, List<Integer> targetIds, List<Integer> targetTypes) {
+        // Send target id numbers and type identifiers to Client
+        send(playerId, new Packet(Packet.COMMAND_CLIENT_FEEDBACK_REQUEST,
+                new Object[] { Packet.COMMAND_CFR_TAG_TARGET, targetIds, targetTypes}));
+    }
+
+
+
+
+
+
+
+
+
+
 
     //////////////////////////////
     // TODO (Sam): Packet (set somewhere else??)
@@ -628,6 +728,8 @@ public class GameManager {
         data[1] = game.getPlayer(playerId);
         return new Packet(Packet.COMMAND_PLAYER_UPDATE, data);
     }
+
+
 
 
 

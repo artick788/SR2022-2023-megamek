@@ -46,7 +46,7 @@ public class LocalLoadGameCommand extends ServerCommand {
             return;
         }
         if (args.length > 1) {
-            server.sendLoadGame(connId, args[1]);
+            server.getGamemanager().sendLoadGame(connId, args[1]);
         } else {
             server.sendServerChat(connId, "you must provide a file name");
         }

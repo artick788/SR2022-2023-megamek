@@ -1629,4 +1629,16 @@ public interface IGame {
     public boolean isPhasePlayable(IGame.Phase phase);
 
     public String saveGame(String sFile);
+
+    public List<Building.DemolitionCharge> getExplodingCharges();
+
+    public void setExplodingCharges(List<Building.DemolitionCharge> explodingCharges);
+
+    public void addExplodingCharge(Building.DemolitionCharge charge);
+
+    public ArrayList<int[]> getScheduledNukes();
+
+    public void setScheduledNukes(ArrayList<int[]> scheduledNukes);
+
+    public void addScheduledNuke(int[] nuke);
 }

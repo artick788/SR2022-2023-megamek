@@ -438,18 +438,6 @@ public class ReportManager {
     }
 
 
-    public void create_report(int report_id, int subject, Entity to_adddesc, int to_add, int newlines) {
-        Report r = new Report(report_id);
-        r.subject = subject;
-
-
-
-        r.addDesc(to_adddesc);
-        addReport(r);
-    }
-
-
-
 
 
 }

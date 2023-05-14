@@ -1564,4 +1564,7 @@ public class MapSettings implements Serializable {
             ex.printStackTrace();
         }
     }
+
+
+
 }

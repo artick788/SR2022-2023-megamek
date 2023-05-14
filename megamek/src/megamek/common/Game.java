@@ -4884,8 +4884,41 @@ public class Game implements Serializable, IGame {
         return sFinalFile;
     }
 
+    public List<Building.DemolitionCharge> getExplodingCharges() {
+        return explodingCharges;
+    }
 
+    public void setExplodingCharges(List<Building.DemolitionCharge> explodingCharges) {
+        this.explodingCharges = explodingCharges;
+    }
 
+    public void addExplodingCharge(Building.DemolitionCharge charge) {
+        this.explodingCharges.add(charge);
+    }
+
+    private List<Building.DemolitionCharge> explodingCharges = new ArrayList<>();
+
+    public ArrayList<int[]> getScheduledNukes() {
+        return scheduledNukes;
+    }
+
+    public void setScheduledNukes(ArrayList<int[]> scheduledNukes) {
+        this.scheduledNukes = scheduledNukes;
+    }
+
+    private ArrayList<int[]> scheduledNukes = new ArrayList<>();
+
+    /**
+     * add a nuke to be exploded in the next weapons attack phase
+     *
+     * @param nuke this is an int[] with i=0 and i=1 being X and Y coordinates respectively,
+     *             If the input array is length 3, then i=2 is NukeType (from HS:3070)
+     *             If the input array is length 6, then i=2 is the base damage dealt,
+     *             i=3 is the degradation, i=4 is the secondary radius, and i=5 is the crater depth
+     */
+    public void addScheduledNuke(int[] nuke) {
+        scheduledNukes.add(nuke);
+    }
 
 
 
