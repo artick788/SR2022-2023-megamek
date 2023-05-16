@@ -865,7 +865,7 @@ public class Server implements Runnable {
                     changeMapsettings(newSettings);
                     resetPlayersDone();
                     transmitAllPlayerDones();
-                    send(createMapSettingsPacket());
+                    send(PacketFactory.createMapSettingsPacket(mapSettings));
                 }
                 break;
             case Packet.COMMAND_SENDING_MAP_DIMENSIONS:
@@ -877,7 +877,7 @@ public class Server implements Runnable {
                     changeMapsettings(newSettings);
                     resetPlayersDone();
                     transmitAllPlayerDones();
-                    send(createMapSettingsPacket());
+                    send(PacketFactory.createMapSettingsPacket(mapSettings));
                 }
                 break;
             case Packet.COMMAND_SENDING_PLANETARY_CONDITIONS:
@@ -1251,23 +1251,23 @@ public class Server implements Runnable {
             send(connId, new Packet(Packet.COMMAND_SENDING_MINEFIELDS, player.getMinefields()));
 
             if (game.getPhase() == Phase.PHASE_LOUNGE) {
-                send(connId, createMapSettingsPacket());
+                send(connId, PacketFactory.createMapSettingsPacket(mapSettings));
                 send(PacketFactory.createMapSizesPacket());
                 // Send Entities *after* the Lounge Phase Change
                 send(connId, new Packet(Packet.COMMAND_PHASE_CHANGE, game.getPhase()));
                 if (game.doBlind()) {
-                    send(connId, createFilteredFullEntitiesPacket(player));
+                    send(connId, PacketFactory.createFilteredFullEntitiesPacket(player, game, gamemanager));
                 } else {
                     send(connId, PacketFactory.createFullEntitiesPacket(game));
                 }
             } else {
                 send(connId, new Packet(Packet.COMMAND_ROUND_UPDATE, game.getRoundCount()));
                 send(connId, PacketFactory.createBoardPacket(game));
-                send(connId, createAllReportsPacket(player));
+                send(connId, PacketFactory.createAllReportsPacket(player, game, reportmanager));
 
                 // Send entities *before* other phase changes.
                 if (game.doBlind()) {
-                    send(connId, createFilteredFullEntitiesPacket(player));
+                    send(connId, PacketFactory.createFilteredFullEntitiesPacket(player, game, gamemanager));
                 } else {
                     send(connId, PacketFactory.createFullEntitiesPacket(game));
                 }
@@ -1646,7 +1646,7 @@ public class Server implements Runnable {
      */
     public void sendEntities(int connId) {
         if (game.doBlind()) {
-            send(connId, createFilteredEntitiesPacket(game.getPlayer(connId), null));
+            send(connId, PacketFactory.createFilteredEntitiesPacket(game.getPlayer(connId), null, game, gamemanager));
         } else {
             send(connId, PacketFactory.createEntitiesPacket(game));
         }
@@ -2387,7 +2387,7 @@ public class Server implements Runnable {
                 mapSettings.setBoardsAvailableVector(BoardUtilities.scanForBoards(new BoardDimensions(
                         mapSettings.getBoardWidth(), mapSettings.getBoardHeight())));
                 mapSettings.setNullBoards(MapSettings.DEFAULT_BOARD);
-                send(createMapSettingsPacket());
+                send(PacketFactory.createMapSettingsPacket(mapSettings));
                 send(PacketFactory.createMapSizesPacket());
                 game.checkForObservers();
                 transmitAllPlayerUpdates();
@@ -2653,8 +2653,8 @@ public class Server implements Runnable {
                 }
             }
                 send(PacketFactory.createFullEntitiesPacket(game));
-                send(createReportPacket(null));
-                send(createEndOfGamePacket());
+                send(PacketFactory.createReportPacket(null, game, reportmanager));
+                send(PacketFactory.createEndOfGamePacket(game, reportmanager));
                 break;
             default:
         }
@@ -6567,8 +6567,8 @@ public class Server implements Runnable {
                         Report.addNewline(reportmanager.getvPhaseReport());
                         // If we aren't at the end, send a special report
                         if ((game.getTurnIndex() + 1) < game.getTurnVector().size()) {
-                            send(e.getOwner().getId(), createSpecialReportPacket());
-                            send(entity.getOwner().getId(), createSpecialReportPacket());
+                            send(e.getOwner().getId(), PacketFactory.createSpecialReportPacket(reportmanager));
+                            send(entity.getOwner().getId(), PacketFactory.createSpecialReportPacket(reportmanager));
                         }
                         entity.setDone(true);
                         entityUpdate(entity.getId(), movePath, true, losCache);
@@ -9103,7 +9103,7 @@ public class Server implements Runnable {
             send(PacketFactory.createTurnVectorPacket(game));
             // let everyone know about what just happened
             if (reportmanager.getvPhaseReport().size() > 1) {
-                send(entity.getOwner().getId(), createSpecialReportPacket());
+                send(entity.getOwner().getId(), PacketFactory.createSpecialReportPacket(reportmanager));
             }
         } else {
             if (entity.getMovementMode() == EntityMovementMode.WIGE) {
@@ -9297,7 +9297,7 @@ public class Server implements Runnable {
 
         // if using double blind, update the player on new units he might see
         if (game.doBlind()) {
-            send(entity.getOwner().getId(), createFilteredEntitiesPacket(entity.getOwner(), losCache));
+            send(entity.getOwner().getId(), PacketFactory.createFilteredEntitiesPacket(entity.getOwner(), losCache, game, gamemanager));
         }
 
         // if we generated a charge attack, report it now
@@ -13554,7 +13554,7 @@ public class Server implements Runnable {
         if (reportmanager.getvPhaseReport().size() > 0 && game.getPhase() == Phase.PHASE_MOVEMENT
                 && (game.getTurnIndex() + 1) < game.getTurnVector().size()) {
             for (Integer playerId : reportPlayers) {
-                send(playerId, createSpecialReportPacket());
+                send(playerId, PacketFactory.createSpecialReportPacket(reportmanager));
             }
         }
     }
@@ -28341,109 +28341,13 @@ public class Server implements Runnable {
             Vector<IPlayer> playersVector = game.getPlayersVector();
             for (int x = 0; x < playersVector.size(); x++) {
                 IPlayer p = playersVector.elementAt(x);
-                send(p.getId(), createFilteredEntitiesPacket(p, null));
+                send(p.getId(), PacketFactory.createFilteredEntitiesPacket(p, null, game, gamemanager));
             }
             return;
         }
 
         // Otherwise, send the full list.
         send(PacketFactory.createEntitiesPacket(game));
-    }
-
-    /**
-     * Filters an entity vector according to LOS
-     */
-    private List<Entity> filterEntities(IPlayer pViewer,
-            List<Entity> vEntities,
-            Map<EntityTargetPair, LosEffects> losCache) {
-        if (losCache == null) {
-            losCache = new HashMap<>();
-        }
-        Vector<Entity> vCanSee = new Vector<>();
-        Vector<Entity> vMyEntities = new Vector<>();
-        boolean bTeamVision = game.getOptions().booleanOption(OptionsConstants.ADVANCED_TEAM_VISION);
-
-        // If they can see all, return the input list
-        if (pViewer.canSeeAll()) {
-            return vEntities;
-        }
-
-        List<ECMInfo> allECMInfo = null;
-        if (game.getOptions().booleanOption(OptionsConstants.ADVANCED_TACOPS_SENSORS)) {
-            allECMInfo = ComputeECM.computeAllEntitiesECMInfo(game.getEntitiesVector());
-        }
-
-        // If they're an observer, they can see anything seen by any enemy.
-        if (pViewer.isObserver()) {
-            vMyEntities.addAll(vEntities);
-            for (Entity a : vMyEntities) {
-                for (Entity b : vMyEntities) {
-                    if (a.isEnemyOf(b) && Compute.canSee(game, b, a, true, null, allECMInfo)) {
-                        gamemanager.addVisibleEntity(vCanSee, a);
-                        break;
-                    }
-                }
-            }
-            return vCanSee;
-        }
-
-        // If they aren't an observer and can't see all, create the list of
-        // "friendly" units.
-        for (Entity e : vEntities) {
-            if ((e.getOwner() == pViewer) || (bTeamVision && !e.getOwner().isEnemyOf(pViewer))) {
-                vMyEntities.addElement(e);
-            }
-        }
-
-        // Then, break down the list by whether they're friendly,
-        // or whether or not any friendly unit can see them.
-        for (Entity e : vEntities) {
-            // If it's their own unit, obviously, they can see it.
-            if (vMyEntities.contains(e)) {
-                gamemanager.addVisibleEntity(vCanSee, e);
-                continue;
-            } else if (e.isHidden()) {
-                // If it's NOT friendly and is hidden, they can't see it,
-                // period.
-                // LOS doesn't matter.
-                continue;
-            }
-            for (Entity spotter : vMyEntities) {
-
-                // If they're off-board, skip it; they can't see anything.
-                if (spotter.isOffBoard()) {
-                    continue;
-                }
-
-                // See if the LosEffects is cached, and if not cache it
-                EntityTargetPair etp = new EntityTargetPair(spotter, e);
-                LosEffects los = losCache.get(etp);
-                if (los == null) {
-                    los = LosEffects.calculateLos(game, spotter.getId(), e);
-                    losCache.put(etp, los);
-                }
-                // Otherwise, if they can see the entity in question
-                if (Compute.canSee(game, spotter, e, true, los, allECMInfo)) {
-                    gamemanager.addVisibleEntity(vCanSee, e);
-                    break;
-                }
-
-                // If this unit has ECM, players with units affected by the ECM
-                //  will need to know about this entity, even if they can't see
-                //  it.  Otherwise, the client can't properly report things
-                //  like to-hits.
-                if ((e.getECMRange() > 0) && (e.getPosition() != null) &&
-                    (spotter.getPosition() != null)) {
-                    int ecmRange = e.getECMRange();
-                    Coords pos = e.getPosition();
-                    if (pos.distance(spotter.getPosition()) <= ecmRange) {
-                        gamemanager.addVisibleEntity(vCanSee, e);
-                    }
-                }
-            }
-        }
-
-        return vCanSee;
     }
 
     /**
@@ -29303,7 +29207,7 @@ public class Server implements Runnable {
                             mapSettings.getBoardWidth(), mapSettings.getBoardHeight())));
                     mapSettings.removeUnavailable();
                     mapSettings.setNullBoards(MapSettings.DEFAULT_BOARD);
-                    send(createMapSettingsPacket());
+                    send(PacketFactory.createMapSettingsPacket(mapSettings));
                 }
             }
         }
@@ -29340,72 +29244,6 @@ public class Server implements Runnable {
         }
     }
 
-    /**
-     * Creates a packet containing the map settings
-     */
-    private Packet createMapSettingsPacket() {
-        return new Packet(Packet.COMMAND_SENDING_MAP_SETTINGS, mapSettings);
-    }
-
-    /**
-     * Creates a packet containing a Vector of Reports
-     */
-    private Packet createReportPacket(IPlayer p) {
-        // When the final report is created, MM sends a null player to create
-        // the
-        // report. This will handle that issue.
-        if ((p == null) || !game.doBlind()) {
-            return new Packet(Packet.COMMAND_SENDING_REPORTS, reportmanager.getvPhaseReport());
-        }
-        return new Packet(Packet.COMMAND_SENDING_REPORTS, reportmanager.filterReportVector(game, reportmanager.getvPhaseReport(), p));
-    }
-
-    /**
-     * Creates a packet containing a Vector of special Reports which needs to be
-     * sent during a phase that is not a report phase.
-     */
-    private Packet createSpecialReportPacket() {
-        return new Packet(Packet.COMMAND_SENDING_REPORTS_SPECIAL, reportmanager.getvPhaseReport().clone());
-    }
-
-    /**
-     * Creates a packet containing a Vector of Reports that represent a Tactical
-     * Genius re-roll request which needs to update a current phase's report.
-     */
-    private Packet createTacticalGeniusReportPacket() {
-        return new Packet(Packet.COMMAND_SENDING_REPORTS_TACTICAL_GENIUS, reportmanager.getvPhaseReport().clone());
-    }
-
-    /**
-     * Creates a packet containing all the round reports
-     */
-    private Packet createAllReportsPacket(IPlayer p) {
-        return new Packet(Packet.COMMAND_SENDING_REPORTS_ALL,
-                reportmanager.filterPastReports(game, game.getAllReports(), p));
-    }
-
-    /**
-     * Creates a packet containing all entities, including wrecks, visible to
-     * the player in a blind game
-     */
-    private Packet createFilteredFullEntitiesPacket(IPlayer p) {
-        final Object[] data = new Object[2];
-        data[0] = filterEntities(p, game.getEntitiesVector(), null);
-        data[1] = game.getOutOfGameEntitiesVector();
-        return new Packet(Packet.COMMAND_SENDING_ENTITIES, data);
-    }
-
-    /**
-     * Creates a packet indicating end of game, including detailed unit status
-     */
-    private Packet createEndOfGamePacket() {
-        Object[] array = new Object[3];
-        array[0] = reportmanager.getDetailedVictoryReport(game);
-        array[1] = game.getVictoryPlayerId();
-        array[2] = game.getVictoryTeam();
-        return new Packet(Packet.COMMAND_END_OF_GAME, array);
-    }
-
     // WOR
     public void send_Nova_Change(int Id, String net) {
         Object[] data = {Id, net};
@@ -29430,9 +29268,9 @@ public class Server implements Runnable {
             IPlayer p = game.getPlayer(conn.getId());
             Packet packet;
             if (tacticalGeniusReport) {
-                packet = createTacticalGeniusReportPacket();
+                packet = PacketFactory.createTacticalGeniusReportPacket(reportmanager);
             } else {
-                packet = createReportPacket(p);
+                packet = PacketFactory.createReportPacket(p, game, reportmanager);
             }
             conn.send(packet);
         }
@@ -33086,14 +32924,6 @@ public class Server implements Runnable {
 
     public Set<Coords> getHexUpdateSet() {
         return gamemanager.getHexUpdateSet();
-    }
-
-    /**
-     * Creates a packet containing all entities visible to the player in a blind game
-     */
-    private Packet createFilteredEntitiesPacket(IPlayer p, Map<EntityTargetPair, LosEffects> losCache) {
-        return new Packet(Packet.COMMAND_SENDING_ENTITIES,
-                filterEntities(p, game.getEntitiesVector(), losCache));
     }
 
     public void sendChangedHex(Coords coords) {

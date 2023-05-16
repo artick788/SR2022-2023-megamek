@@ -4,6 +4,7 @@ import megamek.common.*;
 import megamek.common.actions.ArtilleryAttackAction;
 import megamek.common.actions.EntityAction;
 import megamek.common.net.Packet;
+import megamek.common.options.OptionsConstants;
 import megamek.common.util.BoardUtilities;
 import megamek.common.weapons.AttackHandler;
 import megamek.common.weapons.WeaponHandler;
@@ -326,5 +327,174 @@ public class PacketFactory {
         data[0] = playerId;
         data[1] = game.getPlayer(playerId);
         return new Packet(Packet.COMMAND_PLAYER_UPDATE, data);
+    }
+
+    /**
+     * Creates a packet containing the map settings
+     */
+    static public Packet createMapSettingsPacket(MapSettings mapSettings) {
+        return new Packet(Packet.COMMAND_SENDING_MAP_SETTINGS, mapSettings);
+    }
+
+    /**
+     * Creates a packet containing a Vector of Reports
+     */
+    static public Packet createReportPacket(IPlayer p, IGame game, ReportManager reportManager) {
+        // When the final report is created, MM sends a null player to create
+        // the report. This will handle that issue.
+        if ((p == null) || !game.doBlind()) {
+            return new Packet(Packet.COMMAND_SENDING_REPORTS, reportManager.getvPhaseReport());
+        }
+        return new Packet(Packet.COMMAND_SENDING_REPORTS, reportManager.filterReportVector(game, reportManager.getvPhaseReport(), p));
+    }
+
+    /**
+     * Creates a packet containing a Vector of special Reports which needs to be
+     * sent during a phase that is not a report phase.
+     */
+    static public Packet createSpecialReportPacket(ReportManager reportManager) {
+        return new Packet(Packet.COMMAND_SENDING_REPORTS_SPECIAL, reportManager.getvPhaseReport().clone());
+    }
+
+    /**
+     * Creates a packet containing a Vector of Reports that represent a Tactical
+     * Genius re-roll request which needs to update a current phase's report.
+     */
+    static public Packet createTacticalGeniusReportPacket(ReportManager reportManager) {
+        return new Packet(Packet.COMMAND_SENDING_REPORTS_TACTICAL_GENIUS, reportManager.getvPhaseReport().clone());
+    }
+
+    /**
+     * Creates a packet containing all the round reports
+     */
+    static public Packet createAllReportsPacket(IPlayer p, IGame game, ReportManager reportManager) {
+        return new Packet(Packet.COMMAND_SENDING_REPORTS_ALL,
+                reportManager.filterPastReports(game, game.getAllReports(), p));
+    }
+
+    /**
+     * Creates a packet containing all entities, including wrecks, visible to
+     * the player in a blind game
+     */
+    static public Packet createFilteredFullEntitiesPacket(IPlayer p, IGame game, GameManager gameManager) {
+        final Object[] data = new Object[2];
+        data[0] = filterEntities(p, game.getEntitiesVector(), null, game, gameManager);
+        data[1] = game.getOutOfGameEntitiesVector();
+        return new Packet(Packet.COMMAND_SENDING_ENTITIES, data);
+    }
+
+    /**
+     * Creates a packet containing all entities visible to the player in a blind game
+     */
+    static public Packet createFilteredEntitiesPacket(IPlayer p, Map<EntityTargetPair, LosEffects> losCache, IGame game, GameManager gameManager) {
+        return new Packet(Packet.COMMAND_SENDING_ENTITIES,
+                filterEntities(p, game.getEntitiesVector(), losCache, game, gameManager));
+    }
+
+    /**
+     * Creates a packet indicating end of game, including detailed unit status
+     */
+    static public Packet createEndOfGamePacket(IGame game, ReportManager reportManager) {
+        Object[] array = new Object[3];
+        array[0] = reportManager.getDetailedVictoryReport(game);
+        array[1] = game.getVictoryPlayerId();
+        array[2] = game.getVictoryTeam();
+        return new Packet(Packet.COMMAND_END_OF_GAME, array);
+    }
+
+    /**
+     * Filters an entity vector according to LOS
+     */
+    static private List<Entity> filterEntities(IPlayer pViewer,
+                                        List<Entity> vEntities,
+                                        Map<EntityTargetPair, LosEffects> losCache, IGame game, GameManager gameManager) {
+        if (losCache == null) {
+            losCache = new HashMap<>();
+        }
+        Vector<Entity> vCanSee = new Vector<>();
+        Vector<Entity> vMyEntities = new Vector<>();
+        boolean bTeamVision = game.getOptions().booleanOption(OptionsConstants.ADVANCED_TEAM_VISION);
+
+        // If they can see all, return the input list
+        if (pViewer.canSeeAll()) {
+            return vEntities;
+        }
+
+        List<ECMInfo> allECMInfo = null;
+        if (game.getOptions().booleanOption(OptionsConstants.ADVANCED_TACOPS_SENSORS)) {
+            allECMInfo = ComputeECM.computeAllEntitiesECMInfo(game.getEntitiesVector());
+        }
+
+        // If they're an observer, they can see anything seen by any enemy.
+        if (pViewer.isObserver()) {
+            vMyEntities.addAll(vEntities);
+            for (Entity a : vMyEntities) {
+                for (Entity b : vMyEntities) {
+                    if (a.isEnemyOf(b) && Compute.canSee(game, b, a, true, null, allECMInfo)) {
+                        gameManager.addVisibleEntity(vCanSee, a);
+                        break;
+                    }
+                }
+            }
+            return vCanSee;
+        }
+
+        // If they aren't an observer and can't see all, create the list of
+        // "friendly" units.
+        for (Entity e : vEntities) {
+            if ((e.getOwner() == pViewer) || (bTeamVision && !e.getOwner().isEnemyOf(pViewer))) {
+                vMyEntities.addElement(e);
+            }
+        }
+
+        // Then, break down the list by whether they're friendly,
+        // or whether or not any friendly unit can see them.
+        for (Entity e : vEntities) {
+            // If it's their own unit, obviously, they can see it.
+            if (vMyEntities.contains(e)) {
+                gameManager.addVisibleEntity(vCanSee, e);
+                continue;
+            } else if (e.isHidden()) {
+                // If it's NOT friendly and is hidden, they can't see it,
+                // period.
+                // LOS doesn't matter.
+                continue;
+            }
+            for (Entity spotter : vMyEntities) {
+
+                // If they're off-board, skip it; they can't see anything.
+                if (spotter.isOffBoard()) {
+                    continue;
+                }
+
+                // See if the LosEffects is cached, and if not cache it
+                EntityTargetPair etp = new EntityTargetPair(spotter, e);
+                LosEffects los = losCache.get(etp);
+                if (los == null) {
+                    los = LosEffects.calculateLos(game, spotter.getId(), e);
+                    losCache.put(etp, los);
+                }
+                // Otherwise, if they can see the entity in question
+                if (Compute.canSee(game, spotter, e, true, los, allECMInfo)) {
+                    gameManager.addVisibleEntity(vCanSee, e);
+                    break;
+                }
+
+                // If this unit has ECM, players with units affected by the ECM
+                //  will need to know about this entity, even if they can't see
+                //  it.  Otherwise, the client can't properly report things
+                //  like to-hits.
+                if ((e.getECMRange() > 0) && (e.getPosition() != null) &&
+                        (spotter.getPosition() != null)) {
+                    int ecmRange = e.getECMRange();
+                    Coords pos = e.getPosition();
+                    if (pos.distance(spotter.getPosition()) <= ecmRange) {
+                        gameManager.addVisibleEntity(vCanSee, e);
+                    }
+                }
+            }
+        }
+
+        return vCanSee;
     }
 }
