@@ -255,7 +255,7 @@ public class LRMSwarmHandler extends LRMHandler {
             if (entityTarget != null) {
                 handleEntityDamage(entityTarget, vPhaseReport, bldg, hits,
                         nCluster, bldgAbsorbs);
-                server.creditKill(entityTarget, ae);
+                server.getGame().creditKill(entityTarget, ae);
                 hits -= nCluster;
                 firstHit = false;
             }

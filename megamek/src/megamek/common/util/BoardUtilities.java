@@ -16,28 +16,13 @@
 
 package megamek.common.util;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.ListIterator;
-import java.util.Map;
+import java.io.File;
+import java.util.*;
 
+import megamek.MegaMek;
 import megamek.client.bot.princess.CardinalEdge;
-import megamek.common.Board;
-import megamek.common.Compute;
-import megamek.common.Coords;
-import megamek.common.Entity;
-import megamek.common.Hex;
-import megamek.common.IBoard;
-import megamek.common.IHex;
-import megamek.common.ITerrain;
-import megamek.common.ITerrainFactory;
-import megamek.common.MapSettings;
-import megamek.common.OffBoardDirection;
-import megamek.common.PlanetaryConditions;
-import megamek.common.Terrains;
+import megamek.common.*;
+import megamek.common.util.fileUtils.MegaMekFile;
 import megamek.common.util.generator.ElevationGenerator;
 import megamek.common.util.generator.SimplexGenerator;
 
@@ -1680,6 +1665,146 @@ public class BoardUtilities {
         // in case of tie, vertical distance wins over horizontal distance
         CardinalEdge closestEdge = getClosestEdge(entity);
         return CardinalEdge.getOppositeEdge(closestEdge);
+    }
+
+    /**
+     * Scans the boards directory for map boards of the appropriate size and
+     * returns them.
+     *
+     * @return A list of relative paths to the board files, without the '.board'
+     * extension.
+     */
+    public static List<String> scanForBoardsInDir(final File boardDir, final String basePath,
+                                            final BoardDimensions dimensions, List<String> boards) {
+        if (boardDir == null) {
+            throw new IllegalArgumentException("must provide searchDir");
+        } else if (basePath == null) {
+            throw new IllegalArgumentException("must provide basePath");
+        } else if (dimensions == null) {
+            throw new IllegalArgumentException("must provide dimensions");
+        } else if (boards == null) {
+            throw new IllegalArgumentException("must provide boards");
+        }
+
+        String[] fileList = boardDir.list();
+        if (fileList != null) {
+            for (String filename : fileList) {
+                File filePath = new MegaMekFile(boardDir, filename).getFile();
+                if (filePath.isDirectory()) {
+                    scanForBoardsInDir(new MegaMekFile(boardDir, filename).getFile(),
+                            basePath.concat(File.separator).concat(filename), dimensions, boards);
+                } else {
+                    if (filename.endsWith(".board")) { //$NON-NLS-1$
+                        if (Board.boardIsSize(filePath, dimensions)) {
+                            boards.add(basePath.concat(File.separator)
+                                    .concat(filename.substring(0, filename.lastIndexOf("."))));
+                        }
+                    }
+                }
+            }
+        }
+        return boards;
+    }
+
+    /**
+     * Scan for map boards with the specified dimensions.
+     *
+     * @param dimensions The desired board dimensions.
+     * @return A list of path names, minus the '.board' extension, relative to
+     * the boards data directory.
+     */
+    public static ArrayList<String> scanForBoards(final BoardDimensions dimensions) {
+        ArrayList<String> boards = new ArrayList<>();
+
+        File boardDir = Configuration.boardsDir();
+        boards.add(MapSettings.BOARD_GENERATED);
+        // just a check...
+        if (!boardDir.isDirectory()) {
+            return boards;
+        }
+
+        // scan files
+        List<String> tempList = new ArrayList<>();
+        Comparator<String> sortComp = StringUtil.stringComparator();
+        BoardUtilities.scanForBoardsInDir(boardDir, "", dimensions, tempList);
+        // Check boards in userData dir
+        boardDir = new File(Configuration.userdataDir(), Configuration.boardsDir().toString());
+        if (boardDir.isDirectory()) {
+            BoardUtilities.scanForBoardsInDir(boardDir, "", dimensions, tempList);
+        }
+        // if there are any boards, add these:
+        if (tempList.size() > 0) {
+            boards.add(MapSettings.BOARD_RANDOM);
+            boards.add(MapSettings.BOARD_SURPRISE);
+            tempList.sort(sortComp);
+            boards.addAll(tempList);
+        }
+
+        return boards;
+    }
+
+    /**
+     * Get a list of the available board sizes from the boards data directory.
+     *
+     * @return A Set containing all the available board sizes.
+     */
+    public static Set<BoardDimensions> getBoardSizes() {
+        TreeSet<BoardDimensions> board_sizes = new TreeSet<>();
+
+        File boards_dir = Configuration.boardsDir();
+        // Slightly overkill sanity check...
+        if (boards_dir.isDirectory()) {
+            getBoardSizesInDir(boards_dir, board_sizes);
+        }
+        boards_dir = new File(Configuration.userdataDir(), Configuration.boardsDir().toString());
+        if (boards_dir.isDirectory()) {
+            getBoardSizesInDir(boards_dir, board_sizes);
+        }
+
+        return board_sizes;
+    }
+
+    // TODO (Sam): set this in a board class somewhere
+    /**
+     * Recursively scan the specified path to determine the board sizes
+     * available.
+     *
+     * @param searchDir The directory to search below this path (may be null for all
+     *                  in base path).
+     * @param sizes     Where to store the discovered board sizes
+     */
+    public static void getBoardSizesInDir(final File searchDir, TreeSet<BoardDimensions> sizes) {
+        if (searchDir == null) {
+            throw new IllegalArgumentException("must provide searchDir");
+        }
+
+        if (sizes == null) {
+            throw new IllegalArgumentException("must provide sizes");
+        }
+
+        String[] file_list = searchDir.list();
+
+        if (file_list != null) {
+            for (String filename : file_list) {
+                File query_file = new File(searchDir, filename);
+
+                if (query_file.isDirectory()) {
+                    getBoardSizesInDir(query_file, sizes);
+                } else {
+                    try {
+                        if (filename.endsWith(".board")) { //$NON-NLS-1$
+                            BoardDimensions size = Board.getSize(query_file);
+                            if (size == null) {
+                                throw new Exception();
+                            }
+                            sizes.add(Board.getSize(query_file));
+                        }
+                    } catch (Exception e) {
+                        MegaMek.getLogger().error("Error parsing board: " + query_file.getAbsolutePath(), e);
+                    }
+                }
+            }
+        }
     }
 
     protected static class Point {

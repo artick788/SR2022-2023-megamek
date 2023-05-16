@@ -61,7 +61,7 @@ public class NukeCommand extends ServerCommand {
                     server.sendServerChat(connId, "Specified hex is not on the board.");
                     return;
                 }
-                server.addScheduledNuke(nuke);
+                server.getGame().addScheduledNuke(nuke);
                 server.sendServerChat(connId, "A nuke is incoming!  Take cover!");
             } catch (Exception e) {
                 server.sendServerChat(connId, "Nuke command failed (1).  Proper format is \"/nuke <x> <y> <type>\" or \"/nuke <x> <y> <damage> <degredation> <secondary radius> <craterdepth>\" where type is 0-4 (0: Davy-Crockett-I, 1: Davy-Crockett-M, 2: Alamo, 3: Santa Ana, 4: Peacemaker) and hex x,y is x=column number and y=row number (hex 0923 would be x=9 and y=23)");
@@ -78,7 +78,7 @@ public class NukeCommand extends ServerCommand {
                     server.sendServerChat(connId, "Specified hex is not on the board.");
                     return;
                 }
-                server.addScheduledNuke(nuke);
+                server.getGame().addScheduledNuke(nuke);
                 server.sendServerChat(connId, "A nuke is incoming!  Take cover!");
             } catch (Exception e) {
                 server.sendServerChat(connId, "Nuke command failed (2).  Proper format is \"/nuke <x> <y> <type>\" or \"/nuke <x> <y> <damage> <degredation> <secondary radius> <craterdepth>\"");

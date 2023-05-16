@@ -15,7 +15,8 @@
 
 package megamek.common;
 
-import java.io.Serializable;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -29,7 +30,9 @@ import java.util.UUID;
 import java.util.Set;
 import java.util.Vector;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.zip.GZIPOutputStream;
 
+import com.thoughtworks.xstream.XStream;
 import megamek.MegaMek;
 import megamek.client.ui.swing.util.PlayerColour;
 import megamek.common.GameTurn.SpecificEntityTurn;
@@ -54,6 +57,7 @@ import megamek.common.options.GameOptions;
 import megamek.common.options.OptionsConstants;
 import megamek.common.weapons.AttackHandler;
 import megamek.common.weapons.Weapon;
+import megamek.common.weapons.WeaponHandler;
 import megamek.server.SmokeCloud;
 import megamek.server.victory.Victory;
 
@@ -4600,6 +4604,321 @@ public class Game implements Serializable, IGame {
         removeDeadAttacks();
     }
 
+    /**
+     * Checks each player to see if he has no entities, and if true, sets the
+     * observer flag for that player. An exception is that there are no
+     * observers during the lounge phase.
+     */
+    public void checkForObservers() {
+        for (Enumeration<IPlayer> e = getPlayers(); e.hasMoreElements(); ) {
+            IPlayer p = e.nextElement();
+            p.setObserver((getEntitiesOwnedBy(p) < 1)
+                    && (getPhase() != IGame.Phase.PHASE_LOUNGE));
+        }
+    }
+
+    /**
+     * Adds teammates of a player to the Vector. Utility function for whoCanSee.
+     */
+    public void addTeammates(Vector<IPlayer> vector, IPlayer player) {
+        Vector<IPlayer> playersVector = getPlayersVector();
+        for (int j = 0; j < playersVector.size(); j++) {
+            IPlayer p = playersVector.elementAt(j);
+            if (!player.isEnemyOf(p) && !vector.contains(p)) {
+                vector.addElement(p);
+            }
+        }
+    }
+
+    /**
+     * Adds observers to the Vector. Utility function for whoCanSee.
+     */
+    public void addObservers(Vector<IPlayer> vector) {
+        Vector<IPlayer> playersVector = getPlayersVector();
+        for (int j = 0; j < playersVector.size(); j++) {
+            IPlayer p = playersVector.elementAt(j);
+            if (p.isObserver() && !vector.contains(p)) {
+                vector.addElement(p);
+            }
+        }
+    }
+
+    /**
+     * Convenience method for computing a mapping of which Coords are
+     * "protected" by an APDS. Protection implies that the coords is within the
+     * range/arc of an active APDS.
+     *
+     * @return
+     */
+    public Hashtable<Coords, List<Mounted>> getAPDSProtectedCoords() {
+        // Get all of the coords that would be protected by APDS
+        Hashtable<Coords, List<Mounted>> apdsCoords = new Hashtable<>();
+        for (Entity e : getEntitiesVector()) {
+            // Ignore Entitys without positions
+            if (e.getPosition() == null) {
+                continue;
+            }
+            Coords origPos = e.getPosition();
+            for (Mounted ams : e.getActiveAMS()) {
+                // Ignore non-APDS AMS
+                if (!ams.isAPDS()) {
+                    continue;
+                }
+                // Add the current hex as a defended location
+                List<Mounted> apdsList = apdsCoords.computeIfAbsent(origPos, k -> new ArrayList<>());
+                apdsList.add(ams);
+                // Add each coords that is within arc/range as protected
+                int maxDist = 3;
+                if (e instanceof BattleArmor) {
+                    int numTroopers = ((BattleArmor) e)
+                            .getNumberActiverTroopers();
+                    switch (numTroopers) {
+                        case 1:
+                            maxDist = 1;
+                            break;
+                        case 2:
+                        case 3:
+                            maxDist = 2;
+                            break;
+                        // Anything above is the same as the default
+                    }
+                }
+                for (int dist = 1; dist <= maxDist; dist++) {
+                    List<Coords> coords = e.getPosition().allAtDistance(dist);
+                    for (Coords pos : coords) {
+                        // Check that we're in the right arc
+                        if (Compute.isInArc(this, e.getId(), e.getEquipmentNum(ams),
+                                new HexTarget(pos, getBoard(), HexTarget.TYPE_HEX_CLEAR))) {
+                            apdsList = apdsCoords.computeIfAbsent(pos, k -> new ArrayList<>());
+                            apdsList.add(ams);
+                        }
+                    }
+                }
+
+            }
+        }
+        return apdsCoords;
+    }
+
+    /**
+     * For all current artillery attacks in the air from this entity with this
+     * weapon, clear the list of spotters. Needed because firing another round
+     * before first lands voids spotting.
+     *
+     * @param entityID the <code>int</code> id of the entity
+     * @param weaponID the <code>int</code> id of the weapon
+     */
+    public void clearArtillerySpotters(int entityID, int weaponID) {
+        for (Enumeration<AttackHandler> i = getAttacks(); i.hasMoreElements(); ) {
+            WeaponHandler wh = (WeaponHandler) i.nextElement();
+            if ((wh.waa instanceof ArtilleryAttackAction)
+                    && (wh.waa.getEntityId() == entityID)
+                    && (wh.waa.getWeaponId() == weaponID)) {
+                ArtilleryAttackAction aaa = (ArtilleryAttackAction) wh.waa;
+                aaa.setSpotterIds(null);
+            }
+        }
+    }
+
+    /**
+     * Credits a Kill for an entity, if the target got killed.
+     *
+     * @param target   The <code>Entity</code> that got killed.
+     * @param attacker The <code>Entity</code> that did the killing.
+     */
+    public void creditKill(Entity target, Entity attacker) {
+        // Kills should be credited for each individual fighter, instead of the
+        // squadron
+        if (target instanceof FighterSquadron) {
+            return;
+        }
+        // If a squadron scores a kill, assign it randomly to one of the member fighters
+        if (attacker instanceof FighterSquadron) {
+            Entity killer = attacker.getLoadedUnits().get(Compute.randomInt(attacker.getLoadedUnits().size()));
+            if (killer != null) {
+                attacker = killer;
+            }
+        }
+        if ((target.isDoomed() || target.getCrew().isDoomed())
+                && !target.getGaveKillCredit() && (attacker != null)) {
+            attacker.addKill(target);
+        }
+    }
+
+    public Vector<GameTurn> checkTurnOrderStranded(TurnVectors team_order) {
+        Vector<GameTurn> turns = new Vector<>(team_order.getTotalTurns()  + team_order.getEvenTurns());
+        // Stranded units only during movement phases, rebuild the turns vector
+        if (getPhase() == IGame.Phase.PHASE_MOVEMENT) {
+            // See if there are any loaded units stranded on immobile transports.
+            Iterator<Entity> strandedUnits = getSelectedEntities(
+                    entity -> isEntityStranded(entity));
+            if (strandedUnits.hasNext()) {
+                // Add a game turn to unload stranded units, if this
+                // is the movement phase.
+                turns = new Vector<>(team_order.getTotalTurns()
+                        + team_order.getEvenTurns() + 1);
+                turns.addElement(new GameTurn.UnloadStrandedTurn(strandedUnits));
+            }
+        }
+        return turns;
+    }
+
+    /**
+     * Skip offboard phase, if there is no homing / semiguided ammo in play
+     */
+    public boolean isOffboardPlayable() {
+        if (!hasMoreTurns()) {
+            return false;
+        }
+
+        for (Iterator<Entity> e = getEntities(); e.hasNext();) {
+            Entity entity = e.next();
+            for (Mounted mounted : entity.getAmmo()) {
+                AmmoType ammoType = (AmmoType) mounted.getType();
+
+                // per errata, TAG will spot for LRMs and such
+                if ((ammoType.getAmmoType() == AmmoType.T_LRM)
+                        || (ammoType.getAmmoType() == AmmoType.T_LRM_IMP)
+                        || (ammoType.getAmmoType() == AmmoType.T_MML)
+                        || (ammoType.getAmmoType() == AmmoType.T_NLRM)
+                        || (ammoType.getAmmoType() == AmmoType.T_MEK_MORTAR)) {
+                    return true;
+                }
+
+                if (((ammoType.getAmmoType() == AmmoType.T_ARROW_IV)
+                        || (ammoType.getAmmoType() == AmmoType.T_LONG_TOM)
+                        || (ammoType.getAmmoType() == AmmoType.T_SNIPER)
+                        || (ammoType.getAmmoType() == AmmoType.T_THUMPER))
+                        && (ammoType.getMunitionType() == AmmoType.M_HOMING)) {
+                    return true;
+                }
+            }
+
+            for (Mounted b : entity.getBombs()) {
+                if (!b.isDestroyed() && (b.getUsableShotsLeft() > 0)
+                        && (((BombType) b.getType()).getBombType() == BombType.B_LG)) {
+                    return true;
+                }
+            }
+        }
+
+        // loop through all current attacks
+        // if there are any that use homing ammo, we are playable
+        // we need to do this because we might have a homing arty shot in flight
+        // when the unit that mounted that ammo is no longer on the field
+        for (Enumeration<AttackHandler> attacks = getAttacks(); attacks.hasMoreElements(); ) {
+            AttackHandler attackHandler = attacks.nextElement();
+            Mounted ammo = attackHandler.getWaa().getEntity(this)
+                    .getEquipment(attackHandler.getWaa().getAmmoId());
+            if (ammo != null) {
+                AmmoType ammoType = (AmmoType) ammo.getType();
+                if (ammoType.getMunitionType() == AmmoType.M_HOMING) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Should we play this phase or skip it?
+     */
+    public boolean isPhasePlayable(IGame.Phase phase) {
+        switch (phase) {
+            case PHASE_INITIATIVE:
+            case PHASE_END:
+                return false;
+            case PHASE_SET_ARTYAUTOHITHEXES:
+            case PHASE_DEPLOY_MINEFIELDS:
+            case PHASE_DEPLOYMENT:
+            case PHASE_MOVEMENT:
+            case PHASE_FIRING:
+            case PHASE_PHYSICAL:
+            case PHASE_TARGETING:
+                return hasMoreTurns();
+            case PHASE_OFFBOARD:
+                return isOffboardPlayable();
+            default:
+                return true;
+        }
+    }
+
+    /**
+     * save the game
+     *
+     * @param sFile    The <code>String</code> filename to use
+     * @return A <code>String</code> of the path to store the game
+     */
+    public String saveGame(String sFile) {
+        // We need to strip the .gz if it exists,
+        // otherwise we'll double up on it.
+        if (sFile.endsWith(".gz")) {
+            sFile = sFile.replace(".gz", "");
+        }
+        XStream xstream = new XStream();
+
+        // This will make save games much smaller
+        // by using a more efficient means of referencing
+        // objects in the XML graph
+        xstream.setMode(XStream.ID_REFERENCES);
+
+        String sFinalFile = sFile;
+        if (!sFinalFile.endsWith(".sav")) {
+            sFinalFile = sFile + ".sav";
+        }
+        File sDir = new File("savegames");
+        if (!sDir.exists()) {
+            sDir.mkdir();
+        }
+
+        sFinalFile = sDir + File.separator + sFinalFile;
+
+        try (OutputStream os = new FileOutputStream(sFinalFile + ".gz");
+             OutputStream gzo = new GZIPOutputStream(os);
+             Writer writer = new OutputStreamWriter(gzo, StandardCharsets.UTF_8)) {
+
+            xstream.toXML(this, writer);
+        } catch (Exception e) {
+            MegaMek.getLogger().error("Unable to save file: " + sFinalFile, e);
+        }
+        return sFinalFile;
+    }
+
+    public List<Building.DemolitionCharge> getExplodingCharges() {
+        return explodingCharges;
+    }
+
+    public void setExplodingCharges(List<Building.DemolitionCharge> explodingCharges) {
+        this.explodingCharges = explodingCharges;
+    }
+
+    public void addExplodingCharge(Building.DemolitionCharge charge) {
+        this.explodingCharges.add(charge);
+    }
+
+    private List<Building.DemolitionCharge> explodingCharges = new ArrayList<>();
+
+    public ArrayList<int[]> getScheduledNukes() {
+        return scheduledNukes;
+    }
+
+    public void setScheduledNukes(ArrayList<int[]> scheduledNukes) {
+        this.scheduledNukes = scheduledNukes;
+    }
+
+    private ArrayList<int[]> scheduledNukes = new ArrayList<>();
+
+    /**
+     * add a nuke to be exploded in the next weapons attack phase
+     *
+     * @param nuke this is an int[] with i=0 and i=1 being X and Y coordinates respectively,
+     *             If the input array is length 3, then i=2 is NukeType (from HS:3070)
+     *             If the input array is length 6, then i=2 is the base damage dealt,
+     *             i=3 is the degradation, i=4 is the secondary radius, and i=5 is the crater depth
+     */
+    public void addScheduledNuke(int[] nuke) {
+        scheduledNukes.add(nuke);
+    }
 
 
 

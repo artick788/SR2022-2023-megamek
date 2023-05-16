@@ -263,7 +263,7 @@ public class CapitalMissileBayHandler extends AmmoBayWeaponHandler {
         if (!bMissed && (entityTarget != null)) {
             handleEntityDamage(entityTarget, vPhaseReport, bldg, hits,
                     nCluster, bldgAbsorbs);
-            server.creditKill(entityTarget, ae);
+            server.getGame().creditKill(entityTarget, ae);
         } else if (!bMissed) { // Hex is targeted, need to report a hit
             r = new Report(3390);
             r.subject = subjectId;

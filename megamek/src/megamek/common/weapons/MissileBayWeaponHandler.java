@@ -496,7 +496,7 @@ public class MissileBayWeaponHandler extends AmmoBayWeaponHandler {
 
             handleEntityDamage(entityTarget, vPhaseReport, bldg, hits,
                     nCluster, bldgAbsorbs);
-            server.creditKill(entityTarget, ae);
+            server.getGame().creditKill(entityTarget, ae);
         } // Handle the next weapon in the bay
         Report.addNewline(vPhaseReport); 
         return false;
