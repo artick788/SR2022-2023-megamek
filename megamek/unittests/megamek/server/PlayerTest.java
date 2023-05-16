@@ -9,6 +9,34 @@ import java.util.Iterator;
 import java.util.Vector;
 
 public class PlayerTest {
+    @Test
+    public void randomIntTest() {
+        int test = Compute.randomInt(0);
+        System.out.println(test);
+    }
+
+    @Test
+    public void maxTest() {
+        for (int crateredElevation = -10; crateredElevation <= 10; crateredElevation++) {
+            for (int newDepth = -10; newDepth <= 10; newDepth++) {
+                int test1 = crateredElevation;
+                if (newDepth > crateredElevation) {
+                    test1 = newDepth;
+                }
+                int test2 = Math.max(crateredElevation, newDepth);;
+
+                Assert.assertEquals(test1, test2);
+            }
+        }
+    }
+
+    @Test
+    public void moduloTest() {
+        int flipCount = -3;
+        int index = flipCount % 3;
+        Assert.assertTrue(index >= 0);
+
+    }
 
     @Test
     public void checkDefaultParamReportTest() {
@@ -39,10 +67,6 @@ public class PlayerTest {
         String test1 = sb.toString();
         String test2 = String.format("s: hostname = '%s' port = %d%n", host, port);
         test2 = String.format("%ss: hosting on address = %s%n", test2, host);
-
-
-        System.out.println(test1);
-        System.out.println(test2);
 
         Assert.assertEquals(test1, test2);
 
