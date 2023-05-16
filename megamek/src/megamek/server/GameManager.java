@@ -223,6 +223,14 @@ public class GameManager {
             send(player.getId(), new Packet(Packet.COMMAND_REMOVE_MINEFIELD, mf));
         }
     }
+
+    /**
+     * @return true if the unit succeeds a shelter roll
+     */
+    public boolean isSheltered() {
+        return Compute.d6(2) >= 9;
+    }
+
     //////////////////////////////
     // TODO (Sam): Send (set somewhere else??)
     //////////////////////////////

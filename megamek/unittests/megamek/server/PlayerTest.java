@@ -10,9 +10,25 @@ import java.util.Vector;
 
 public class PlayerTest {
     @Test
-    public void randomIntTest() {
-        int test = Compute.randomInt(0);
-        System.out.println(test);
+    public void baynumberTest() {
+        // Default of baynumber in load function is -1 zo no specialif-else statemtn for this
+        int bayNumber = -1;
+
+        if (bayNumber == -1) {
+            loader.load(unit, checkElevation);
+        } else {
+            loader.load(unit, checkElevation, bayNumber);
+        }
+    }
+
+    @Test
+    public void nullTest() {
+        IHex hex = null;
+        if (hex != null && !hex.containsTerrain(Terrains.FIRE)) {
+            int i = 10;
+        }
+        Assert.assertTrue(true);
+
     }
 
     @Test
@@ -88,12 +104,6 @@ public class PlayerTest {
         }
 
         Assert.assertEquals(test1, test2);
-
-
-    }
-
-    @Test
-    public void testDuplicateNameGhost() {
 
 
     }
