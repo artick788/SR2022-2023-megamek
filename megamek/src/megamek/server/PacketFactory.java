@@ -118,18 +118,7 @@ public class PacketFactory {
     static public Packet createCollapseBuildingPacket(Coords coords) {
         Vector<Coords> coordsV = new Vector<>();
         coordsV.addElement(coords);
-        return createCollapseBuildingPacket(coordsV);
-    }
-
-    /**
-     * Tell the clients to replace the given building hexes with rubble hexes.
-     *
-     * @param coords - a <code>Vector</code> of <code>Coords</code>s that has
-     *               collapsed.
-     * @return a <code>Packet</code> for the command.
-     */
-    static public Packet createCollapseBuildingPacket(Vector<Coords> coords) {
-        return new Packet(Packet.COMMAND_BLDG_COLLAPSE, coords);
+        return new Packet(Packet.COMMAND_BLDG_COLLAPSE, coordsV);
     }
 
     /**
