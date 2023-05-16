@@ -44,7 +44,7 @@ dependencies {
 
     jarbundler 'com.ultramixer.jarbundler:jarbundler-core:3.3.0'
 
-    testImplementation 'junit:junit:4.12' 
+    testImplementation 'junit:junit:4.12'
     testImplementation 'org.mockito:mockito-core:2.20.1'
 
 }

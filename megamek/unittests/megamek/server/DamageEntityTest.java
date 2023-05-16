@@ -23,8 +23,8 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 @RunWith(JUnit4.class)
 public class DamageEntityTest {
 
-    private static Server m_Server;
-    private static IPlayer m_Player;
+    private final Server m_Server;
+    private final IPlayer m_Player;
 
     private Vector<Report> damageEntityWrapper(Entity te, TestSerializer ts){
         HitData hitData = new HitData(0);
