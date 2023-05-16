@@ -31090,17 +31090,10 @@ public class Server implements Runnable {
 
                     // Report if the infantry receive no points of damage.
                     if (toInf == 0) {
-                        r = new Report(6445);
-                        r.indent(3);
-                        r.subject = entity.getId();
-                        r.add(entity.getDisplayName());
-                        vDesc.addElement(r);
+                        vDesc.addElement(ReportFactory.createReport(6445, 3, entity, entity.getDisplayName()));
                     } else {
                         // Yup. Damage the entity.
-                        r = new Report(6450);
-                        r.indent(3);
-                        r.subject = entity.getId();
-                        r.add(toInf);
+                        r = ReportFactory.createReport(6450, 3, entity, toInf);
                         r.add(entity.getDisplayName());
                         vDesc.addElement(r);
                         // need to adjust damage to conventional infantry
@@ -31295,17 +31288,9 @@ public class Server implements Runnable {
                     collapseBasement(bldg, basementMap, coords, vPhaseReport);
                     if (currentCF == 0) {
                         collapse = true;
-                        recheckLoop = false;
                     } else {
                         recheckLoop = true; // basement collapse might cause a further collapse
                     }
-                } else {
-                    recheckLoop = false; // don't check again, we didn't change the CF
-                }
-                if (collapse) {
-                    recheckLoop = false;
-                    // recheck if the basement collapsed since the basement falls
-                    // might trigger a greater collapse.
                 }
             } // End have-entities-here
         }
@@ -34494,10 +34479,7 @@ public class Server implements Runnable {
             if (mine.getUsableShotsLeft() <= 0) {
                 mine.setMissing(true);
             }
-            r = new Report(reportId);
-            r.subject = entity.getId();
-            r.addDesc(entity);
-            r.add(coords.getBoardNum());
+            r = ReportFactory.createReport(reportId, 0, entity, coords.getBoardNum());
             reportmanager.addReport(r);
             entity.setLayingMines(true);
         }
