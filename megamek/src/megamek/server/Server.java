@@ -179,6 +179,7 @@ public class Server implements Runnable {
     }
 
     private GameManager gamemanager;
+    private PacketFactory packetFactory;
 
     private static class ReceivedPacket {
         public int connId;
@@ -719,11 +720,11 @@ public class Server implements Runnable {
             case Packet.COMMAND_PLAYER_UPDATE:
                 receivePlayerInfo(packet, connId);
                 game.validatePlayerInfo(connId);
-                send(gamemanager.createPlayerUpdatePacket(game, connId));
+                send(PacketFactory.createPlayerUpdatePacket(game, connId));
                 break;
             case Packet.COMMAND_PLAYER_READY:
                 game.receivePlayerDone(packet, connId);
-                send(gamemanager.createPlayerDonePacket(game, connId));
+                send(PacketFactory.createPlayerDonePacket(game, connId));
                 checkReady();
                 break;
             case Packet.COMMAND_REROLL_INITIATIVE:
@@ -851,7 +852,7 @@ public class Server implements Runnable {
                 if (receiveGameOptions(packet, connId)) {
                     resetPlayersDone();
                     transmitAllPlayerDones();
-                    send(gamemanager.createGameSettingsPacket(game));
+                    send(PacketFactory.createGameSettingsPacket(game));
                     receiveGameOptionsAux(packet, connId);
                 }
                 break;
@@ -887,7 +888,7 @@ public class Server implements Runnable {
                     game.setPlanetaryConditions(conditions);
                     resetPlayersDone();
                     transmitAllPlayerDones();
-                    send(gamemanager.createPlanetaryConditionsPacket(game));
+                    send(PacketFactory.createPlanetaryConditionsPacket(game));
                 }
                 break;
             case Packet.COMMAND_UNLOAD_STRANDED:
@@ -1031,7 +1032,7 @@ public class Server implements Runnable {
         for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
             final IPlayer player = i.nextElement();
             if (null != player) {
-                send(gamemanager.createPlayerUpdatePacket(game, player.getId()));
+                send(PacketFactory.createPlayerUpdatePacket(game, player.getId()));
             }
         }
     }
@@ -1242,8 +1243,8 @@ public class Server implements Runnable {
     public void sendCurrentInfo(int connId) {
         // why are these two outside the player != null check below?
         transmitAllPlayerConnects(connId);
-        send(connId, gamemanager.createGameSettingsPacket(game));
-        send(connId, gamemanager.createPlanetaryConditionsPacket(game));
+        send(connId, PacketFactory.createGameSettingsPacket(game));
+        send(connId, PacketFactory.createPlanetaryConditionsPacket(game));
 
         IPlayer player = game.getPlayer(connId);
         if (null != player) {
@@ -1251,24 +1252,24 @@ public class Server implements Runnable {
 
             if (game.getPhase() == Phase.PHASE_LOUNGE) {
                 send(connId, createMapSettingsPacket());
-                send(gamemanager.createMapSizesPacket());
+                send(PacketFactory.createMapSizesPacket());
                 // Send Entities *after* the Lounge Phase Change
                 send(connId, new Packet(Packet.COMMAND_PHASE_CHANGE, game.getPhase()));
                 if (game.doBlind()) {
                     send(connId, createFilteredFullEntitiesPacket(player));
                 } else {
-                    send(connId, gamemanager.createFullEntitiesPacket(game));
+                    send(connId, PacketFactory.createFullEntitiesPacket(game));
                 }
             } else {
                 send(connId, new Packet(Packet.COMMAND_ROUND_UPDATE, game.getRoundCount()));
-                send(connId, gamemanager.createBoardPacket(game));
+                send(connId, PacketFactory.createBoardPacket(game));
                 send(connId, createAllReportsPacket(player));
 
                 // Send entities *before* other phase changes.
                 if (game.doBlind()) {
                     send(connId, createFilteredFullEntitiesPacket(player));
                 } else {
-                    send(connId, gamemanager.createFullEntitiesPacket(game));
+                    send(connId, PacketFactory.createFullEntitiesPacket(game));
                 }
                 player.setDone(game.getEntitiesOwnedBy(player) <= 0);
                 send(connId, new Packet(Packet.COMMAND_PHASE_CHANGE, game.getPhase()));
@@ -1278,22 +1279,22 @@ public class Server implements Runnable {
                     || (game.getPhase() == IGame.Phase.PHASE_OFFBOARD)
                     || (game.getPhase() == IGame.Phase.PHASE_PHYSICAL)) {
                 // can't go above, need board to have been sent
-                send(connId, gamemanager.createAttackPacket(game.getActionsVector(), 0));
-                send(connId, gamemanager.createAttackPacket(game.getChargesVector(), 1));
-                send(connId, gamemanager.createAttackPacket(game.getRamsVector(), 1));
-                send(connId, gamemanager.createAttackPacket(game.getTeleMissileAttacksVector(), 1));
+                send(connId, PacketFactory.createAttackPacket(game.getActionsVector(), 0));
+                send(connId, PacketFactory.createAttackPacket(game.getChargesVector(), 1));
+                send(connId, PacketFactory.createAttackPacket(game.getRamsVector(), 1));
+                send(connId, PacketFactory.createAttackPacket(game.getTeleMissileAttacksVector(), 1));
             }
 
             if (game.phaseHasTurns(game.getPhase()) && game.hasMoreTurns()) {
-                send(connId, gamemanager.createTurnVectorPacket(game));
-                send(connId, gamemanager.createTurnIndexPacket(game, connId));
+                send(connId, PacketFactory.createTurnVectorPacket(game));
+                send(connId, PacketFactory.createTurnIndexPacket(game, connId));
             } else if (game.getPhase() != IGame.Phase.PHASE_LOUNGE) {
                 endCurrentPhase();
             }
 
-            send(connId, gamemanager.createArtilleryPacket(game, player));
-            send(connId, gamemanager.createFlarePacket(game));
-            send(connId, gamemanager.createSpecialHexDisplayPacket(game, connId));
+            send(connId, PacketFactory.createArtilleryPacket(game, player));
+            send(connId, PacketFactory.createFlarePacket(game));
+            send(connId, PacketFactory.createSpecialHexDisplayPacket(game, connId));
 
         } // Found the player.
     }
@@ -1610,7 +1611,7 @@ public class Server implements Runnable {
         sendServerChat(connId, motd);
 
         // send info that the player has connected
-        send(gamemanager.createPlayerConnectPacket(game, connId));
+        send(PacketFactory.createPlayerConnectPacket(game, connId));
 
         // tell them their local playerId
         send(connId, new Packet(Packet.COMMAND_LOCAL_PN, connId));
@@ -1647,7 +1648,7 @@ public class Server implements Runnable {
         if (game.doBlind()) {
             send(connId, createFilteredEntitiesPacket(game.getPlayer(connId), null));
         } else {
-            send(connId, gamemanager.createEntitiesPacket(game));
+            send(connId, PacketFactory.createEntitiesPacket(game));
         }
     }
 
@@ -1682,7 +1683,7 @@ public class Server implements Runnable {
         } else {
             player.setGhost(true);
             player.setDone(true);
-            send(gamemanager.createPlayerUpdatePacket(game, player.getId()));
+            send(PacketFactory.createPlayerUpdatePacket(game, player.getId()));
         }
 
         // make sure the game advances
@@ -1713,7 +1714,7 @@ public class Server implements Runnable {
     public void resetGame() {
         // remove all entities
         game.reset();
-        send(gamemanager.createEntitiesPacket(game));
+        send(PacketFactory.createEntitiesPacket(game));
         send(new Packet(Packet.COMMAND_SENDING_MINEFIELDS, new Vector<>()));
 
         // remove ghosts
@@ -1725,7 +1726,7 @@ public class Server implements Runnable {
             } else {
                 // non-ghosts set their starting positions to any
                 p.setStartingPos(Board.START_ANY);
-                send(gamemanager.createPlayerUpdatePacket(game, p.getId()));
+                send(PacketFactory.createPlayerUpdatePacket(game, p.getId()));
             }
         }
         for (IPlayer p : ghosts) {
@@ -1772,7 +1773,7 @@ public class Server implements Runnable {
         for (Entity entity : toRemove) {
             int id = entity.getId();
             game.removeEntity(id, IEntityRemovalConditions.REMOVE_NEVER_JOINED);
-            send(gamemanager.createRemoveEntityPacket(id, IEntityRemovalConditions.REMOVE_NEVER_JOINED));
+            send(PacketFactory.createRemoveEntityPacket(id, IEntityRemovalConditions.REMOVE_NEVER_JOINED));
         }
     }
 
@@ -1842,11 +1843,11 @@ public class Server implements Runnable {
             // remove its turn.
             if ((game.getPhase() == Phase.PHASE_MOVEMENT) && entity.isSelectableThisTurn()) {
                 game.removeTurnFor(entity);
-                send(gamemanager.createTurnVectorPacket(game));
+                send(PacketFactory.createTurnVectorPacket(game));
             }
             entityUpdate(entity.getId());
             game.removeEntity(entity.getId(), condition);
-            send(gamemanager.createRemoveEntityPacket(entity.getId(), condition));
+            send(PacketFactory.createRemoveEntityPacket(entity.getId(), condition));
         }
     }
 
@@ -1897,7 +1898,7 @@ public class Server implements Runnable {
 
             entityUpdate(entity.getId());
             game.removeEntity(entity.getId(), condition);
-            send(gamemanager.createRemoveEntityPacket(entity.getId(), condition));
+            send(PacketFactory.createRemoveEntityPacket(entity.getId(), condition));
         }
 
         // do some housekeeping on all the remaining
@@ -2113,7 +2114,7 @@ public class Server implements Runnable {
         if (gamemanager.getPlayerChangingTeam() != null) {
             gamemanager.getPlayerChangingTeam().setTeam(gamemanager.getRequestedTeam());
             game.setupTeams();
-            send(gamemanager.createPlayerUpdatePacket(game, gamemanager.getPlayerChangingTeam().getId()));
+            send(PacketFactory.createPlayerUpdatePacket(game, gamemanager.getPlayerChangingTeam().getId()));
             String teamString = "Team " + gamemanager.getRequestedTeam() + "!";
             if (gamemanager.getRequestedTeam() == IPlayer.TEAM_UNASSIGNED) {
                 teamString = " unassigned!";
@@ -2337,12 +2338,12 @@ public class Server implements Runnable {
 
         // brief everybody on the turn update, if they changed
         if (turnsChanged) {
-            send(gamemanager.createTurnVectorPacket(game));
+            send(PacketFactory.createTurnVectorPacket(game));
         }
 
         // move along
         if (outOfOrder) {
-            send(gamemanager.createTurnIndexPacket(game, playerId));
+            send(PacketFactory.createTurnIndexPacket(game, playerId));
         } else {
             changeToNextTurn(playerId);
         }
@@ -2387,7 +2388,7 @@ public class Server implements Runnable {
                         mapSettings.getBoardWidth(), mapSettings.getBoardHeight())));
                 mapSettings.setNullBoards(MapSettings.DEFAULT_BOARD);
                 send(createMapSettingsPacket());
-                send(gamemanager.createMapSizesPacket());
+                send(PacketFactory.createMapSizesPacket());
                 game.checkForObservers();
                 transmitAllPlayerUpdates();
                 break;
@@ -2450,7 +2451,7 @@ public class Server implements Runnable {
                 game.resetTurnIndex();
 
                 // send turns to all players
-                send(gamemanager.createTurnVectorPacket(game));
+                send(PacketFactory.createTurnVectorPacket(game));
                 break;
             case PHASE_SET_ARTYAUTOHITHEXES:
                 game.deployOffBoardEntities();
@@ -2487,7 +2488,7 @@ public class Server implements Runnable {
                 game.resetTurnIndex();
 
                 // send turns to all players
-                send(gamemanager.createTurnVectorPacket(game));
+                send(PacketFactory.createTurnVectorPacket(game));
                 break;
             case PHASE_MOVEMENT:
             case PHASE_DEPLOYMENT:
@@ -2537,11 +2538,11 @@ public class Server implements Runnable {
                 resolveEmergencyCoolantSystem();
                 checkForSuffocation();
                 game.getPlanetaryConditions().determineWind();
-                send(gamemanager.createPlanetaryConditionsPacket(game));
+                send(PacketFactory.createPlanetaryConditionsPacket(game));
 
                 applyBuildingDamage();
                 reportmanager.addReport(game.ageFlares());
-                send(gamemanager.createFlarePacket(game));
+                send(PacketFactory.createFlarePacket(game));
                 resolveAmmoDumps();
                 resolveCrewWakeUp();
                 resolveConsoleCrewSwaps();
@@ -2651,7 +2652,7 @@ public class Server implements Runnable {
                     }
                 }
             }
-                send(gamemanager.createFullEntitiesPacket(game));
+                send(PacketFactory.createFullEntitiesPacket(game));
                 send(createReportPacket(null));
                 send(createEndOfGamePacket());
                 break;
@@ -2676,9 +2677,9 @@ public class Server implements Runnable {
                 game.setupTeams();
                 applyBoardSettings();
                 game.getPlanetaryConditions().determineWind();
-                send(gamemanager.createPlanetaryConditionsPacket(game));
+                send(PacketFactory.createPlanetaryConditionsPacket(game));
                 // transmit the board to everybody
-                send(gamemanager.createBoardPacket(game));
+                send(PacketFactory.createBoardPacket(game));
                 game.setupRoundDeployment();
                 game.setVictoryContext(new HashMap<>());
                 game.createVictoryConditions();
@@ -2988,7 +2989,7 @@ public class Server implements Runnable {
                 for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
                     IPlayer player = i.nextElement();
                     int connId = player.getId();
-                    send(connId, gamemanager.createArtilleryPacket(game, player));
+                    send(connId, PacketFactory.createArtilleryPacket(game, player));
                 }
 
                 break;
@@ -3002,7 +3003,7 @@ public class Server implements Runnable {
                 for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
                     IPlayer player = i.nextElement();
                     int connId = player.getId();
-                    send(connId, gamemanager.createArtilleryPacket(game, player));
+                    send(connId, PacketFactory.createArtilleryPacket(game, player));
                 }
                 applyBuildingDamage();
                 checkForPSRFromDamage();
@@ -3094,7 +3095,7 @@ public class Server implements Runnable {
         }
         for (int i = 0; i < connections.size(); i++) {
             if (connections.get(i) != null) {
-                connections.get(i).send(gamemanager.createSpecialHexDisplayPacket(game, i));
+                connections.get(i).send(PacketFactory.createSpecialHexDisplayPacket(game, i));
             }
         }
     }
@@ -3105,7 +3106,7 @@ public class Server implements Runnable {
         }
         for (IConnection connection : connections) {
             if (connection != null) {
-                connection.send(gamemanager.createTagInfoUpdatesPacket(game));
+                connection.send(PacketFactory.createTagInfoUpdatesPacket(game));
             }
         }
     }
@@ -3220,8 +3221,8 @@ public class Server implements Runnable {
                 if (switched) {
                     game.swapTurnOrder(currentTurnIndex, nextTurnId);
                     // update the turn packages for all players.
-                    send(gamemanager.createTurnVectorPacket(game));
-                    send(gamemanager.createTurnIndexPacket(game, connectionId));
+                    send(PacketFactory.createTurnVectorPacket(game));
+                    send(PacketFactory.createTurnIndexPacket(game, connectionId));
                     return;
                 }
                 // if nothing changed return without doing anything
@@ -3265,9 +3266,9 @@ public class Server implements Runnable {
         }
 
         if (prevPlayerId != -1) {
-            send(gamemanager.createTurnIndexPacket(game, prevPlayerId));
+            send(PacketFactory.createTurnIndexPacket(game, prevPlayerId));
         } else {
-            send(gamemanager.createTurnIndexPacket(game, player != null ? player.getId() : IPlayer.PLAYER_NONE));
+            send(PacketFactory.createTurnIndexPacket(game, player != null ? player.getId() : IPlayer.PLAYER_NONE));
         }
 
         if ((null != player) && player.isGhost()) {
@@ -3484,7 +3485,7 @@ public class Server implements Runnable {
         game.resetTurnIndex();
 
         // send turns to all players
-        send(gamemanager.createTurnVectorPacket(game));
+        send(PacketFactory.createTurnVectorPacket(game));
     }
 
     /**
@@ -3777,7 +3778,7 @@ public class Server implements Runnable {
         game.resetTurnIndex();
 
         // send turns to all players
-        send(gamemanager.createTurnVectorPacket(game));
+        send(PacketFactory.createTurnVectorPacket(game));
     }
 
     private void applyDropShipLandingDamage(Coords centralPos, Entity killer) {
@@ -3907,7 +3908,7 @@ public class Server implements Runnable {
             // Remove the *last* friendly turn (removing the *first* penalizes
             // the opponent too much, and re-calculating moves is too hard).
             game.removeTurnFor(unit);
-            send(gamemanager.createTurnVectorPacket(game));
+            send(PacketFactory.createTurnVectorPacket(game));
         }
 
         // When loading an Aero into a squadron in the lounge, make sure the
@@ -3970,7 +3971,7 @@ public class Server implements Runnable {
             // Remove the *last* friendly turn (removing the *first* penalizes
             // the opponent too much, and re-calculating moves is too hard).
             game.removeTurnFor(unit);
-            send(gamemanager.createTurnVectorPacket(game));
+            send(PacketFactory.createTurnVectorPacket(game));
         }
 
         loader.towUnit(unit.getId());
@@ -4372,7 +4373,7 @@ public class Server implements Runnable {
                     // Clean out the entity.
                     unit.setDestroyed(true);
                     game.moveToGraveyard(unit.getId());
-                    send(gamemanager.createRemoveEntityPacket(unit.getId()));
+                    send(PacketFactory.createRemoveEntityPacket(unit.getId()));
                 }
             } else {
                 // avoided damage
@@ -4408,7 +4409,7 @@ public class Server implements Runnable {
                 // Clean out the entity.
                 unit.setDestroyed(true);
                 game.moveToGraveyard(unit.getId());
-                send(gamemanager.createRemoveEntityPacket(unit.getId()));
+                send(PacketFactory.createRemoveEntityPacket(unit.getId()));
             }
         }
 
@@ -4442,7 +4443,7 @@ public class Server implements Runnable {
         GameTurn newTurn = new GameTurn.EntityClassTurn(unit.getOwner().getId(), turnMask);
         game.insertTurnAfter(newTurn, turnInsertIdx);
         // brief everybody on the turn update
-        send(gamemanager.createTurnVectorPacket(game));
+        send(PacketFactory.createTurnVectorPacket(game));
 
         return true;
     }
@@ -4609,7 +4610,7 @@ public class Server implements Runnable {
                             // Clean out the dead entity.
                             entity.setDestroyed(true);
                             game.moveToGraveyard(entity.getId());
-                            send(gamemanager.createRemoveEntityPacket(entity.getId()));
+                            send(PacketFactory.createRemoveEntityPacket(entity.getId()));
                         } else { // Infantry that aren't dead are damaged.
                             entityUpdate(entity.getId());
                         }
@@ -4622,7 +4623,7 @@ public class Server implements Runnable {
 
         // Did we update the turns?
         if (bTurnsChanged) {
-            send(gamemanager.createTurnVectorPacket(game));
+            send(PacketFactory.createTurnVectorPacket(game));
         }
 
         // Are there any building updates?
@@ -4770,24 +4771,24 @@ public class Server implements Runnable {
                 if (game.getOptions().booleanOption(OptionsConstants.BASE_PUSH_OFF_BOARD)) {
                     // Yup. One dead entity.
                     game.removeEntity(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED);
-                    send(gamemanager.createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
+                    send(PacketFactory.createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
                     r = new Report(2030, Report.PUBLIC);
                     r.addDesc(entity);
                     reportmanager.addReport(r);
 
                     for (Entity e : entity.getLoadedUnits()) {
                         game.removeEntity(e.getId(), IEntityRemovalConditions.REMOVE_PUSHED);
-                        send(gamemanager.createRemoveEntityPacket(e.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
+                        send(PacketFactory.createRemoveEntityPacket(e.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
                     }
                     Entity swarmer = game.getEntity(entity.getSwarmAttackerId());
                     if (swarmer != null) {
                         if (!swarmer.isDone()) {
                             game.removeTurnFor(swarmer);
                             swarmer.setDone(true);
-                            send(gamemanager.createTurnVectorPacket(game));
+                            send(PacketFactory.createTurnVectorPacket(game));
                         }
                         game.removeEntity(swarmer.getId(), IEntityRemovalConditions.REMOVE_PUSHED);
-                        send(gamemanager.createRemoveEntityPacket(swarmer.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
+                        send(PacketFactory.createRemoveEntityPacket(swarmer.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
                     }
                     // The entity's movement is completed.
                     return true;
@@ -5257,13 +5258,13 @@ public class Server implements Runnable {
                         if (!target.isDone()) {
                             // Dead entities don't take turns.
                             game.removeTurnFor(target);
-                            send(gamemanager.createTurnVectorPacket(game));
+                            send(PacketFactory.createTurnVectorPacket(game));
                         } // End target-still-to-move
 
                         // Clean out the entity.
                         target.setDestroyed(true);
                         game.moveToGraveyard(target.getId());
-                        send(gamemanager.createRemoveEntityPacket(target.getId()));
+                        send(PacketFactory.createRemoveEntityPacket(target.getId()));
                     }
                     // Update the target's position,
                     // unless it is off the game map.
@@ -5283,7 +5284,7 @@ public class Server implements Runnable {
                     // Prevents adding extra turns for multi-turns
                     newTurn.setMultiTurn(true);
                     game.insertNextTurn(newTurn);
-                    send(gamemanager.createTurnVectorPacket(game));
+                    send(PacketFactory.createTurnVectorPacket(game));
                 }
             }
 
@@ -5538,7 +5539,7 @@ public class Server implements Runnable {
         if (entity.isDoomed()) {
             entity.setDestroyed(true);
             game.moveToGraveyard(entity.getId());
-            send(gamemanager.createRemoveEntityPacket(entity.getId()));
+            send(PacketFactory.createRemoveEntityPacket(entity.getId()));
 
             // The entity's movement is completed.
             return true;
@@ -5785,7 +5786,7 @@ public class Server implements Runnable {
                         vel--;
                     }
                     game.removeTurnFor(target);
-                    send(gamemanager.createTurnVectorPacket(game));
+                    send(PacketFactory.createTurnVectorPacket(game));
                     processMovement(target, md, null);
                     // for some reason it is not clearing out turn
                 } else {
@@ -5827,12 +5828,12 @@ public class Server implements Runnable {
             if (!target.isDone()) {
                 // Dead entities don't take turns.
                 game.removeTurnFor(target);
-                send(gamemanager.createTurnVectorPacket(game));
+                send(PacketFactory.createTurnVectorPacket(game));
             } // End target-still-to-move
             // Clean out the entity.
             target.setDestroyed(true);
             game.moveToGraveyard(target.getId());
-            send(gamemanager.createRemoveEntityPacket(target.getId()));
+            send(PacketFactory.createRemoveEntityPacket(target.getId()));
         }
         // Update the target's position,
         // unless it is off the game map.
@@ -6207,7 +6208,7 @@ public class Server implements Runnable {
                 passenger.setRetreatedDirection(fleeDirection);
                 game.removeEntity(passenger.getId(),
                                   IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                send(gamemanager.createRemoveEntityPacket(passenger.getId(),
+                send(PacketFactory.createRemoveEntityPacket(passenger.getId(),
                                               IEntityRemovalConditions.REMOVE_IN_RETREAT));
             }
         }
@@ -6230,7 +6231,7 @@ public class Server implements Runnable {
                 mw.setRetreatedDirection(fleeDirection);
             }
             game.removeEntity(mw.getId(), condition);
-            send(gamemanager.createRemoveEntityPacket(mw.getId(), condition));
+            send(PacketFactory.createRemoveEntityPacket(mw.getId(), condition));
             r.addDesc(mw);
             r.indent();
             reportmanager.addReport(r);
@@ -6244,7 +6245,7 @@ public class Server implements Runnable {
             if (!swarmer.isDone()) {
                 // Dead entities don't take turns.
                 game.removeTurnFor(swarmer);
-                send(gamemanager.createTurnVectorPacket(game));
+                send(PacketFactory.createTurnVectorPacket(game));
 
             } // End swarmer-still-to-move
 
@@ -6256,11 +6257,11 @@ public class Server implements Runnable {
             r.addDesc(swarmer);
             reportmanager.addReport(r);
             game.removeEntity(swarmerId, IEntityRemovalConditions.REMOVE_CAPTURED);
-            send(gamemanager.createRemoveEntityPacket(swarmerId, IEntityRemovalConditions.REMOVE_CAPTURED));
+            send(PacketFactory.createRemoveEntityPacket(swarmerId, IEntityRemovalConditions.REMOVE_CAPTURED));
         }
         entity.setRetreatedDirection(fleeDirection);
         game.removeEntity(entity.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
-        send(gamemanager.createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
+        send(PacketFactory.createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
         return vReport;
     }
 
@@ -6579,7 +6580,7 @@ public class Server implements Runnable {
                         // If not set, BV icons could have wrong facing
                         entity.setSecondaryFacing(step.getFacing());
                         // Update entity position on client
-                        send(e.getOwnerId(), gamemanager.createEntityPacket(game, entity.getId(), null));
+                        send(e.getOwnerId(), PacketFactory.createEntityPacket(game, entity.getId(), null));
                         boolean tookPBS = processPointblankShotCFR(e, entity);
                         // Movement should be interrupted
                         if (tookPBS) {
@@ -7958,7 +7959,7 @@ public class Server implements Runnable {
 
                     // Dead entities don't take turns.
                     game.removeTurnFor(swarmer);
-                    send(gamemanager.createTurnVectorPacket(game));
+                    send(PacketFactory.createTurnVectorPacket(game));
 
                     // Return the original status.
                     swarmer.setDone(true);
@@ -8231,7 +8232,7 @@ public class Server implements Runnable {
                         game.insertNextTurn(newTurn);
                     }
                     // brief everybody on the turn update
-                    send(gamemanager.createTurnVectorPacket(game));
+                    send(PacketFactory.createTurnVectorPacket(game));
                 }
             }
 
@@ -8351,7 +8352,7 @@ public class Server implements Runnable {
                 if (entity.isDoomed()) {
                     entity.setDestroyed(true);
                     game.moveToGraveyard(entity.getId());
-                    send(gamemanager.createRemoveEntityPacket(entity.getId()));
+                    send(PacketFactory.createRemoveEntityPacket(entity.getId()));
 
                     // The entity's movement is completed.
                     return;
@@ -8761,7 +8762,7 @@ public class Server implements Runnable {
             } else {
                 // Dislodged swarmers don't get turns.
                 game.removeTurnFor(swarmer);
-                send(gamemanager.createTurnVectorPacket(game));
+                send(PacketFactory.createTurnVectorPacket(game));
 
                 // Update the report and the swarmer's status.
                 r.choose(true);
@@ -8961,7 +8962,7 @@ public class Server implements Runnable {
                 } else {
                     // Dislodged swarmers don't get turns.
                     game.removeTurnFor(swarmer);
-                    send(gamemanager.createTurnVectorPacket(game));
+                    send(PacketFactory.createTurnVectorPacket(game));
 
                     // Update the report and the swarmer's status.
                     r.choose(true);
@@ -9099,7 +9100,7 @@ public class Server implements Runnable {
             newTurn.setMultiTurn(true);
             game.insertNextTurn(newTurn);
             // brief everybody on the turn update
-            send(gamemanager.createTurnVectorPacket(game));
+            send(PacketFactory.createTurnVectorPacket(game));
             // let everyone know about what just happened
             if (reportmanager.getvPhaseReport().size() > 1) {
                 send(entity.getOwner().getId(), createSpecialReportPacket());
@@ -9234,7 +9235,7 @@ public class Server implements Runnable {
         if (!game.isOutOfGame(entity)) {
             entityUpdate(entity.getId(), movePath, true, losCache);
             if (entity.isDoomed()) {
-                send(gamemanager.createRemoveEntityPacket(entity.getId(),
+                send(PacketFactory.createRemoveEntityPacket(entity.getId(),
                         entity.getRemovalCondition()));
             }
         }
@@ -9264,7 +9265,7 @@ public class Server implements Runnable {
                     fs.setOwner(entity.getOwner());
                     // set velocity and heading the same as parent entity
                     game.addEntity(fs);
-                    send(gamemanager.createAddEntityPacket(game, fs.getId()));
+                    send(PacketFactory.createAddEntityPacket(game, fs.getId()));
                     // make him not get a move this turn
                     fs.setDone(true);
                     // place on board
@@ -9301,12 +9302,12 @@ public class Server implements Runnable {
 
         // if we generated a charge attack, report it now
         if (charge != null) {
-            send(gamemanager.createAttackPacket(charge, 1));
+            send(PacketFactory.createAttackPacket(charge, 1));
         }
 
         // if we generated a ram attack, report it now
         if (ram != null) {
-            send(gamemanager.createAttackPacket(ram, 1));
+            send(PacketFactory.createAttackPacket(ram, 1));
         }
         if ((entity instanceof Mech) && entity.hasEngine() && ((Mech) entity).isIndustrial()
                 && !entity.hasEnvironmentalSealing()
@@ -9674,7 +9675,7 @@ public class Server implements Runnable {
                         // These are spotlights at night, you know they're
                         // there.
                         if (hexesAdded) {
-                            send(gamemanager.createIlluminatedHexesPacket(game));
+                            send(PacketFactory.createIlluminatedHexesPacket(game));
                         }
                         SearchlightAttackAction saa = (SearchlightAttackAction) ea;
                         reportmanager.addReport(saa.resolveAction(game));
@@ -10242,7 +10243,7 @@ public class Server implements Runnable {
         }
         // set velocity and heading the same as parent entity
         game.addEntity(tele);
-        send(gamemanager.createAddEntityPacket(game, tele.getId()));
+        send(PacketFactory.createAddEntityPacket(game, tele.getId()));
         // make him not get a move this turn
         tele.setDone(true);
         // place on board
@@ -11879,7 +11880,7 @@ public class Server implements Runnable {
         if (!swarmer.isDone()) {
             game.removeTurnFor(swarmer);
             swarmer.setDone(true);
-            send(gamemanager.createTurnVectorPacket(game));
+            send(PacketFactory.createTurnVectorPacket(game));
         }
 
         // Update the report and cause a fall.
@@ -12246,12 +12247,12 @@ public class Server implements Runnable {
                 // May need to remove a turn for this Entity
                 if ((game.getPhase() == Phase.PHASE_MOVEMENT) && !entity.isDone() && (turnsRemoved == 0)) {
                     game.removeTurnFor(entity);
-                    send(gamemanager.createTurnVectorPacket(game));
+                    send(PacketFactory.createTurnVectorPacket(game));
                 } else if (turnsRemoved > 0) {
-                    send(gamemanager.createTurnVectorPacket(game));
+                    send(PacketFactory.createTurnVectorPacket(game));
                 }
                 game.removeEntity(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED);
-                send(gamemanager.createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
+                send(PacketFactory.createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
                 // entity forced from the field
                 r = new Report(2230);
                 r.subject = entity.getId();
@@ -12590,8 +12591,8 @@ public class Server implements Runnable {
                 msg += ", Entity was null!";
             }
             MegaMek.getLogger().error(msg);
-            send(connId, gamemanager.createTurnVectorPacket(game));
-            send(connId, gamemanager.createTurnIndexPacket(game, turn.getPlayerNum()));
+            send(connId, PacketFactory.createTurnVectorPacket(game));
+            send(connId, PacketFactory.createTurnIndexPacket(game, turn.getPlayerNum()));
             return;
         }
 
@@ -12648,8 +12649,8 @@ public class Server implements Runnable {
                 msg += ", Entity was null!";
             }
             MegaMek.getLogger().error(msg);
-            send(connId, gamemanager.createTurnVectorPacket(game));
-            send(connId, gamemanager.createTurnIndexPacket(game, connId));
+            send(connId, PacketFactory.createTurnVectorPacket(game));
+            send(connId, PacketFactory.createTurnIndexPacket(game, connId));
             return;
         }
 
@@ -12666,7 +12667,7 @@ public class Server implements Runnable {
                 loaded.getOwnerId(), loaded.getId()), game.getTurnIndex() - 1);
         //game.insertNextTurn(new GameTurn.SpecificEntityTurn(
         //        loaded.getOwnerId(), loaded.getId()));
-        send(gamemanager.createTurnVectorPacket(game));
+        send(PacketFactory.createTurnVectorPacket(game));
     }
 
 
@@ -12945,8 +12946,8 @@ public class Server implements Runnable {
                 msg += ", Entity was null!";
             }
             MegaMek.getLogger().error(msg);
-            send(connId, gamemanager.createTurnVectorPacket(game));
-            send(connId, gamemanager.createTurnIndexPacket(game, turn.getPlayerNum()));
+            send(connId, PacketFactory.createTurnVectorPacket(game));
+            send(connId, PacketFactory.createTurnIndexPacket(game, turn.getPlayerNum()));
             return;
         }
 
@@ -13014,7 +13015,7 @@ public class Server implements Runnable {
                             // immediately after the attack declaration.
                             game.insertNextTurn(new GameTurn.TriggerAPPodTurn(target.getOwnerId(),
                                     target.getId()));
-                            send(gamemanager.createTurnVectorPacket(game));
+                            send(PacketFactory.createTurnVectorPacket(game));
 
                             // We can stop looking.
                             break;
@@ -13031,7 +13032,7 @@ public class Server implements Runnable {
                             // immediately after the attack declaration.
                             game.insertNextTurn(new GameTurn.TriggerBPodTurn(target.getOwnerId(),
                                     target.getId(), weaponName));
-                            send(gamemanager.createTurnVectorPacket(game));
+                            send(PacketFactory.createTurnVectorPacket(game));
 
                             // We can stop looking.
                             break;
@@ -13065,7 +13066,7 @@ public class Server implements Runnable {
                     // If defender is able, add a turn to declare counterattack
                     if (!def.isImmobile()) {
                         game.insertNextTurn(new GameTurn.CounterGrappleTurn(def.getOwnerId(), def.getId()));
-                        send(gamemanager.createTurnVectorPacket(game));
+                        send(PacketFactory.createTurnVectorPacket(game));
                     }
                 }
             }
@@ -13133,7 +13134,7 @@ public class Server implements Runnable {
                 // If we added new hexes, send them to all players.
                 // These are spotlights at night, you know they're there.
                 if (hexesAdded) {
-                    send(gamemanager.createIlluminatedHexesPacket(game));
+                    send(PacketFactory.createIlluminatedHexesPacket(game));
                 }
             }
         }
@@ -13161,7 +13162,7 @@ public class Server implements Runnable {
         }
         entityUpdate(entity.getId());
 
-        Packet p = gamemanager.createAttackPacket(vector, 0);
+        Packet p = PacketFactory.createAttackPacket(vector, 0);
         if (game.isPhaseSimultaneous()) {
             // Update attack only to player who declared it & observers
             for (IPlayer player : game.getPlayersVector()) {
@@ -26782,7 +26783,7 @@ public class Server implements Runnable {
                 // We can safely remove these, as they can't be targeted
                 game.removeEntity(mw.getId(), condition);
                 entityUpdate(mw.getId());
-                send(gamemanager.createRemoveEntityPacket(mw.getId(), condition));
+                send(PacketFactory.createRemoveEntityPacket(mw.getId(), condition));
                 r = new Report(6370);
                 r.subject = mw.getId();
                 r.addDesc(mw);
@@ -26845,7 +26846,7 @@ public class Server implements Runnable {
                         entity.unload(other);
                         // Safe to remove, as they aren't targeted
                         game.moveToGraveyard(other.getId());
-                        send(gamemanager.createRemoveEntityPacket(other.getId(), condition));
+                        send(PacketFactory.createRemoveEntityPacket(other.getId(), condition));
                         r = new Report(6370);
                         r.subject = other.getId();
                         r.addDesc(other);
@@ -26862,7 +26863,7 @@ public class Server implements Runnable {
                         entity.unload(other);
                         // Safe to remove, as they aren't targeted
                         game.moveToGraveyard(other.getId());
-                        send(gamemanager.createRemoveEntityPacket(other.getId(), condition));
+                        send(PacketFactory.createRemoveEntityPacket(other.getId(), condition));
                         r = new Report(6375);
                         r.subject = other.getId();
                         r.addDesc(other);
@@ -26896,7 +26897,7 @@ public class Server implements Runnable {
                     // Can't remove this here, otherwise later attacks will fail
                     //game.moveToGraveyard(transport.getId());
                     //entityUpdate(transport.getId());
-                    //send(gamemanager.createRemoveEntityPacket(transport.getId(), condition));
+                    //send(PacketFactory.createRemoveEntityPacket(transport.getId(), condition));
                     r = new Report(6365);
                     r.subject = transport.getId();
                     r.addDesc(transport);
@@ -27661,7 +27662,7 @@ public class Server implements Runnable {
             if (!swarmer.isDone()) {
                 game.removeTurnFor(swarmer);
                 swarmer.setDone(true);
-                send(gamemanager.createTurnVectorPacket(game));
+                send(PacketFactory.createTurnVectorPacket(game));
             }
         } // End dislodge-infantry
 
@@ -28143,13 +28144,13 @@ public class Server implements Runnable {
             }
 
             // send an entity update to everyone who can see
-            Packet pack = gamemanager.createEntityPacket(game, nEntityID, movePath);
+            Packet pack = PacketFactory.createEntityPacket(game, nEntityID, movePath);
             for (int x = 0; x < vCanSee.size(); x++) {
                 IPlayer p = vCanSee.elementAt(x);
                 send(p.getId(), pack);
             }
             // send an entity delete to everyone else
-            pack = gamemanager.createRemoveEntityPacket(nEntityID, eTarget.getRemovalCondition());
+            pack = PacketFactory.createRemoveEntityPacket(nEntityID, eTarget.getRemovalCondition());
             for (int x = 0; x < playersVector.size(); x++) {
                 if (!vCanSee.contains(playersVector.elementAt(x))) {
                     IPlayer p = playersVector.elementAt(x);
@@ -28160,7 +28161,7 @@ public class Server implements Runnable {
             entityUpdateLoadedUnits(eTarget, vCanSee, playersVector);
         } else {
             // But if we're not, then everyone can see.
-            send(gamemanager.createEntityPacket(game, nEntityID, movePath));
+            send(PacketFactory.createEntityPacket(game, nEntityID, movePath));
         }
     }
 
@@ -28180,13 +28181,13 @@ public class Server implements Runnable {
         // so we need to send them.
         for (Entity eLoaded : loader.getLoadedUnits()) {
             // send an entity update to everyone who can see
-            pack = gamemanager.createEntityPacket(game, eLoaded.getId(), null);
+            pack = PacketFactory.createEntityPacket(game, eLoaded.getId(), null);
             for (int x = 0; x < vCanSee.size(); x++) {
                 IPlayer p = vCanSee.elementAt(x);
                 send(p.getId(), pack);
             }
             // send an entity delete to everyone else
-            pack = gamemanager.createRemoveEntityPacket(eLoaded.getId(), eLoaded.getRemovalCondition());
+            pack = PacketFactory.createRemoveEntityPacket(eLoaded.getId(), eLoaded.getRemovalCondition());
             for (int x = 0; x < playersVector.size(); x++) {
                 if (!vCanSee.contains(playersVector.elementAt(x))) {
                     IPlayer p = playersVector.elementAt(x);
@@ -28346,7 +28347,7 @@ public class Server implements Runnable {
         }
 
         // Otherwise, send the full list.
-        send(gamemanager.createEntitiesPacket(game));
+        send(PacketFactory.createEntitiesPacket(game));
     }
 
     /**
@@ -28763,7 +28764,7 @@ public class Server implements Runnable {
             }
         }
 
-        send(gamemanager.createAddEntityPacket(game, entityIds));
+        send(PacketFactory.createAddEntityPacket(game, entityIds));
     }
 
     /**
@@ -28797,7 +28798,7 @@ public class Server implements Runnable {
                 entityUpdate(fighter.getId());
             }
         }
-        send(gamemanager.createAddEntityPacket(game, fs.getId()));
+        send(PacketFactory.createAddEntityPacket(game, fs.getId()));
     }
 
     /**
@@ -29194,7 +29195,7 @@ public class Server implements Runnable {
 
         // during deployment this absolutely must be called before game.removeEntity(), otherwise the game hangs
         // when a unit is removed. Cause unknown.
-        send(gamemanager.createRemoveEntityPacket(ids, IEntityRemovalConditions.REMOVE_NEVER_JOINED));
+        send(PacketFactory.createRemoveEntityPacket(ids, IEntityRemovalConditions.REMOVE_NEVER_JOINED));
 
         // Prevents deployment hanging. Only do this during deployment.
         if (game.getPhase() == IGame.Phase.PHASE_DEPLOYMENT) {
@@ -29324,7 +29325,7 @@ public class Server implements Runnable {
         for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
             final IPlayer player = i.nextElement();
 
-            send(connId, gamemanager.createPlayerConnectPacket(game, player.getId()));
+            send(connId, PacketFactory.createPlayerConnectPacket(game, player.getId()));
         }
     }
 
@@ -29335,7 +29336,7 @@ public class Server implements Runnable {
         for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
             final IPlayer player = i.nextElement();
 
-            send(gamemanager.createPlayerDonePacket(game, player.getId()));
+            send(PacketFactory.createPlayerDonePacket(game, player.getId()));
         }
     }
 
@@ -30199,7 +30200,7 @@ public class Server implements Runnable {
             } else {
                 bldg.setCurrentCF(0, coords);
                 bldg.setPhaseCF(0, coords);
-                send(gamemanager.createCollapseBuildingPacket(coords));
+                send(PacketFactory.createCollapseBuildingPacket(coords));
                 game.getBoard().collapseBuilding(coords);
             }
 
@@ -30316,7 +30317,7 @@ public class Server implements Runnable {
             // Update the building.
             bldg.setCurrentCF(0, coords);
             bldg.setPhaseCF(0, coords);
-            send(gamemanager.createCollapseBuildingPacket(coords));
+            send(PacketFactory.createCollapseBuildingPacket(coords));
             game.getBoard().collapseBuilding(coords);
         }
         // if more than half of the hexes are gone, collapse all
@@ -30739,7 +30740,7 @@ public class Server implements Runnable {
     }
 
     public void sendChangedBuildings(Vector<Building> buildings) {
-        send(gamemanager.createUpdateBuildingPacket(buildings));
+        send(PacketFactory.createUpdateBuildingPacket(buildings));
     }
 
     /**
@@ -31127,7 +31128,7 @@ public class Server implements Runnable {
             //Pilot flight suits are vacuum-rated. MechWarriors wear shorts...
             pilot.setSpaceSuit(entity.isAero());
             game.addEntity(pilot);
-            send(gamemanager.createAddEntityPacket(game, pilot.getId()));
+            send(PacketFactory.createAddEntityPacket(game, pilot.getId()));
             // make him not get a move this turn
             pilot.setDone(true);
             int living = 0;
@@ -31169,7 +31170,7 @@ public class Server implements Runnable {
                     vDesc.addElement(r);
                     game.removeEntity(pilot.getId(),
                                       IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                    send(gamemanager.createRemoveEntityPacket(pilot.getId(),
+                    send(PacketFactory.createRemoveEntityPacket(pilot.getId(),
                                                   IEntityRemovalConditions.REMOVE_IN_RETREAT));
                     // }
                 }
@@ -31178,7 +31179,7 @@ public class Server implements Runnable {
                         || game.getBoard().inAtmosphere()) {
                     game.removeEntity(pilot.getId(),
                                       IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                    send(gamemanager.createRemoveEntityPacket(pilot.getId(),
+                    send(PacketFactory.createRemoveEntityPacket(pilot.getId(),
                                                   IEntityRemovalConditions.REMOVE_IN_RETREAT));
                 }
 
@@ -31237,7 +31238,7 @@ public class Server implements Runnable {
             // Add Entity to game
             game.addEntity(crew);
             // Tell clients about new entity
-            send(gamemanager.createAddEntityPacket(game, crew.getId()));
+            send(PacketFactory.createAddEntityPacket(game, crew.getId()));
             // Sent entity info to clients
             entityUpdate(crew.getId());
             // Check if the crew lands in a minefield
@@ -31246,7 +31247,7 @@ public class Server implements Runnable {
                     entity.getElevation()));
             if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_EJECTED_PILOTS_FLEE)) {
                 game.removeEntity(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                send(gamemanager.createRemoveEntityPacket(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
+                send(PacketFactory.createRemoveEntityPacket(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
             }
         } //End ground vehicles
 
@@ -31260,7 +31261,7 @@ public class Server implements Runnable {
         // only remove the unit that ejected manually
         if (!autoEject) {
             game.removeEntity(entity.getId(), IEntityRemovalConditions.REMOVE_EJECTED);
-            send(gamemanager.createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_EJECTED));
+            send(PacketFactory.createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_EJECTED));
         }
         return vDesc;
     }
@@ -31397,12 +31398,12 @@ public class Server implements Runnable {
             // No movement this turn
             pods.setDone(true);
             // Tell clients about new entity
-            send(gamemanager.createAddEntityPacket(game, pods.getId()));
+            send(PacketFactory.createAddEntityPacket(game, pods.getId()));
             // Sent entity info to clients
             entityUpdate(pods.getId());
             if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_EJECTED_PILOTS_FLEE)) {
                 game.removeEntity(pods.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                send(gamemanager.createRemoveEntityPacket(pods.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
+                send(PacketFactory.createRemoveEntityPacket(pods.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
             }
         } // End Escape Pod/Lifeboat Ejection
         else {
@@ -31488,7 +31489,7 @@ public class Server implements Runnable {
             // No movement this turn
             crew.setDone(true);
             // Tell clients about new entity
-            send(gamemanager.createAddEntityPacket(game, crew.getId()));
+            send(PacketFactory.createAddEntityPacket(game, crew.getId()));
             // Sent entity info to clients
             entityUpdate(crew.getId());
             // Check if the crew lands in a minefield
@@ -31497,7 +31498,7 @@ public class Server implements Runnable {
                     entity.getElevation()));
             if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_EJECTED_PILOTS_FLEE)) {
                 game.removeEntity(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                send(gamemanager.createRemoveEntityPacket(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
+                send(PacketFactory.createRemoveEntityPacket(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
             }
         }
         // If we get here, end movement and return the report
@@ -31667,7 +31668,7 @@ public class Server implements Runnable {
                         break;
                     }
                 }
-                send(gamemanager.createAddEntityPacket(game, guerrilla.getId()));
+                send(PacketFactory.createAddEntityPacket(game, guerrilla.getId()));
                 ((Infantry) e).setIsCallingSupport(false);
                 /*
                 // Update the entity
@@ -31730,7 +31731,7 @@ public class Server implements Runnable {
                 pilot.setNextVelocity(entity.getVelocity());
             }
             game.addEntity(pilot);
-            send(gamemanager.createAddEntityPacket(game, pilot.getId()));
+            send(PacketFactory.createAddEntityPacket(game, pilot.getId()));
             // make him not get a move this turn
             pilot.setDone(true);
             // Add the pilot as an infantry unit on the battlefield.
@@ -31745,7 +31746,7 @@ public class Server implements Runnable {
                     targetCoords, entity.getElevation()));
             if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_EJECTED_PILOTS_FLEE)) {
                 game.removeEntity(pilot.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                send(gamemanager.createRemoveEntityPacket(pilot.getId(),
+                send(PacketFactory.createRemoveEntityPacket(pilot.getId(),
                         IEntityRemovalConditions.REMOVE_IN_RETREAT));
             }
         } // End entity-is-Mek or Aero
@@ -31759,7 +31760,7 @@ public class Server implements Runnable {
             crew.setDeployed(true);
             crew.setId(game.getNextEntityId());
             game.addEntity(crew);
-            send(gamemanager.createAddEntityPacket(game, crew.getId()));
+            send(PacketFactory.createAddEntityPacket(game, crew.getId()));
             // Make them not get a move this turn
             crew.setDone(true);
             // Place on board
@@ -31773,7 +31774,7 @@ public class Server implements Runnable {
                     entity.getPosition(), entity.getElevation()));
             if(game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_EJECTED_PILOTS_FLEE)) {
                 game.removeEntity(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                send(gamemanager.createRemoveEntityPacket(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
+                send(PacketFactory.createRemoveEntityPacket(crew.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
             }
         }
 
