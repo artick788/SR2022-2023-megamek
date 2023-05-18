@@ -367,8 +367,7 @@ public class ArtilleryWeaponIndirectFireHandler extends AmmoWeaponHandler {
             return false;
         }
         if (atype.getMunitionType() == AmmoType.M_VIBRABOMB_IV) {
-            server.deliverThunderVibraMinefield(targetPos, ae.getOwner()
-                    .getId(), 30, waa.getOtherAttackInfo(), ae.getId());
+            server.deliverMinefield(targetPos, ae.getOwner().getId(), 30, waa.getOtherAttackInfo(), ae.getId());
             return false;
         }
         if (atype.getMunitionType() == AmmoType.M_SMOKE) {

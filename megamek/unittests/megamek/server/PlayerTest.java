@@ -1,14 +1,52 @@
 package megamek.server;
 
+import megamek.client.ui.swing.util.PlayerColour;
 import megamek.common.*;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Vector;
 
 public class PlayerTest {
+    public void funct(IPlayer player) {
+        player.setColour(PlayerColour.RED);
+    }
+
+    @Test
+    public void referenceTest() {
+        IPlayer newPlayer = new Player(0, "Sam");
+
+        Assert.assertEquals(newPlayer.getColour(), PlayerColour.BLUE);
+
+        funct(newPlayer);
+
+        Assert.assertEquals(newPlayer.getColour(), PlayerColour.RED);
+    }
+
+    /*
+    @Test
+    public void damageTest() {
+
+
+
+        int damage = Math.max(0, entity.mpUsed - entity.getJumpMP(false));
+
+        int j = entity.mpUsed;
+        int damage = 0;
+        while (j > entity.getJumpMP(false)) {
+            j--;
+            damage++;
+        }
+    }
+
+     */
+
+
+    /*
     @Test
     public void baynumberTest() {
         // Default of baynumber in load function is -1 zo no specialif-else statemtn for this
@@ -20,6 +58,7 @@ public class PlayerTest {
             loader.load(unit, checkElevation, bayNumber);
         }
     }
+     */
 
     @Test
     public void nullTest() {

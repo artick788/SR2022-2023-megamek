@@ -15,13 +15,7 @@ package megamek.common.weapons;
 
 import java.util.Vector;
 
-import megamek.common.AmmoType;
-import megamek.common.Compute;
-import megamek.common.Coords;
-import megamek.common.Entity;
-import megamek.common.IGame;
-import megamek.common.Report;
-import megamek.common.ToHitData;
+import megamek.common.*;
 import megamek.common.actions.WeaponAttackAction;
 import megamek.server.Server;
 
@@ -115,20 +109,15 @@ public class LRMScatterableHandler extends MissileWeaponHandler {
 
         // Handle the thunder munitions.
         if (atype.getMunitionType() == AmmoType.M_THUNDER_AUGMENTED) {
-            server.deliverThunderAugMinefield(coords, ae.getOwner().getId(),
-                    density, ae.getId());
+            server.deliverThunderAugMinefield(coords, ae.getOwner().getId(), density, ae.getId());
         } else if (atype.getMunitionType() == AmmoType.M_THUNDER) {
-            server.deliverThunderMinefield(coords, ae.getOwner().getId(),
-                    density, ae.getId());
+            server.deliverMinefield(coords, ae.getOwner().getId(), density, ae.getId(), Minefield.TYPE_CONVENTIONAL);
         } else if (atype.getMunitionType() == AmmoType.M_THUNDER_INFERNO) {
-            server.deliverThunderInfernoMinefield(coords, ae.getOwner().getId(),
-                    density, ae.getId());
+            server.deliverMinefield(coords, ae.getOwner().getId(), density, ae.getId(), Minefield.TYPE_INFERNO);
         } else if (atype.getMunitionType() == AmmoType.M_THUNDER_VIBRABOMB) {
-            server.deliverThunderVibraMinefield(coords, ae.getOwner().getId(),
-                    density, waa.getOtherAttackInfo(), ae.getId());
+            server.deliverMinefield(coords, ae.getOwner().getId(), density, waa.getOtherAttackInfo(), ae.getId());
         } else if (atype.getMunitionType() == AmmoType.M_THUNDER_ACTIVE) {
-            server.deliverThunderActiveMinefield(coords, ae.getOwner().getId(),
-                    density, ae.getId());
+            server.deliverMinefield(coords, ae.getOwner().getId(), density, ae.getId(), Minefield.TYPE_ACTIVE);
         }
         return true;
     }

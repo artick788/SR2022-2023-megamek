@@ -231,6 +231,49 @@ public class GameManager {
         return Compute.d6(2) >= 9;
     }
 
+    public Mounted checkMineSweeper(Entity entity) {
+        // Check for Mine sweepers
+        Mounted minesweeper = null;
+        for (Mounted m : entity.getMisc()) {
+            if (m.getType().hasFlag(MiscType.F_MINESWEEPER) && m.isReady() && (m.getArmorValue() > 0)) {
+                minesweeper = m;
+                break; // Can only have one minesweeper
+            }
+        }
+        return minesweeper;
+    }
+
+    //////////////////////////////
+    // TODO (Sam): Receives (set somewhere else??)
+    //////////////////////////////
+
+    /**
+     * Allow the player to set whatever parameters he is able to
+     */
+    public void receivePlayerInfo(Packet packet, IPlayer gamePlayer) {
+        IPlayer player = (IPlayer) packet.getObject(0);
+        if (null != gamePlayer) {
+            gamePlayer.setColour(player.getColour());
+            gamePlayer.setStartingPos(player.getStartingPos());
+            gamePlayer.setTeam(player.getTeam());
+            gamePlayer.setCamoCategory(player.getCamoCategory());
+            gamePlayer.setCamoFileName(player.getCamoFileName());
+            gamePlayer.setNbrMFConventional(player.getNbrMFConventional());
+            gamePlayer.setNbrMFCommand(player.getNbrMFCommand());
+            gamePlayer.setNbrMFVibra(player.getNbrMFVibra());
+            gamePlayer.setNbrMFActive(player.getNbrMFActive());
+            gamePlayer.setNbrMFInferno(player.getNbrMFInferno());
+            if (gamePlayer.getConstantInitBonus() != player.getConstantInitBonus()) {
+                sendServerChat("Player " + gamePlayer.getName() + " changed their initiative bonus from "
+                        + gamePlayer.getConstantInitBonus() + " to " + player.getConstantInitBonus() + ".");
+            }
+            gamePlayer.setConstantInitBonus(player.getConstantInitBonus());
+        }
+    }
+
+
+
+
     //////////////////////////////
     // TODO (Sam): Send (set somewhere else??)
     //////////////////////////////

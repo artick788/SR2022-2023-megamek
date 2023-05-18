@@ -20,18 +20,7 @@ package megamek.common.weapons;
 import java.util.List;
 import java.util.Vector;
 
-import megamek.common.BombType;
-import megamek.common.Compute;
-import megamek.common.Coords;
-import megamek.common.EquipmentType;
-import megamek.common.HitData;
-import megamek.common.IGame;
-import megamek.common.Mounted;
-import megamek.common.Report;
-import megamek.common.TagInfo;
-import megamek.common.TargetRoll;
-import megamek.common.ToHitData;
-import megamek.common.WeaponType;
+import megamek.common.*;
 import megamek.common.actions.WeaponAttackAction;
 import megamek.common.options.OptionsConstants;
 import megamek.server.Server;
@@ -252,12 +241,10 @@ public class BombAttackHandler extends WeaponHandler {
                 if (type == BombType.B_INFERNO) {
                     server.deliverBombInferno(drop, ae, subjectId, vPhaseReport);
                 } else if (type == BombType.B_THUNDER) {
-                    server.deliverThunderMinefield(drop, ae.getOwner().getId(),
-                            20, ae.getId());
+                    server.deliverMinefield(drop, ae.getOwner().getId(), 20, ae.getId(), Minefield.TYPE_CONVENTIONAL);
                     List<Coords> hexes = drop.allAdjacent();
                     for (Coords c : hexes) {
-                        server.deliverThunderMinefield(c,
-                                ae.getOwner().getId(), 20, ae.getId());
+                        server.deliverMinefield(drop, ae.getOwner().getId(), 20, ae.getId(), Minefield.TYPE_CONVENTIONAL);
                     }
                 } else if (type == BombType.B_FAE_SMALL || type == BombType.B_FAE_LARGE) {
                     AreaEffectHelper.processFuelAirDamage(drop, EquipmentType.get(BombType.getBombInternalName(type)), ae, vPhaseReport, server);

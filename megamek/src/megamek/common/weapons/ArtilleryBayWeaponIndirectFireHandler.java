@@ -494,15 +494,11 @@ public class ArtilleryBayWeaponIndirectFireHandler extends AmmoBayWeaponHandler 
         if (atype.getMunitionType() == AmmoType.M_VIBRABOMB_IV) {
             if (!bMissed) {
                 //If we hit, only one effect will stack in the target hex
-                server.deliverThunderVibraMinefield(targetPos, ae.getOwner()
-                        .getId(), atype.getRackSize(), waa.getOtherAttackInfo(), ae
-                        .getId());
+                server.deliverMinefield(targetPos, ae.getOwner().getId(), atype.getRackSize(), waa.getOtherAttackInfo(), ae.getId());
             } else {
                 //Deliver a round to each target hex
                 for (Coords c : targets) {
-                    server.deliverThunderVibraMinefield(c, ae.getOwner()
-                            .getId(), atype.getRackSize(), waa.getOtherAttackInfo(), ae
-                            .getId());
+                    server.deliverMinefield(c, ae.getOwner().getId(), atype.getRackSize(), waa.getOtherAttackInfo(), ae.getId());
                 }
             }
             return false;

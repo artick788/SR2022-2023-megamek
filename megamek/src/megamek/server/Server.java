@@ -700,7 +700,8 @@ public class Server implements Runnable {
                 receivePlayerName(packet, connId);
                 break;
             case Packet.COMMAND_PLAYER_UPDATE:
-                receivePlayerInfo(packet, connId);
+                IPlayer gamePlayer = game.getPlayer(connId);
+                gamemanager.receivePlayerInfo(packet, gamePlayer);
                 game.validatePlayerInfo(connId);
                 send(PacketFactory.createPlayerUpdatePacket(game, connId));
                 break;
@@ -1382,34 +1383,6 @@ public class Server implements Runnable {
         return game;
     }
 
-
-    /**
-     * Allow the player to set whatever parameters he is able to
-     */
-    private void receivePlayerInfo(Packet packet, int connId) {
-        IPlayer player = (IPlayer) packet.getObject(0);
-        IPlayer gamePlayer = game.getPlayer(connId);
-        if (null != gamePlayer) {
-            gamePlayer.setColour(player.getColour());
-            gamePlayer.setStartingPos(player.getStartingPos());
-            gamePlayer.setTeam(player.getTeam());
-            gamePlayer.setCamoCategory(player.getCamoCategory());
-            gamePlayer.setCamoFileName(player.getCamoFileName());
-            gamePlayer.setNbrMFConventional(player.getNbrMFConventional());
-            gamePlayer.setNbrMFCommand(player.getNbrMFCommand());
-            gamePlayer.setNbrMFVibra(player.getNbrMFVibra());
-            gamePlayer.setNbrMFActive(player.getNbrMFActive());
-            gamePlayer.setNbrMFInferno(player.getNbrMFInferno());
-            if (gamePlayer.getConstantInitBonus() != player.getConstantInitBonus()) {
-                sendServerChat("Player " + gamePlayer.getName()
-                               + " changed their initiative bonus from "
-                               + gamePlayer.getConstantInitBonus()
-                               + " to " + player.getConstantInitBonus() + ".");
-            }
-            gamePlayer.setConstantInitBonus(player.getConstantInitBonus());
-        }
-    }
-
     /**
      * Correct a duplicate player name
      *
@@ -1437,146 +1410,6 @@ public class Server implements Runnable {
             }
         }
         return oldName;
-    }
-
-    private void receivePlayerVersion(Packet packet, int connId) {
-        String version = (String) packet.getObject(0);
-        String clientChecksum = (String) packet.getObject(1);
-        String serverChecksum = MegaMek.getMegaMekSHA256();
-        StringBuilder buf = new StringBuilder();
-        boolean needs = false;
-        if (!version.equals(MegaMek.VERSION)) {
-            buf.append("Client/Server version mismatch. Server reports: ").append(MegaMek.VERSION)
-                    .append(", Client reports: ").append(version);
-            MegaMek.getLogger().error("Client/Server Version Mismatch -- Client: " 
-                    + version + " Server: " + MegaMek.VERSION);
-            needs = true;
-        }
-        // print a message indicating client doesn't have jar file
-        if (clientChecksum == null) {
-            if (!version.equals(MegaMek.VERSION)) {
-                buf.append(System.lineSeparator()).append(System.lineSeparator());
-            }
-            buf.append("Client Checksum is null. Client may not have a jar file");
-            MegaMek.getLogger().info("Client does not have a jar file");
-            needs = true;
-        // print message indicating server doesn't have jar file
-        } else if (serverChecksum == null) {
-            if (!version.equals(MegaMek.VERSION)) {
-                buf.append(System.lineSeparator()).append(System.lineSeparator());
-            }
-            buf.append("Server Checksum is null. Server may not have a jar file");
-            MegaMek.getLogger().info("Server does not have a jar file");
-            needs = true;
-        // print message indicating a client/server checksum mismatch
-        } else if (!clientChecksum.equals(serverChecksum)) {
-            if (!version.equals(MegaMek.VERSION)) {
-                buf.append(System.lineSeparator()).append(System.lineSeparator());
-            }
-            buf.append("Client/Server checksum mismatch. Server reports: ").append(serverChecksum)
-                    .append(", Client reports: ").append(clientChecksum);
-            MegaMek.getLogger().error("Client/Server Checksum Mismatch -- Client: " + clientChecksum + " Server: " + serverChecksum);
-            needs = true;
-        }
-
-        // Now, if we need to, send message!
-        if (needs) {
-            IPlayer player = game.getPlayer(connId);
-            if (null != player) {
-                sendServerChat("For " + player.getName() + " Server reports:"
-                        + System.lineSeparator()
-                        + buf.toString());
-            }
-        } else {
-            MegaMek.getLogger().info("SUCCESS: Client/Server Version (" + version + ") and Checksum (" 
-                    + clientChecksum + ") matched");
-        }
-    }
-
-    /**
-     * Receives a player name, sent from a pending connection, and connects that
-     * connection.
-     */
-    private void receivePlayerName(Packet packet, int connId) {
-        final IConnection conn = getPendingConnection(connId);
-        String name = (String) packet.getObject(0);
-        boolean returning = false;
-
-        // this had better be from a pending connection
-        if (conn == null) {
-            MegaMek.getLogger().warning("Got a client name from a non-pending connection");
-            return;
-        }
-
-        // check if they're connecting with the same name as a ghost player
-        for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
-            IPlayer player = i.nextElement();
-            if (player.getName().equals(name)) {
-                if (player.isGhost()) {
-                    returning = true;
-                    player.setGhost(false);
-                    // switch id
-                    connId = player.getId();
-                    conn.setId(connId);
-                }
-            }
-        }
-
-        if (!returning) {
-            // Check to avoid duplicate names...
-            name = correctDupeName(name);
-            sendToPending(connId, new Packet(Packet.COMMAND_SERVER_CORRECT_NAME, name));
-        }
-
-        // right, switch the connection into the "active" bin
-        connectionsPending.removeElement(conn);
-        connections.addElement(conn);
-        connectionIds.put(conn.getId(), conn);
-
-        // add and validate the player info
-        if (!returning) {
-            game.addNewPlayer(connId, name);
-        }
-
-        // if it is not the lounge phase, this player becomes an observer
-        IPlayer player = game.getPlayer(connId);
-        if ((game.getPhase() != IGame.Phase.PHASE_LOUNGE) && (null != player)
-            && (game.getEntitiesOwnedBy(player) < 1)) {
-            player.setObserver(true);
-        }
-
-        // send the player the motd
-        sendServerChat(connId, motd);
-
-        // send info that the player has connected
-        send(PacketFactory.createPlayerConnectPacket(game, connId));
-
-        // tell them their local playerId
-        send(connId, new Packet(Packet.COMMAND_LOCAL_PN, connId));
-
-        // send current game info
-        sendCurrentInfo(connId);
-
-        try {
-            InetAddress[] addresses = InetAddress.getAllByName(InetAddress.getLocalHost().getHostName());
-            for (InetAddress addresse : addresses) {
-                sendServerChat(connId, "Machine IP is " + addresse.getHostAddress());
-            }
-        } catch (UnknownHostException e) {
-            // oh well.
-        }
-
-        // Send the port we're listening on. Only useful for the player
-        // on the server machine to check.
-        sendServerChat(connId, "Listening on port " + serverSocket.getLocalPort());
-
-        // Get the player *again*, because they may have disconnected.
-        player = game.getPlayer(connId);
-        if (null != player) {
-            String who = player.getName() + " connected from " + getConnection(connId).getInetAddress();
-            MegaMek.getLogger().info("s: player #" + connId + ", " + who);
-            sendServerChat(who);
-        } // Found the player
     }
 
     /**
@@ -3068,108 +2901,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * Hand over a turn to the next player. This is only possible if you haven't
-     * yet started your turn (i.e. not yet moved anything like infantry where
-     * you have to move multiple units)
-     *
-     * @param connectionId - connection id of the player sending the packet
-     */
-    private void receiveForwardIni(int connectionId) {
-        // this is the player sending the packet
-        IPlayer current = game.getPlayer(connectionId);
-
-        if (game.getTurn().getPlayerNum() != current.getId()) {
-            // this player is not the current player, so just ignore this
-            // command!
-            return;
-        }
-        // if individual initiative is active we cannot forward our initiative
-        // ever!
-        if (game.getOptions().booleanOption(OptionsConstants.RPG_INDIVIDUAL_INITIATIVE)) {
-            return;
-        }
-        
-        // if the player isn't on a team, there is no next team by definition. Skip the rest.
-        Team currentPlayerTeam = game.getTeamForPlayer(current);
-        if (currentPlayerTeam == null) {
-            return;
-        }
-        
-        // get the next player from the team this player is on.
-        IPlayer next = currentPlayerTeam.getNextValidPlayer(current, game);
-        
-        while (!next.equals(current)) {
-            // if the chosen player is a valid player, we change the turn order and
-            // inform the clients.
-            if ((next != null) && (game.getEntitiesOwnedBy(next) != 0)
-                    && (game.getTurnForPlayer(next.getId()) != null)) {
-    
-                int currentTurnIndex = game.getTurnIndex();
-                // now look for the next occurrence of player next in the turn order
-                List<GameTurn> turns = game.getTurnVector();
-                GameTurn turn = game.getTurn();
-                // not entirely necessary. As we will also check this for the
-                // activity of the button but to be sure do it on the server too.
-                boolean isGeneralMoveTurn = !(turn instanceof GameTurn.SpecificEntityTurn)
-                        && !(turn instanceof GameTurn.UnitNumberTurn)
-                        && !(turn instanceof GameTurn.UnloadStrandedTurn);
-                if (!isGeneralMoveTurn) {
-                    // if this is not a general turn the player cannot forward his turn.
-                    return;
-                }
-    
-                // if it is an EntityClassTurn we have to check make sure, that the
-                // turn it is exchanged with is the same kind of turn!
-                // in fact this requires an access function to the mask of an
-                // EntityClassTurn.
-                boolean isEntityClassTurn = (turn instanceof GameTurn.EntityClassTurn);
-                int classMask = 0;
-                if (isEntityClassTurn) {
-                    classMask = ((GameTurn.EntityClassTurn) turn).getTurnCode();
-                }
-    
-                boolean switched = false;
-                int nextTurnId = 0;
-                for (int i = currentTurnIndex; i < turns.size(); i++) {
-                    // if we find a turn for the specific player, swap the current
-                    // player with the player noted there
-                    // and stop
-                    if (turns.get(i).isValid(next.getId(), game)) {
-                        nextTurnId = i;
-                        if (isEntityClassTurn) {
-                            // if we had an EntityClassTurn
-                            if ((turns.get(i) instanceof GameTurn.EntityClassTurn)) {
-                                // and found another EntityClassTurn
-                                if (!(((GameTurn.EntityClassTurn) turns.get(i)).getTurnCode() == classMask)) {
-                                    // both have to refer to the SAME class(es) or
-                                    // they need to be rejected.
-                                    continue;
-                                }
-                            } else {
-                                continue;
-                            }
-                        }
-                        switched = true;
-                        break;
-                    }
-                }
-    
-                // update turn order
-                if (switched) {
-                    game.swapTurnOrder(currentTurnIndex, nextTurnId);
-                    // update the turn packages for all players.
-                    send(PacketFactory.createTurnVectorPacket(game));
-                    send(PacketFactory.createTurnIndexPacket(game, connectionId));
-                    return;
-                }
-                // if nothing changed return without doing anything
-            }
-            
-            next = currentPlayerTeam.getNextValidPlayer(next, game);
-        }
-    }
-
-    /**
      * Tries to change to the next turn. If there are no more turns, ends the
      * current phase. If the player whose turn it is next is not connected, we
      * allow the other players to skip that player.
@@ -3274,17 +3005,9 @@ public class Server implements Runnable {
                 r.add("Team " + wonTeam);
                 reportmanager.addReport(r);
             }
-            if (draw) {
-                // multiple-won draw
-                game.setVictoryPlayerId(IPlayer.PLAYER_NONE);
-                game.setVictoryTeam(IPlayer.TEAM_NONE);
-            } else {
-                // nobody-won draw or
-                // single player won or
-                // single team won
-                game.setVictoryPlayerId(wonPlayer);
-                game.setVictoryTeam(wonTeam);
-            }
+            // multiple-won draw or nobody-won draw or single player won or single team won
+            game.setVictoryPlayerId(draw ? IPlayer.PLAYER_NONE : wonPlayer);
+            game.setVictoryTeam(draw ? IPlayer.TEAM_NONE : wonTeam);
         } else {
             game.setVictoryPlayerId(IPlayer.PLAYER_NONE);
             game.setVictoryTeam(IPlayer.TEAM_NONE);
@@ -3776,8 +3499,7 @@ public class Server implements Runnable {
         Hashtable<Coords, Vector<Entity>> positionMap = game.getPositionMap();
         for (Entity en : game.getEntitiesVector(centralPos)) {
             if (!en.isAirborne()) {
-                reportmanager.addReport(destroyEntity(en, "DropShip proximity damage", false,
-                                        false));
+                reportmanager.addReport(destroyEntity(en, "DropShip proximity damage", false, false));
                 alreadyHit.add(en.getId());
             }
         }
@@ -3837,8 +3559,7 @@ public class Server implements Runnable {
                     && en.getUnitNumber() == unit.getUnitNumber());
         }
 
-        if ((game.getPhase() != IGame.Phase.PHASE_LOUNGE) && !unit.isDone()
-                && (remainingProtos == 0)) {
+        if ((game.getPhase() != IGame.Phase.PHASE_LOUNGE) && !unit.isDone() && (remainingProtos == 0)) {
             // Remove the *last* friendly turn (removing the *first* penalizes
             // the opponent too much, and re-calculating moves is too hard).
             game.removeTurnFor(unit);
@@ -3850,10 +3571,8 @@ public class Server implements Runnable {
         // We want to do this before the fighter is loaded: when the fighter
         // is loaded into the squadron, the squadrons bombing attacks are
         // adjusted based on the bomb-loadout on the fighter.
-        if ((game.getPhase() == Phase.PHASE_LOUNGE)
-            && (loader instanceof FighterSquadron)) {
-            ((IBomber) unit).setBombChoices(((FighterSquadron) loader)
-                                                 .getBombChoices());
+        if ((game.getPhase() == Phase.PHASE_LOUNGE) && (loader instanceof FighterSquadron)) {
+            ((IBomber) unit).setBombChoices(((FighterSquadron) loader).getBombChoices());
         }
 
         // Load the unit. Do not check for elevation during deployment
@@ -4569,87 +4288,6 @@ public class Server implements Runnable {
     } // End private void applyAffectedBldgs()
 
     /**
-     * Receives an entity movement packet, and if valid, executes it and ends
-     * the current turn.
-     */
-    private void receiveMovement(Packet packet, int connId) {
-        Map<EntityTargetPair, LosEffects> losCache = new HashMap<>();
-        Entity entity = game.getEntity(packet.getIntValue(0));
-        MovePath md = (MovePath) packet.getObject(1);
-        md.setGame(getGame());
-        md.setEntity(entity);
-
-        // is this the right phase?
-        if (game.getPhase() != IGame.Phase.PHASE_MOVEMENT) {
-            MegaMek.getLogger().error("Server got movement packet in wrong phase");
-            return;
-        }
-
-        // can this player/entity act right now?
-        GameTurn turn = game.getTurn();
-        if (game.isPhaseSimultaneous()) {
-            turn = game.getTurnForPlayer(connId);
-        }
-        if ((turn == null) || !turn.isValid(connId, entity, game)) {
-            String msg = "error: server got invalid movement packet from " + "connection " + connId;
-            if (entity != null) {
-                msg += ", Entity: " + entity.getShortName();
-            } else {
-                msg += ", Entity was null!";
-            }
-            MegaMek.getLogger().error(msg);
-            return;
-        }
-
-        // looks like mostly everything's okay
-        processMovement(entity, md, losCache);
-
-        // The attacker may choose to break a chain whip grapple by expending MP
-        if ((entity.getGrappled() != Entity.NONE)
-                && entity.isChainWhipGrappled() && entity.isGrappleAttacker()
-                && (md.getMpUsed() > 0)) {
-
-            Entity te = game.getEntity(entity.getGrappled());
-            Report r = new Report(4316);
-            r.subject = entity.getId();
-            r.addDesc(entity);
-            r.addDesc(te);
-            reportmanager.addReport(r);
-
-            entity.setGrappled(Entity.NONE, false);
-            te.setGrappled(Entity.NONE, false);
-
-            entityUpdate(entity.getId());
-            entityUpdate(te.getId());
-        }
-
-        // check the LOS of any telemissiles owned by this entity
-        for (int missileId : entity.getTMTracker().getMissiles()) {
-            Entity tm = game.getEntity(missileId);
-            if ((null != tm) && !tm.isDestroyed()
-                && (tm instanceof TeleMissile)) {
-                ((TeleMissile) tm).setOutContact(!LosEffects.calculateLos(game, entity.getId(), tm).canSee());
-                entityUpdate(tm.getId());
-            }
-        }
-
-        // Notify the clients about any building updates.
-        applyAffectedBldgs();
-
-        // Unit movement may detect hidden units
-        detectHiddenUnits();
-
-        // Update visibility indications if using double blind.
-        if (game.doBlind()) {
-            updateVisibilityIndicator(losCache);
-        }
-
-        // This entity's turn is over.
-        // N.B. if the entity fell, a *new* turn has already been added.
-        endCurrentTurn(entity);
-    }
-
-    /**
      * makes a unit skid or sideslip on the board
      *
      * @param entity    the unit which should skid
@@ -4798,12 +4436,7 @@ public class Server implements Runnable {
             if (nextHex.containsTerrain(Terrains.BLDG_ELEV)) {
                 Building bldg = game.getBoard().getBuildingAt(nextPos);
 
-                // TODO (Sam): Nog testen of twee ifs samen mogen
-                if (bldg.getType() == Building.WALL) {
-                    crashedIntoTerrain = true;
-                }
-
-                if (bldg.getBldgClass() == Building.GUN_EMPLACEMENT) {
+                if (bldg.getType() == Building.WALL || bldg.getBldgClass() == Building.GUN_EMPLACEMENT) {
                     crashedIntoTerrain = true;
                 }
             }
@@ -4828,8 +4461,7 @@ public class Server implements Runnable {
 
             Entity crashDropShip = null;
             for (Entity en : game.getEntitiesVector(nextPos)) {
-                if ((en instanceof Dropship) && !en.isAirborne()
-                    && (nextAltitude <= (en.relHeight()))) {
+                if ((en instanceof Dropship) && !en.isAirborne() && (nextAltitude <= (en.relHeight()))) {
                     crashDropShip = en;
                 }
             }
@@ -4976,8 +4608,7 @@ public class Server implements Runnable {
                             distance, curPos, elevation, table));
                     break;
                 }
-                if (!crashDropShip.isDoomed() && !crashDropShip.isDestroyed()
-                        && !game.isOutOfGame(crashDropShip)) {
+                if (!crashDropShip.isDoomed() && !crashDropShip.isDestroyed() && !game.isOutOfGame(crashDropShip)) {
                     break;
                 }
             }
@@ -5019,25 +4650,17 @@ public class Server implements Runnable {
 
                     // Can the target avoid the skid?
                     if (!target.isDone()) {
-                        if (target instanceof Infantry) {
+                        if (target instanceof Infantry
+                                || (target instanceof Protomech && target != Compute.stackingViolation(game, entity, nextPos, null))) {
                             r = new Report(2420);
                             r.subject = target.getId();
                             r.addDesc(target);
                             reportmanager.addReport(r);
                             continue;
-                        } else if (target instanceof Protomech) {
-                            if (target != Compute.stackingViolation(game, entity, nextPos, null)) {
-                                r = new Report(2420);
-                                r.subject = target.getId();
-                                r.addDesc(target);
-                                reportmanager.addReport(r);
-                                continue;
-                            }
                         } else {
                             PilotingRollData psr = target.getBasePilotingRoll();
                             psr.addModifier(0, "avoiding collision");
-                            if (psr.getValue() == TargetRoll.AUTOMATIC_FAIL
-                                    || psr.getValue() == TargetRoll.IMPOSSIBLE) {
+                            if (psr.getValue() == TargetRoll.AUTOMATIC_FAIL || psr.getValue() == TargetRoll.IMPOSSIBLE) {
                                 r = new Report(2426);
                                 r.subject = target.getId();
                                 r.addDesc(target);
@@ -5065,8 +4688,7 @@ public class Server implements Runnable {
 
                     // Mechs and vehicles get charged,
                     // but need to make a to-hit roll
-                    if ((target instanceof Mech) || (target instanceof Tank)
-                            || (target instanceof Aero)) {
+                    if ((target instanceof Mech) || (target instanceof Tank) || (target instanceof Aero)) {
                         ChargeAttackAction caa = new ChargeAttackAction(
                                 entity.getId(), target.getTargetType(),
                                 target.getTargetId(), target.getPosition());
@@ -5711,8 +5333,7 @@ public class Server implements Runnable {
                     // they may have exceeded SI, only add if they hadn't
                     // exceeded it before
                     if (target.mpUsed <= ta.getSI()) {
-                        PilotingRollData rollTarget = ta.checkThrustSITotal(
-                                target.getRunMPwithoutMASC(), target.moved);
+                        PilotingRollData rollTarget = ta.checkThrustSITotal(target.getRunMPwithoutMASC(), target.moved);
                         if (rollTarget.getValue() != TargetRoll.CHECK_FALSE) {
                             game.addControlRoll(new PilotingRollData(
                                     target.getId(), 0,
@@ -6029,7 +5650,6 @@ public class Server implements Runnable {
         }
 
         if (returnable > -1) {
-
             entity.setDeployed(false);
             entity.setDeployRound(1 + game.getRoundCount() + returnable);
             entity.setPosition(null);
@@ -6241,9 +5861,8 @@ public class Server implements Runnable {
             }
 
             if (md.contains(MoveStepType.VLAND)) {
-                rollTarget = a.checkLanding(md.getLastStepMovementType(),
-                        md.getFinalVelocity(), md.getFinalCoords(),
-                        md.getFinalFacing(), true);
+                rollTarget = a.checkLanding(md.getLastStepMovementType(), md.getFinalVelocity(),
+                        md.getFinalCoords(), md.getFinalFacing(), true);
                 attemptLanding(entity, rollTarget);
                 if (entity instanceof Dropship) {
                     applyDropShipLandingDamage(md.getFinalCoords(), (Dropship) a);
@@ -6318,8 +5937,7 @@ public class Server implements Runnable {
         overallMoveType = md.getLastStepMovementType();
 
         // check for starting in liquid magma
-        if ((game.getBoard().getHex(entity.getPosition())
-                .terrainLevel(Terrains.MAGMA) == 2)
+        if ((game.getBoard().getHex(entity.getPosition()).terrainLevel(Terrains.MAGMA) == 2)
                 && (entity.getElevation() == 0)) {
             doMagmaDamage(entity, false);
         }
@@ -6394,8 +6012,7 @@ public class Server implements Runnable {
                 for (Entity e : hiddenEnemies) {
                     int dist = e.getPosition().distance(step.getPosition());
                     // Checking for same hex and stacking violation
-                    if ((dist == 0) && !continueTurnFromPBS
-                            && (Compute.stackingViolation(game, entity.getId(),
+                    if ((dist == 0) && !continueTurnFromPBS && (Compute.stackingViolation(game, entity.getId(),
                                     step.getPosition()) != null)) {
                         // Moving into hex of a hidden unit detects the unit
                         e.setHidden(false);
@@ -6461,12 +6078,9 @@ public class Server implements Runnable {
             }
 
             // stop for illegal movement
-            if (stepMoveType == EntityMovementType.MOVE_ILLEGAL) {
-                break;
-            }
-
-            // stop if the entity already killed itself
-            if (entity.isDestroyed() || entity.isDoomed()) {
+            if (stepMoveType == EntityMovementType.MOVE_ILLEGAL
+                    // stop if the entity already killed itself
+                    || entity.isDestroyed() || entity.isDoomed()) {
                 break;
             }
 
@@ -6502,8 +6116,7 @@ public class Server implements Runnable {
             if (firstStep) {
                 rollTarget = entity.checkGunningIt(overallMoveType);
                 if (rollTarget.getValue() != TargetRoll.CHECK_FALSE) {
-                    int mof = doSkillCheckWhileMoving(entity, lastElevation, lastPos,
-                            curPos, rollTarget, false);
+                    int mof = doSkillCheckWhileMoving(entity, lastElevation, lastPos, curPos, rollTarget, false);
                     if (mof > 0) {
                         // Since this is the first step, we don't have a previous step so we'll pass
                         // this one in case it's needed to process a skid.
@@ -6540,8 +6153,7 @@ public class Server implements Runnable {
                     || overallMoveType == EntityMovementType.MOVE_VTOL_SPRINT)) {
                 rollTarget = entity.checkUsingOverdrive(EntityMovementType.MOVE_SPRINT);
                 if (rollTarget.getValue() != TargetRoll.CHECK_FALSE) {
-                    int mof = doSkillCheckWhileMoving(entity, lastElevation, lastPos,
-                            curPos, rollTarget, false);
+                    int mof = doSkillCheckWhileMoving(entity, lastElevation, lastPos, curPos, rollTarget, false);
                     if (mof > 0) {
                         if (processFailedVehicleManeuver(entity, curPos, 0, step, step.isThisStepBackwards(),
                                 lastStepMoveType, distance, 2, mof)) {
@@ -6734,8 +6346,7 @@ public class Server implements Runnable {
                         }
                         if (checkRoll >= targetRoll) {
                             // this gets complicated, I need to check for each
-                            // unit type
-                            // by order of movement sub-phase
+                            // unit type by order of movement sub-phase
                             Vector<Integer> potentialSpaceStation = new Vector<>();
                             Vector<Integer> potentialWarShip = new Vector<>();
                             Vector<Integer> potentialJumpShip = new Vector<>();
@@ -6746,8 +6357,7 @@ public class Server implements Runnable {
                             while (targets.hasNext()) {
                                 int id = targets.next().getId();
                                 Entity ce = game.getEntity(id);
-                                // if we are in atmosphere and not the same altitude
-                                // then skip
+                                // if we are in atmosphere and not the same altitude then skip
                                 if (!game.getBoard().inSpace() && (ce.getAltitude() != curAltitude)) {
                                     continue;
                                 }
@@ -6791,7 +6401,6 @@ public class Server implements Runnable {
                                     destination = target.getPosition();
                                     if (processCollision(entity, target, lastPos)) {
                                         curPos = destination;
-                                        break;
                                     }
                                     break; // Before this refactoring, everything was elseif statements so break when one is not empty
                                 }
@@ -6867,8 +6476,7 @@ public class Server implements Runnable {
                                 fighterCount = 0;
                                 doorDamage = false;
                             }
-                            int bonus = Math.max(0,
-                                    distribution[currentDoor] - 2);
+                            int bonus = Math.max(0, distribution[currentDoor] - 2);
 
                             Entity fighter = game.getEntity(fighterId);
                             if (!launchUnit(entity, fighter, curPos, curFacing, step.getVelocity(),
@@ -7043,8 +6651,7 @@ public class Server implements Runnable {
             // check for charge
             if (step.getType() == MoveStepType.CHARGE) {
                 if (entity.canCharge()) {
-                    game.checkExtremeGravityMovement(entity, step, lastStepMoveType,
-                            curPos, cachedGravityLimit);
+                    game.checkExtremeGravityMovement(entity, step, lastStepMoveType, curPos, cachedGravityLimit);
                     Targetable target = step.getTarget(game);
                     if (target != null) {
                         ChargeAttackAction caa = new ChargeAttackAction(
@@ -7079,13 +6686,10 @@ public class Server implements Runnable {
                         return;
                     }
                 } else {
-                    sendServerChat("Illegal charge!! I don't think "
-                            + entity.getDisplayName()
-                            + " should be allowed to charge,"
-                            + " but the client of "
+                    sendServerChat("Illegal charge!! I don't think " + entity.getDisplayName()
+                            + " should be allowed to charge, but the client of "
                             + entity.getOwner().getName() + " disagrees.");
-                    sendServerChat("Please make sure "
-                            + entity.getOwner().getName()
+                    sendServerChat("Please make sure " + entity.getOwner().getName()
                             + " is running MegaMek " + MegaMek.VERSION
                             + ", or if that is already the case, submit a bug report at https://github.com/MegaMek/megamek/issues");
                     return;
@@ -7137,7 +6741,6 @@ public class Server implements Runnable {
                             + ", or if that is already the case, submit a bug report at https://github.com/MegaMek/megamek/issues");
                     return;
                 }
-                
                 break;
             }
 
@@ -7263,16 +6866,13 @@ public class Server implements Runnable {
                 if (prevStep != null) {
                     straight = prevStep.getNStraight();
                 }
-                rollTarget = entity.checkTurnModeFailure(overallMoveType, straight,
-                        md.getMpUsed(), step.getPosition());
+                rollTarget = entity.checkTurnModeFailure(overallMoveType, straight, md.getMpUsed(), step.getPosition());
                 if (rollTarget.getValue() != TargetRoll.CHECK_FALSE) {
-                    int mof = doSkillCheckWhileMoving(entity, lastElevation, lastPos,
-                            curPos, rollTarget, false);
+                    int mof = doSkillCheckWhileMoving(entity, lastElevation, lastPos, curPos, rollTarget, false);
                     if (mof > 0) {
                         if (processFailedVehicleManeuver(entity, curPos,
                                 step.getFacing() - curFacing,
-                                (null == prevStep)?step : prevStep,
-                                        step.isThisStepBackwards(),
+                                (null == prevStep)?step : prevStep, step.isThisStepBackwards(),
                                         lastStepMoveType, distance, mof, mof)) {
                             if (md.hasActiveMASC()) {
                                 mpUsed = entity.getRunMP();
@@ -7297,8 +6897,7 @@ public class Server implements Runnable {
                 rollTarget = entity.getBasePilotingRoll();
                 entity.addPilotingModifierForTerrain(rollTarget);
                 rollTarget.addModifier(0, "bootlegger maneuver");
-                int mof = doSkillCheckWhileMoving(entity, lastElevation,
-                        curPos, curPos, rollTarget, false);
+                int mof = doSkillCheckWhileMoving(entity, lastElevation, curPos, curPos, rollTarget, false);
                 if (mof > 0) {
                     // If the bootlegger maneuver fails, we treat it as a turn in a random direction.
                     processFailedVehicleManeuver(entity, curPos, Compute.d6() < 4 ? -1 : 1,
@@ -7747,8 +7346,7 @@ public class Server implements Runnable {
             }
 
             // check if we've moved into water
-            rollTarget = entity.checkWaterMove(step, lastStepMoveType, curHex,
-                    lastPos, curPos, isPavementStep);
+            rollTarget = entity.checkWaterMove(step, lastStepMoveType, curHex, lastPos, curPos, isPavementStep);
             if (rollTarget.getValue() != TargetRoll.CHECK_FALSE) {
                 // Swarmers need special handling.
                 final int swarmerId = entity.getSwarmAttackerId();
@@ -7890,8 +7488,7 @@ public class Server implements Runnable {
             if (step.getType() == MoveStepType.TOW) {
 
                 // Find the unit being loaded.
-                Entity loaded;
-                loaded = game.getEntity(entity.getTowing());
+                Entity loaded = game.getEntity(entity.getTowing());
 
                 // This should never ever happen, but just in case...
                 if (loaded == null) {
@@ -8034,8 +7631,7 @@ public class Server implements Runnable {
                     // continue to unload units
                     if (entity.getUnitsUnloadableFromBays().size() > 0) {
                         dropshipStillUnloading = true;
-                        GameTurn newTurn = new GameTurn.SpecificEntityTurn(
-                                entity.getOwner().getId(), entity.getId());
+                        GameTurn newTurn = new GameTurn.SpecificEntityTurn(entity.getOwner().getId(), entity.getId());
                         // Need to set the new turn's multiTurn state
                         newTurn.setMultiTurn(true);
                         game.insertNextTurn(newTurn);
@@ -8092,22 +7688,18 @@ public class Server implements Runnable {
                 // per TacOps, if the mech is walking backwards over an elevation change and falls
                 // it falls into the lower hex. The caveat is if it already fell from some other PSR in this 
                 // invocation of processMovement, then it can't fall again. 
-                if ((entity instanceof Mech) && (curHex.getLevel() < game
-                        .getBoard().getHex(lastPos).getLevel()) && !entity.hasFallen()) {
+                if ((entity instanceof Mech) && (curHex.getLevel() < game.getBoard().getHex(lastPos).getLevel()) && !entity.hasFallen()) {
                     rollTarget = entity.getBasePilotingRoll(overallMoveType);
                     rollTarget.addModifier(0, "moving backwards over an elevation change");
-                    doSkillCheckWhileMoving(entity, entity.getElevation(),
-                            curPos, curPos, rollTarget, true);
+                    doSkillCheckWhileMoving(entity, entity.getElevation(), curPos, curPos, rollTarget, true);
                 } else if ((entity instanceof Mech) && !entity.hasFallen()) {
                     rollTarget = entity.getBasePilotingRoll(overallMoveType);
                     rollTarget.addModifier(0, "moving backwards over an elevation change");
-                    doSkillCheckWhileMoving(entity, lastElevation, lastPos,
-                            lastPos, rollTarget, true);
+                    doSkillCheckWhileMoving(entity, lastElevation, lastPos, lastPos, rollTarget, true);
                 } else if (entity instanceof Tank) {
                     rollTarget = entity.getBasePilotingRoll(overallMoveType);
                     rollTarget.addModifier(0, "moving backwards over an elevation change");
-                    if (doSkillCheckWhileMoving(entity, entity.getElevation(),
-                            curPos, lastPos, rollTarget, false) < 0) {
+                    if (doSkillCheckWhileMoving(entity, entity.getElevation(), curPos, lastPos, rollTarget, false) < 0) {
                         curPos = lastPos;
                     }
                 }
@@ -8218,8 +7810,7 @@ public class Server implements Runnable {
                     && !entity.isAero();
             // Cliffs should only exist towards 1 or 2 level drops, check just to make sure
             // Everything that does not have a 1 or 2 level drop shouldn't be handled as a cliff
-            int stepHeight = curElevation + curHex.getLevel() 
-                    - (lastElevation + prevHex.getLevel());
+            int stepHeight = curElevation + curHex.getLevel() - (lastElevation + prevHex.getLevel());
             boolean isUpCliff = !lastPos.equals(curPos) 
                     && curHex.hasCliffTopTowards(prevHex)
                     && (stepHeight == 1 || stepHeight == 2);
@@ -8257,8 +7848,7 @@ public class Server implements Runnable {
             if (mechAffectedByCliff && !quadveeVehMode && isUpCliff && !isPavementStep) {
                 rollTarget = entity.getBasePilotingRoll(moveType);
                 rollTarget.append(new PilotingRollData(entity.getId(), stepHeight, "moving up a sheer cliff"));
-                if (doSkillCheckWhileMoving(entity, lastElevation,
-                        lastPos, lastPos, rollTarget, false) > 0) {
+                if (doSkillCheckWhileMoving(entity, lastElevation, lastPos, lastPos, rollTarget, false) > 0) {
                     r = new Report(2209);
                     r.addDesc(entity);
                     r.subject = entity.getId();
@@ -8417,7 +8007,6 @@ public class Server implements Runnable {
         }
 
         if (entity.isAirborne() && entity.isAero()) {
-
             IAero a = (IAero) entity;
             int thrust = md.getMpUsed();
 
@@ -8487,8 +8076,7 @@ public class Server implements Runnable {
                     r.subject = entity.getId();
                     r.addDesc(entity);
                     reportmanager.addReport(r);
-                    game.addControlRoll(new PilotingRollData(entity.getId(), 0,
-                            "stalled out"));
+                    game.addControlRoll(new PilotingRollData(entity.getId(), 0, "stalled out"));
                     entity.setAltitude(entity.getAltitude() - 1);
                     // check for crash
                     if (game.checkCrash(entity, entity.getPosition(), entity.getAltitude())) {
@@ -8510,8 +8098,7 @@ public class Server implements Runnable {
                     }
                 } else if (entity instanceof EscapePods && entity.isAirborne() && md.getFinalVelocity() < 2) {
                     //Atmospheric Escape Pods that drop below velocity 2 lose altitude as dropping units
-                    entity.setAltitude(entity.getAltitude()
-                            - game.getPlanetaryConditions().getDropRate());
+                    entity.setAltitude(entity.getAltitude() - game.getPlanetaryConditions().getDropRate());
                     r = new Report(6676);
                     r.subject = entity.getId();
                     r.addDesc(entity);
@@ -8524,8 +8111,7 @@ public class Server implements Runnable {
         // We need to check for the removal of hull-down for tanks.
         // Tanks can just drive out of hull-down: if the tank was hull-down
         // and doesn't end hull-down we can remove the hull-down status
-        if (entity.isHullDown() && !md.getFinalHullDown()
-                && (entity instanceof Tank
+        if (entity.isHullDown() && !md.getFinalHullDown() && (entity instanceof Tank
                 || (entity instanceof QuadVee && entity.getConversionMode() == QuadVee.CONV_MODE_VEHICLE))) {
             entity.setHullDown(false);
         }
@@ -8541,8 +8127,7 @@ public class Server implements Runnable {
 
             // Add a +4 modifier.
             if (md.getLastStepMovementType() == EntityMovementType.MOVE_VTOL_RUN) {
-                rollTarget.addModifier(2,
-                        "dislodge swarming infantry with VTOL movement");
+                rollTarget.addModifier(2, "dislodge swarming infantry with VTOL movement");
             } else {
                 rollTarget.addModifier(4, "dislodge swarming infantry");
             }
@@ -8927,11 +8512,9 @@ public class Server implements Runnable {
                     // damage and ProtoMechs always require a roll
                     int elevation = (null == prevStep)? entity.getElevation() : prevStep.getElevation();
                     if (entity.hasETypeFlag(Entity.ETYPE_LAND_AIR_MECH)) {
-                        reportmanager.addReport(landAirMech((LandAirMech) entity, entity.getPosition(), elevation,
-                                entity.delta_distance));
+                        reportmanager.addReport(landAirMech((LandAirMech) entity, entity.getPosition(), elevation, entity.delta_distance));
                     } else if (entity.hasETypeFlag(Entity.ETYPE_PROTOMECH)) {
-                        reportmanager.addReport(landGliderPM((Protomech) entity, entity.getPosition(),
-                                elevation, entity.delta_distance));
+                        reportmanager.addReport(landGliderPM((Protomech) entity, entity.getPosition(), elevation, entity.delta_distance));
                     } else {
                         r = new Report(2123);
                         r.addDesc(entity);
@@ -8957,11 +8540,9 @@ public class Server implements Runnable {
                     }
 
                     // Check for stacking violations in the target hex
-                    Entity violation = Compute.stackingViolation(game,
-                            entity.getId(), entity.getPosition());
+                    Entity violation = Compute.stackingViolation(game, entity.getId(), entity.getPosition());
                     if (violation != null) {
-                        PilotingRollData prd = new PilotingRollData(
-                                violation.getId(), 2, "fallen on");
+                        PilotingRollData prd = new PilotingRollData(violation.getId(), 2, "fallen on");
                         if (violation instanceof Dropship) {
                             violation = entity;
                             prd = null;
@@ -8980,8 +8561,7 @@ public class Server implements Runnable {
                             // TODO : a Mech suffers a Head Blown Off crit.
                             reportmanager.addReport(destroyEntity(violation,
                                     "impossible displacement",
-                                    violation instanceof Mech,
-                                    violation instanceof Mech));
+                                    violation instanceof Mech, violation instanceof Mech));
                         }
                     }
                 } else if (!entity.hasETypeFlag(Entity.ETYPE_LAND_AIR_MECH)
@@ -9031,8 +8611,7 @@ public class Server implements Runnable {
             swarmer.setPosition(curPos);
             // If the hex is on fire, and the swarming infantry is
             // *not* Battle Armor, it drops off.
-            if (!(swarmer instanceof BattleArmor) && game.getBoard()
-                    .getHex(curPos).containsTerrain(Terrains.FIRE)) {
+            if (!(swarmer instanceof BattleArmor) && game.getBoard().getHex(curPos).containsTerrain(Terrains.FIRE)) {
                 swarmer.setSwarmTargetId(Entity.NONE);
                 entity.setSwarmAttackerId(Entity.NONE);
                 r = new Report(2145);
@@ -9064,7 +8643,6 @@ public class Server implements Runnable {
 
         // recovered units should now be recovered and dealt with
         if (entity.isAero() && recovered && (loader != null)) {
-
             if (loader.isCapitalFighter()) {
                 if (!(loader instanceof FighterSquadron)) {
                     // this is a solo capital fighter so we need to add a new
@@ -9126,12 +8704,8 @@ public class Server implements Runnable {
         if ((entity instanceof Mech) && entity.hasEngine() && ((Mech) entity).isIndustrial()
                 && !entity.hasEnvironmentalSealing()
                 && (entity.getEngine().getEngineType() == Engine.COMBUSTION_ENGINE)) {
-            if ((!entity.isProne() && (game.getBoard().getHex(entity.getPosition()).terrainLevel(Terrains.WATER) >= 2)) || (entity.isProne()
-                    && (game.getBoard().getHex(entity.getPosition()).terrainLevel(Terrains.WATER) == 1))) {
-                ((Mech) entity).setJustMovedIntoIndustrialKillingWater(true);
-            } else {
-                ((Mech) entity).setJustMovedIntoIndustrialKillingWater(false);
-            }
+            ((Mech) entity).setJustMovedIntoIndustrialKillingWater((!entity.isProne() && (game.getBoard().getHex(entity.getPosition()).terrainLevel(Terrains.WATER) >= 2)) || (entity.isProne()
+                    && (game.getBoard().getHex(entity.getPosition()).terrainLevel(Terrains.WATER) == 1)));
         }
     }
 
@@ -9225,8 +8799,7 @@ public class Server implements Runnable {
                 masc_report.subject = entity.getId();
                 masc_report.indent(2);
                 masc_report.addDesc(entity);
-                masc_report.add(entity.getCrew().getOptions()
-                        .intOption(OptionsConstants.EDGE));
+                masc_report.add(entity.getCrew().getOptions().intOption(OptionsConstants.EDGE));
                 vReport.addElement(masc_report);
                 // Recheck MASC failure
                 if (!entity.checkForMASCFailure(md, vReport, crits)) {
@@ -9265,11 +8838,9 @@ public class Server implements Runnable {
                         // HACK: if loc is -1, we need to deal motive damage to
                         // the tank, the severity of which is stored in the critslot index
                         if (loc == -1) {
-                            reportmanager.addReport(vehicleMotiveDamage((Tank) entity,
-                                    0, true, cs.getIndex()));
+                            reportmanager.addReport(vehicleMotiveDamage((Tank) entity, 0, true, cs.getIndex()));
                         } else {
-                            reportmanager.addReport(applyCriticalHit(entity, loc, cs,
-                                    true, 0, false));
+                            reportmanager.addReport(applyCriticalHit(entity, loc, cs, true, 0, false));
                         }
                     }
                 }
@@ -9566,207 +9137,6 @@ public class Server implements Runnable {
         }
     }
 
-    public void createThunderMinefield(Minefield minefield, Coords coords, int playerId, int damage, int entityId, int type) {
-        // Create a new Thunder minefield
-        if (minefield == null) {
-            minefield = Minefield.createMinefield(coords, playerId, type, damage);
-            game.addMinefield(minefield);
-            checkForRevealMinefield(minefield, game.getEntity(entityId));
-        } else if (minefield.getDensity() < Minefield.MAX_DAMAGE) {
-            // Add to the old one
-            removeMinefield(minefield);
-            int oldDamage = minefield.getDensity();
-            damage += oldDamage;
-            damage = Math.min(damage, Minefield.MAX_DAMAGE);
-            minefield.setDensity(damage);
-            game.addMinefield(minefield);
-            checkForRevealMinefield(minefield, game.getEntity(entityId));
-        }
-    }
-
-    /**
-     * Delivers a thunder-aug shot to the targeted hex area. Thunder-Augs are 7
-     * hexes, though, so...
-     *
-     * @param damage
-     *            The per-hex density of the incoming minefield; that is, the
-     *            final value with any modifiers (such as halving and rounding
-     *            just for <em>being</em> T-Aug) already applied.
-     */
-    public void deliverThunderAugMinefield(Coords coords, int playerId, int damage, int entityId) {
-        Coords mfCoord;
-        for (int dir = 0; dir < 7; dir++) {
-            // May need to reset here for each new hex.
-            int hexDamage = damage;
-            if (dir == 6) {// The targeted hex.
-                mfCoord = coords;
-            } else {// The hex in the dir direction from the targeted hex.
-                mfCoord = coords.translated(dir);
-            }
-
-            // Only if this is on the board...
-            if (game.getBoard().contains(mfCoord)) {
-                Minefield minefield = null;
-                Enumeration<Minefield> minefields = game.getMinefields(mfCoord).elements();
-                // Check if there already are Thunder minefields in the hex.
-                while (minefields.hasMoreElements()) {
-                    Minefield mf = minefields.nextElement();
-                    if (mf.getType() == Minefield.TYPE_CONVENTIONAL) {
-                        minefield = mf;
-                        break;
-                    }
-                }
-
-                // Did we find a Thunder minefield in the hex?
-                // N.B. damage Thunder minefields equals the number of
-                // missiles, divided by two, rounded up.
-                if (minefield == null) {
-                    // Nope. Create a new Thunder minefield
-                    minefield = Minefield.createMinefield(mfCoord, playerId, Minefield.TYPE_CONVENTIONAL, hexDamage);
-                    game.addMinefield(minefield);
-                    checkForRevealMinefield(minefield, game.getEntity(entityId));
-                } else if (minefield.getDensity() < Minefield.MAX_DAMAGE) {
-                    // Yup. Replace the old one.
-                    removeMinefield(minefield);
-                    hexDamage += minefield.getDensity();
-
-                    // Damage from Thunder minefields are capped.
-                    hexDamage = Math.min(hexDamage, Minefield.MAX_DAMAGE);
-                    minefield.setDensity(hexDamage);
-                    game.addMinefield(minefield);
-                    checkForRevealMinefield(minefield, game.getEntity(entityId));
-                }
-            } // End coords-on-board
-        } // Handle the next coords
-    }
-
-    /**
-     * Adds a Thunder minefield to the hex.
-     *
-     * @param coords   the minefield's coordinates
-     * @param playerId the deploying player's id
-     * @param damage   the amount of damage the minefield does
-     * @param entityId an entity that might spot the minefield
-     */
-    public void deliverThunderMinefield(Coords coords, int playerId, int damage, int entityId) {
-        Minefield minefield = null;
-        Enumeration<Minefield> minefields = game.getMinefields(coords).elements();
-        // Check if there already are Thunder minefields in the hex.
-        while (minefields.hasMoreElements()) {
-            Minefield mf = minefields.nextElement();
-            if (mf.getType() == Minefield.TYPE_CONVENTIONAL) {
-                minefield = mf;
-                break;
-            }
-        }
-
-        // Create a new Thunder minefield
-        createThunderMinefield(minefield, coords, playerId, damage, entityId, Minefield.TYPE_CONVENTIONAL);
-    }
-
-    /**
-     * Adds a Thunder Inferno minefield to the hex.
-     *
-     * @param coords   the minefield's coordinates
-     * @param playerId the deploying player's id
-     * @param damage   the amount of damage the minefield does
-     * @param entityId an entity that might spot the minefield
-     */
-    public void deliverThunderInfernoMinefield(Coords coords, int playerId, int damage, int entityId) {
-        Minefield minefield = null;
-        Enumeration<Minefield> minefields = game.getMinefields(coords).elements();
-        // Check if there already are Thunder minefields in the hex.
-        while (minefields.hasMoreElements()) {
-            Minefield mf = minefields.nextElement();
-            if (mf.getType() == Minefield.TYPE_INFERNO) {
-                minefield = mf;
-                break;
-            }
-        }
-
-        // Create a new Thunder Inferno minefield
-        createThunderMinefield(minefield, coords, playerId, damage, entityId, Minefield.TYPE_INFERNO);
-    }
-
-    /**
-     * Delivers an artillery FASCAM shot to the targeted hex area.
-     */
-    public void deliverFASCAMMinefield(Coords coords, int playerId, int damage, int entityId) {
-        // Only if this is on the board...
-        if (game.getBoard().contains(coords)) {
-            Minefield minefield = null;
-            Enumeration<Minefield> minefields = game.getMinefields(coords).elements();
-            // Check if there already are Thunder minefields in the hex.
-            while (minefields.hasMoreElements()) {
-                Minefield mf = minefields.nextElement();
-                if (mf.getType() == Minefield.TYPE_CONVENTIONAL) {
-                    minefield = mf;
-                    break;
-                }
-            }
-            // Did we find a Thunder minefield in the hex?
-            createThunderMinefield(minefield, coords, playerId, damage, entityId, Minefield.TYPE_CONVENTIONAL);
-        } // End coords-on-board
-    }
-
-    /**
-     * Adds a Thunder-Active minefield to the hex.
-     * @param coords   the minefield's coordinates
-     * @param playerId the deploying player's id
-     * @param damage   the amount of damage the minefield does
-     * @param entityId an entity that might spot the minefield
-     */
-    public void deliverThunderActiveMinefield(Coords coords, int playerId, int damage, int entityId) {
-        Minefield minefield = null;
-        Enumeration<Minefield> minefields = game.getMinefields(coords).elements();
-        // Check if there already are Thunder minefields in the hex.
-        while (minefields.hasMoreElements()) {
-            Minefield mf = minefields.nextElement();
-            if (mf.getType() == Minefield.TYPE_ACTIVE) {
-                minefield = mf;
-                break;
-            }
-        }
-
-        // Create a new Thunder-Active minefield
-        createThunderMinefield(minefield, coords, playerId, damage, entityId, Minefield.TYPE_ACTIVE);
-    }
-
-    /**
-     * Adds a Thunder-Vibrabomb minefield to the hex.
-     */
-    public void deliverThunderVibraMinefield(Coords coords, int playerId,
-            int damage, int sensitivity, int entityId) {
-        Minefield minefield = null;
-        Enumeration<Minefield> minefields = game.getMinefields(coords).elements();
-        // Check if there already are Thunder minefields in the hex.
-        while (minefields.hasMoreElements()) {
-            Minefield mf = minefields.nextElement();
-            if (mf.getType() == Minefield.TYPE_VIBRABOMB) {
-                minefield = mf;
-                break;
-            }
-        }
-
-        // Create a new Thunder-Vibra minefield
-        if (minefield == null) {
-            minefield = Minefield.createMinefield(coords, playerId, Minefield.TYPE_VIBRABOMB, damage, sensitivity);
-            game.addMinefield(minefield);
-            game.addVibrabomb(minefield);
-            checkForRevealMinefield(minefield, game.getEntity(entityId));
-        } else if (minefield.getDensity() < Minefield.MAX_DAMAGE) {
-            // Add to the old one
-            removeMinefield(minefield);
-            int oldDamage = minefield.getDensity();
-            damage += oldDamage;
-            damage = Math.min(damage, Minefield.MAX_DAMAGE);
-            minefield.setDensity(damage);
-            game.addMinefield(minefield);
-            game.addVibrabomb(minefield);
-            checkForRevealMinefield(minefield, game.getEntity(entityId));
-        }
-    }
-
     /**
      * Creates an artillery flare of the given radius above the target
      */
@@ -9879,8 +9249,7 @@ public class Server implements Runnable {
         vPhaseReport.add(r);
         createSmoke(coords, SmokeCloud.SMOKE_LI_HEAVY, 2);
         IHex hex = game.getBoard().getHex(coords);
-        hex.addTerrain(Terrains.getTerrainFactory().createTerrain(
-                Terrains.SMOKE, SmokeCloud.SMOKE_LI_HEAVY));
+        hex.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.SMOKE, SmokeCloud.SMOKE_LI_HEAVY));
         gamemanager.sendChangedHex(game, coords);
         for (int dir = 0; dir <= 5; dir++) {
             Coords tempcoords = coords.translated(dir);
@@ -10237,17 +9606,14 @@ public class Server implements Runnable {
                                 r = new Report(3465);
                                 r.addDesc(coverDropship);
                                 r.indent(1);
-                                coverDamageReport = deliverInfernoMissiles(ae,
-                                        coverDropship, 1, CalledShot.CALLED_NONE);
+                                coverDamageReport = deliverInfernoMissiles(ae, coverDropship, 1, CalledShot.CALLED_NONE);
                                 coverDamageReport.insertElementAt(r, 0);
                                 for (Report report : coverDamageReport) {
                                     report.indent(1);
                                 }
                             } else if (damageableCoverType == LosEffects.DAMAGABLE_COVER_BUILDING) {
-                                BuildingTarget bldgTrgt = new BuildingTarget(coverLoc,
-                                        game.getBoard(), false);
-                                coverDamageReport = deliverInfernoMissiles(ae, bldgTrgt, 1,
-                                        CalledShot.CALLED_NONE);
+                                BuildingTarget bldgTrgt = new BuildingTarget(coverLoc, game.getBoard(), false);
+                                coverDamageReport = deliverInfernoMissiles(ae, bldgTrgt, 1, CalledShot.CALLED_NONE);
                             }
                             for (Report report : coverDamageReport) {
                                 report.indent(1);
@@ -10468,18 +9834,6 @@ public class Server implements Runnable {
         return enterMinefield(entity, c, curElev, isOnGround, vMineReport, -1);
     }
 
-    private Mounted checkMineSweeper(Entity entity) {
-        // Check for Mine sweepers
-        Mounted minesweeper = null;
-        for (Mounted m : entity.getMisc()) {
-            if (m.getType().hasFlag(MiscType.F_MINESWEEPER) && m.isReady() && (m.getArmorValue() > 0)) {
-                minesweeper = m;
-                break; // Can only have one minesweeper
-            }
-        }
-        return minesweeper;
-    }
-
     /**
      * Check for any detonations when an entity enters a minefield, except a
      * vibrabomb.
@@ -10510,7 +9864,7 @@ public class Server implements Runnable {
             return false;
         }
 
-        Mounted minesweeper = checkMineSweeper(entity);
+        Mounted minesweeper = gamemanager.checkMineSweeper(entity);
 
         Vector<Minefield> fieldsToRemove = new Vector<>();
         // loop through mines in this hex
@@ -10613,12 +9967,8 @@ public class Server implements Runnable {
                     }
                 }
             }
-
             // check whether we have an active mine
-            if ((mf.getType() == Minefield.TYPE_ACTIVE) && isOnGround) {
-                continue;
-            }
-            if ((mf.getType() != Minefield.TYPE_ACTIVE) && !isOnGround) {
+            if ((mf.getType() == Minefield.TYPE_ACTIVE && isOnGround) || (mf.getType() != Minefield.TYPE_ACTIVE && !isOnGround)) {
                 continue;
             }
 
@@ -10907,7 +10257,7 @@ public class Server implements Runnable {
         int mass = (int) entity.getWeight();
 
         // Check for Mine sweepers
-        Mounted minesweeper = checkMineSweeper(entity);
+        Mounted minesweeper = gamemanager.checkMineSweeper(entity);
 
         // Check for minesweepers sweeping VB minefields
         if (minesweeper != null) {
@@ -11829,11 +11179,11 @@ public class Server implements Runnable {
         } else {
             direction = src.direction(dest);
         }
-        Report r;
+
         // check entity in target hex
         Entity affaTarget = game.getAffaTarget(dest, entity);
         // falling mech falls
-        r = new Report(2205);
+        Report r = new Report(2205);
         r.subject = entity.getId();
         r.addDesc(entity);
         r.add(fallElevation);
@@ -11953,9 +11303,7 @@ public class Server implements Runnable {
             Coords targetDest = Compute.getValidDisplacement(game, entity.getId(), dest, direction);
             if (targetDest != null) {
                 vPhaseReport.addAll(doEntityFallsInto(entity, entitySrcElevation, src, targetDest,
-                        new PilotingRollData(entity.getId(),
-                                TargetRoll.IMPOSSIBLE,
-                                "pushed off a cliff"),
+                        new PilotingRollData(entity.getId(), TargetRoll.IMPOSSIBLE, "pushed off a cliff"),
                         false));
                 // Update the entity's position on the client.
                 entityUpdate(entity.getId());
@@ -12219,11 +11567,7 @@ public class Server implements Runnable {
                                 r.indent(3);
                                 r.subject = violation.getId();
                                 r.addDesc(violation);
-                                if (mp.getLastStep().getType() == MoveStepType.FORWARDS) {
-                                    r.choose(false);
-                                } else {
-                                    r.choose(true);
-                                }
+                                r.choose(mp.getLastStep().getType() != MoveStepType.FORWARDS);
                                 r.add(mp.getLastStep().getPosition().getBoardNum());
                                 vPhaseReport.add(r);
                                 // Move unit
@@ -12307,129 +11651,6 @@ public class Server implements Runnable {
         }
         return vReport;
     }
-
-    /**
-     * Receive a deployment packet. If valid, execute it and end the current
-     * turn.
-     */
-    private void receiveDeployment(Packet packet, int connId) {
-        Entity entity = game.getEntity(packet.getIntValue(0));
-        Coords coords = (Coords) packet.getObject(1);
-        int nFacing = packet.getIntValue(2);
-        int elevation = packet.getIntValue(3);
-
-        // Handle units that deploy loaded with other units.
-        int loadedCount = packet.getIntValue(4);
-        Vector<Entity> loadVector = new Vector<>();
-        for (int i = 0; i < loadedCount; i++) {
-            int loadedId = packet.getIntValue(6 + i);
-            loadVector.addElement(game.getEntity(loadedId));
-        }
-
-        // is this the right phase?
-        if (game.getPhase() != IGame.Phase.PHASE_DEPLOYMENT) {
-            MegaMek.getLogger().error("Server got deployment packet in wrong phase");
-            return;
-        }
-
-        // can this player/entity act right now?
-        final boolean assaultDrop = packet.getBooleanValue(5);
-        // can this player/entity act right now?
-        GameTurn turn = game.getTurn();
-        if (game.isPhaseSimultaneous()) {
-            turn = game.getTurnForPlayer(connId);
-        }
-        if ((turn == null) || !turn.isValid(connId, entity, game)
-                || !(game.getBoard().isLegalDeployment(coords, entity.getStartingPos())
-                || (assaultDrop && game.getOptions().booleanOption(OptionsConstants.ADVANCED_ASSAULT_DROP)
-                    && entity.canAssaultDrop()))) {
-            String msg = "server got invalid deployment packet from "
-                         + "connection " + connId;
-            if (entity != null) {
-                msg += ", Entity: " + entity.getShortName();
-            } else {
-                msg += ", Entity was null!";
-            }
-            MegaMek.getLogger().error(msg);
-            send(connId, PacketFactory.createTurnVectorPacket(game));
-            send(connId, PacketFactory.createTurnIndexPacket(game, turn.getPlayerNum()));
-            return;
-        }
-
-        // looks like mostly everything's okay
-        processDeployment(entity, coords, nFacing, elevation, loadVector, assaultDrop);
-
-        //Update Aero sensors for a space or atmospheric game
-        if (entity.isAero()) {
-            IAero a = (IAero) entity;
-            a.updateSensorOptions();
-        }
-
-        // Update visibility indications if using double blind.
-        if (game.doBlind()) {
-            updateVisibilityIndicator(null);
-        }
-
-        endCurrentTurn(entity);
-    }
-
-    /**
-     * Used when an Entity that was loaded in another Entity in the Lounge is
-     * unloaded during deployment.
-     * @param packet the packet to be processed
-     * @param connId the id for connection that received the packet.
-     */
-    private void receiveDeploymentUnload(Packet packet, int connId) {
-        Entity loader = game.getEntity(packet.getIntValue(0));
-        Entity loaded = game.getEntity(packet.getIntValue(1));
-
-        if (game.getPhase() != Phase.PHASE_DEPLOYMENT) {
-            String msg = "server received deployment unload packet "
-                    + "outside of deployment phase from connection " + connId;
-            if (loader != null) {
-                msg += ", Entity: " + loader.getShortName();
-            } else {
-                msg += ", Entity was null!";
-            }
-            MegaMek.getLogger().error(msg);
-            return;
-        }
-
-        // can this player/entity act right now?
-        GameTurn turn = game.getTurn();
-        if (game.isPhaseSimultaneous()) {
-            turn = game.getTurnForPlayer(connId);
-        }
-
-        if ((turn == null) || !turn.isValid(connId, loader, game)) {
-            String msg = "server got invalid deployment unload packet from connection " + connId;
-            if (loader != null) {
-                msg += ", Entity: " + loader.getShortName();
-            } else {
-                msg += ", Entity was null!";
-            }
-            MegaMek.getLogger().error(msg);
-            send(connId, PacketFactory.createTurnVectorPacket(game));
-            send(connId, PacketFactory.createTurnIndexPacket(game, connId));
-            return;
-        }
-
-        // Unload and call entityUpdate
-        unloadUnit(loader, loaded, null, 0, 0, false, true);
-
-        // Need to update the loader
-        entityUpdate(loader.getId());
-
-        // Now need to add a turn for the unloaded unit, to be taken immediately
-        // Turn forced to be immediate to avoid messy turn ordering issues
-        // (aka, how do we add the turn with individual initiative?)
-        game.insertTurnAfter(new GameTurn.SpecificEntityTurn(
-                loaded.getOwnerId(), loaded.getId()), game.getTurnIndex() - 1);
-        //game.insertNextTurn(new GameTurn.SpecificEntityTurn(
-        //        loaded.getOwnerId(), loaded.getId()));
-        send(PacketFactory.createTurnVectorPacket(game));
-    }
-
 
     /**
      * Process a deployment packet by... deploying the entity! We load any other
@@ -12516,8 +11737,7 @@ public class Server implements Runnable {
                 }
                 // make sure that entity is above the level of the hex if in
                 // atmosphere
-                if (game.getBoard().inAtmosphere()
-                    && (entity.getAltitude() <= hex.ceiling(true))) {
+                if (game.getBoard().inAtmosphere() && (entity.getAltitude() <= hex.ceiling(true))) {
                     // you can't be grounded on low atmosphere map
                     entity.setAltitude(hex.ceiling(true) + 1);
                 }
@@ -12578,60 +11798,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * receive a packet that contains hexes that are automatically hit by
-     * artillery
-     *
-     * @param packet the packet to be processed
-     * @param connId the id for connection that received the packet.
-     */
-    @SuppressWarnings("unchecked")
-    private void receiveArtyAutoHitHexes(Packet packet, int connId) {
-        PlayerIDandList<Coords> artyAutoHitHexes = (PlayerIDandList<Coords>) packet
-                .getObject(0);
-
-        int playerId = artyAutoHitHexes.getPlayerID();
-
-        // is this the right phase?
-        if (game.getPhase() != IGame.Phase.PHASE_SET_ARTYAUTOHITHEXES) {
-            MegaMek.getLogger().error("Server got set artyautohithexespacket in wrong phase");
-            return;
-        }
-        game.getPlayer(playerId).setArtyAutoHitHexes(artyAutoHitHexes);
-
-        for (Coords coord : artyAutoHitHexes) {
-            game.getBoard().addSpecialHexDisplay(coord,
-                    new SpecialHexDisplay(
-                            SpecialHexDisplay.Type.ARTILLERY_AUTOHIT,
-                            SpecialHexDisplay.NO_ROUND, game.getPlayer(playerId),
-                            "Artillery auto hit hex, for "
-                            + game.getPlayer(playerId).getName(),
-                            SpecialHexDisplay.SHD_OBSCURED_TEAM));
-        }
-        endCurrentTurn(null);
-    }
-
-    /**
-     * receive a packet that contains minefields
-     *
-     * @param packet the packet to be processed
-     * @param connId the id for connection that received the packet.
-     */
-    @SuppressWarnings("unchecked")
-    private void receiveDeployMinefields(Packet packet, int connId) {
-        Vector<Minefield> minefields = (Vector<Minefield>) packet.getObject(0);
-
-        // is this the right phase?
-        if (game.getPhase() != IGame.Phase.PHASE_DEPLOY_MINEFIELDS) {
-            MegaMek.getLogger().error("Server got deploy minefields packet in wrong phase");
-            return;
-        }
-
-        // looks like mostly everything's okay
-        processDeployMinefields(minefields);
-        endCurrentTurn(null);
-    }
-
-    /**
      * process deployment of minefields
      *
      * @param minefields
@@ -12676,53 +11842,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * Gets a bunch of entity attacks from the packet. If valid, processes them
-     * and ends the current turn.
-     */
-    @SuppressWarnings("unchecked")
-    private void receiveAttack(Packet packet, int connId) {
-        Entity entity = game.getEntity(packet.getIntValue(0));
-        Vector<EntityAction> vector = (Vector<EntityAction>) packet.getObject(1);
-
-        // is this the right phase?
-        if ((game.getPhase() != IGame.Phase.PHASE_FIRING)
-                && (game.getPhase() != IGame.Phase.PHASE_PHYSICAL)
-                && (game.getPhase() != IGame.Phase.PHASE_TARGETING)
-                && (game.getPhase() != IGame.Phase.PHASE_OFFBOARD)) {
-            MegaMek.getLogger().error("Server got attack packet in wrong phase");
-            return;
-        }
-
-        // can this player/entity act right now?
-        GameTurn turn = game.getTurn();
-        if (game.isPhaseSimultaneous()) {
-            turn = game.getTurnForPlayer(connId);
-        }
-        if ((turn == null) || !turn.isValid(connId, entity, game)) {
-            String msg = "error: server got invalid attack packet from connection " + connId;
-            if (entity != null) {
-                msg += ", Entity: " + entity.getShortName();
-            } else {
-                msg += ", Entity was null!";
-            }
-            MegaMek.getLogger().error(msg);
-            send(connId, PacketFactory.createTurnVectorPacket(game));
-            send(connId, PacketFactory.createTurnIndexPacket(game, turn.getPlayerNum()));
-            return;
-        }
-
-        // looks like mostly everything's okay
-        processAttack(entity, vector);
-
-        // Update visibility indications if using double blind.
-        if (game.doBlind()) {
-            updateVisibilityIndicator(null);
-        }
-
-        endCurrentTurn(entity);
-    }
-
-    /**
      * Process a batch of entity attack (or twist) actions by adding them to the
      * proper list to be processed later.
      */
@@ -12760,8 +11879,7 @@ public class Server implements Runnable {
             // hiding may allow the target to respond.
             if (ea instanceof WeaponAttackAction) {
                 final WeaponAttackAction waa = (WeaponAttackAction) ea;
-                final String weaponName = entity.getEquipment(waa.getWeaponId()).getType()
-                        .getInternalName();
+                final String weaponName = entity.getEquipment(waa.getWeaponId()).getType().getInternalName();
 
                 if (Infantry.SWARM_MEK.equals(weaponName) || Infantry.LEG_ATTACK.equals(weaponName)) {
 
@@ -12889,8 +12007,7 @@ public class Server implements Runnable {
 
             // Mark illuminated hexes, so they can be displayed
             if (ea instanceof SearchlightAttackAction) {
-                boolean hexesAdded =
-                        ((SearchlightAttackAction) ea).setHexesIlluminated(game);
+                boolean hexesAdded = ((SearchlightAttackAction) ea).setHexesIlluminated(game);
                 // If we added new hexes, send them to all players.
                 // These are spotlights at night, you know they're there.
                 if (hexesAdded) {
@@ -13278,24 +12395,18 @@ public class Server implements Runnable {
                 if (dist > 1 && (detected instanceof BattleArmor)) {
                     BattleArmor ba = (BattleArmor) detected;
                     // Need Bloodhound to detect BA stealth armor
-                    if (ba.isStealthy()
-                            && !detector.hasWorkingMisc(MiscType.F_BLOODHOUND)) {
+                    if (ba.isStealthy() && !detector.hasWorkingMisc(MiscType.F_BLOODHOUND)) {
                         continue;
                     }
                 } else if (dist > 1 && (detected instanceof Infantry)) {
                     Infantry inf = (Infantry) detected;
-                    // Can't detect sneaky infantry
-                    if (inf.isStealthy()) {
-                        continue;
-                    }
-                    // Need bloodhound to detect non-sneaky inf
-                    if (!detector.hasWorkingMisc(MiscType.F_BLOODHOUND)) {
+                    // Can't detect sneaky infantry and need bloodhound to detect non-sneaky inf
+                    if (inf.isStealthy() && !detector.hasWorkingMisc(MiscType.F_BLOODHOUND)) {
                         continue;
                     }
                 }
 
-                LosEffects los = LosEffects.calculateLos(game,
-                        detector.getId(), detected);
+                LosEffects los = LosEffects.calculateLos(game, detector.getId(), detected);
                 if (los.canSee() || dist <= 1) {
                     detected.setHidden(false);
                     entityUpdate(detected.getId());
@@ -13351,8 +12462,7 @@ public class Server implements Runnable {
     private void resolveAllButWeaponAttacks() {
         Vector<EntityAction> triggerPodActions = new Vector<>();
         // loop through actions and handle everything we expect except attacks
-        for (Enumeration<EntityAction> i = game.getActions(); i
-                .hasMoreElements(); ) {
+        for (Enumeration<EntityAction> i = game.getActions(); i.hasMoreElements(); ) {
             EntityAction ea = i.nextElement();
             Entity entity = game.getEntity(ea.getEntityId());
             if (ea instanceof TorsoTwistAction) {
@@ -13400,8 +12510,7 @@ public class Server implements Runnable {
             } else if (ea instanceof UnjamTurretAction) {
                 if (entity instanceof Tank) {
                     ((Tank) entity).unjamTurret(((Tank) entity).getLocTurret());
-                    ((Tank) entity)
-                            .unjamTurret(((Tank) entity).getLocTurret2());
+                    ((Tank) entity).unjamTurret(((Tank) entity).getLocTurret2());
                     Report r = new Report(3033);
                     r.addDesc(entity);
                     reportmanager.addReport(r);
@@ -13614,11 +12723,9 @@ public class Server implements Runnable {
             return;
         }
 
-        Report r;
-
         // Mark the pod as fired and log the action.
         mount.setFired(true);
-        r = new Report(3010);
+        Report r = new Report(3010);
         r.newlines = 0;
         r.subject = entity.getId();
         r.addDesc(entity);
@@ -13635,8 +12742,7 @@ public class Server implements Runnable {
                 final int damage = Math.max(1, Compute.d6() - 1);
 
                 // Damage the platoon.
-                reportmanager.addReport(damageEntity(target, new HitData(
-                        Infantry.LOC_INFANTRY), damage));
+                reportmanager.addReport(damageEntity(target, new HitData(Infantry.LOC_INFANTRY), damage));
 
                 // Damage from AP Pods is applied immediately.
                 target.applyDamage();
@@ -13874,21 +12980,17 @@ public class Server implements Runnable {
             if (found) {
                 clubType = EquipmentType.get(EquipmentTypeLookup.GIRDER_CLUB);
                 r = new Report(3045);
-                r.subject = entity.getId();
-                r.addDesc(entity);
-                reportmanager.addReport(r);
             } else {
                 // Sorry, no club for you.
                 r = new Report(3050);
-                r.subject = entity.getId();
-                r.addDesc(entity);
-                reportmanager.addReport(r);
             }
+            r.subject = entity.getId();
+            r.addDesc(entity);
+            reportmanager.addReport(r);
         }
 
         // Are there woods in the hex?
-        else if (curHex.containsTerrain(Terrains.WOODS)
-                 || curHex.containsTerrain(Terrains.JUNGLE)) {
+        else if (curHex.containsTerrain(Terrains.WOODS) || curHex.containsTerrain(Terrains.JUNGLE)) {
             clubType = EquipmentType.get(EquipmentTypeLookup.TREE_CLUB);
             r = new Report(3055);
             r.subject = entity.getId();
@@ -13943,12 +13045,9 @@ public class Server implements Runnable {
         Report r;
 
         // Ignore bad coordinates.
-        if (hex == null) {
-            return false;
-        }
-
-        // Ignore if fire is not enabled as a game option
-        if (!game.getOptions().booleanOption(OptionsConstants.ADVCOMBAT_TACOPS_START_FIRE)) {
+        if (hex == null
+                // Ignore if fire is not enabled as a game option
+                || !game.getOptions().booleanOption(OptionsConstants.ADVCOMBAT_TACOPS_START_FIRE)) {
             return false;
         }
 
@@ -14278,6 +13377,59 @@ public class Server implements Runnable {
         }
     }
 
+    private int ShieldsUnitsBuilding(boolean targetInBuilding, Building bldg, int damage, Targetable target, Entity ae) {
+        // The building shields all units from a certain amount of damage.
+        // The amount is based upon the building's CF at the phase's start.
+        if (targetInBuilding && (bldg != null)) {
+            int bldgAbsorbs = bldg.getAbsorbtion(target.getPosition());
+            int toBldg = Math.min(bldgAbsorbs, damage);
+            damage -= toBldg;
+            reportmanager.addNewLines();
+            Vector<Report> buildingReport = damageBuilding(bldg, toBldg, target.getPosition());
+            for (Report report : buildingReport) {
+                report.subject = ae.getId();
+            }
+            reportmanager.addReport(buildingReport);
+
+            // some buildings scale remaining damage that is not absorbed
+            // TODO : this isn't quite right for castles brian
+            return (int) Math.floor(bldg.getDamageToScale() * damage);
+        }
+        return damage;
+    }
+
+    private void checkGlancingBlow(boolean glancing, boolean directBlow, Entity ae, ToHitData toHit, int roll) {
+        Report r = new Report(4025);
+        r.subject = ae.getId();
+        r.add(toHit.getValue());
+        r.add(roll);
+        r.newlines = 0;
+        reportmanager.addReport(r);
+        if (glancing) {
+            r = new Report(3186);
+            r.subject = ae.getId();
+            r.newlines = 0;
+            reportmanager.addReport(r);
+        }
+        if (directBlow) {
+            r = new Report(3189);
+            r.subject = ae.getId();
+            r.newlines = 0;
+            reportmanager.addReport(r);
+        }
+    }
+
+    private int applyInfrantryDamageReduction(Entity te, int damage) {
+        // Round up glancing blows against conventional infantry
+        if ((te instanceof Infantry) && !(te instanceof BattleArmor)) {
+            damage = (int) Math.ceil(damage / 2.0);
+        } else {
+            damage = (int) Math.floor(damage / 2.0);
+        }
+        return damage;
+    }
+
+
     /**
      * Handle a punch attack
      */
@@ -14352,24 +13504,14 @@ public class Server implements Runnable {
             reportmanager.addReport(r);
             roll = Integer.MAX_VALUE;
         } else {
+
             r = new Report(4025);
             r.subject = ae.getId();
             r.add(toHit.getValue());
             r.add(roll);
             r.newlines = 0;
             reportmanager.addReport(r);
-            if (glancing) {
-                r = new Report(3186);
-                r.subject = ae.getId();
-                r.newlines = 0;
-                reportmanager.addReport(r);
-            }
-            if (directBlow) {
-                r = new Report(3189);
-                r.subject = ae.getId();
-                r.newlines = 0;
-                reportmanager.addReport(r);
-            }
+            checkGlancingBlow(glancing, directBlow, ae, toHit, roll);
         }
 
         // do we hit?
@@ -14441,23 +13583,7 @@ public class Server implements Runnable {
         r.add(te.getLocationAbbr(hit));
         reportmanager.addReport(r);
 
-        // The building shields all units from a certain amount of damage.
-        // The amount is based upon the building's CF at the phase's start.
-        if (targetInBuilding && (bldg != null)) {
-            int bldgAbsorbs = bldg.getAbsorbtion(target.getPosition());
-            int toBldg = Math.min(bldgAbsorbs, damage);
-            damage -= toBldg;
-            reportmanager.addNewLines();
-            Vector<Report> buildingReport = damageBuilding(bldg, toBldg, target.getPosition());
-            for (Report report : buildingReport) {
-                report.subject = ae.getId();
-            }
-            reportmanager.addReport(buildingReport);
-
-            // some buildings scale remaining damage that is not absorbed
-            // TODO : this isn't quite right for castles brian
-            damage = (int) Math.floor(bldg.getDamageToScale() * damage);
-        }
+        damage = ShieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
 
         // A building may absorb the entire shot.
         if (damage == 0) {
@@ -14469,12 +13595,7 @@ public class Server implements Runnable {
             reportmanager.addReport(r);
         } else {
             if (glancing) {
-                // Round up glancing blows against conventional infantry
-                if ((te instanceof Infantry) && !(te instanceof BattleArmor)) {
-                    damage = (int) Math.ceil(damage / 2.0);
-                } else {
-                    damage = (int) Math.floor(damage / 2.0);
-                }
+                damage = applyInfrantryDamageReduction(te, damage);
             }
             if (directBlow) {
                 damage += toHit.getMoS() / 3;
@@ -14635,19 +13756,7 @@ public class Server implements Runnable {
             r.add(roll);
             r.newlines = 0;
             reportmanager.addReport(r);
-            if (glancing) {
-                r = new Report(3186);
-                r.subject = ae.getId();
-                r.newlines = 0;
-                reportmanager.addReport(r);
-            }
-            if (directBlow) {
-                r = new Report(3189);
-                r.subject = ae.getId();
-                r.newlines = 0;
-                reportmanager.addReport(r);
-            }
-
+            checkGlancingBlow(glancing, directBlow, ae, toHit, roll);
         }
 
         // do we hit?
@@ -14706,23 +13815,7 @@ public class Server implements Runnable {
         r.add(te.getLocationAbbr(hit));
         reportmanager.addReport(r);
 
-        // The building shields all units from a certain amount of damage.
-        // The amount is based upon the building's CF at the phase's start.
-        if (targetInBuilding && (bldg != null)) {
-            int bldgAbsorbs = bldg.getAbsorbtion(target.getPosition());
-            int toBldg = Math.min(bldgAbsorbs, damage);
-            damage -= toBldg;
-            reportmanager.addNewLines();
-            Vector<Report> buildingReport = damageBuilding(bldg, damage, target.getPosition());
-            for (Report report : buildingReport) {
-                report.subject = ae.getId();
-            }
-            reportmanager.addReport(buildingReport);
-
-            // some buildings scale remaining damage that is not absorbed
-            // TODO : this isn't quite right for castles brian
-            damage = (int) Math.floor(bldg.getDamageToScale() * damage);
-        }
+        damage = ShieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
 
         // A building may absorb the entire shot.
         if (damage == 0) {
@@ -14734,12 +13827,7 @@ public class Server implements Runnable {
             reportmanager.addReport(r);
         } else {
             if (glancing) {
-                // Round up glancing blows against conventional infantry
-                if ((te instanceof Infantry) && !(te instanceof BattleArmor)) {
-                    damage = (int) Math.ceil(damage / 2.0);
-                } else {
-                    damage = (int) Math.floor(damage / 2.0);
-                }
+                damage = applyInfrantryDamageReduction(te, damage);
             }
             if (directBlow) {
                 damage += toHit.getMoS() / 3;
@@ -14868,25 +13956,7 @@ public class Server implements Runnable {
             reportmanager.addReport(r);
             roll = Integer.MAX_VALUE;
         } else {
-            r = new Report(4025);
-            r.subject = ae.getId();
-            r.add(toHit.getValue());
-            r.add(roll);
-            r.newlines = 0;
-            reportmanager.addReport(r);
-            if (glancing) {
-                r = new Report(3186);
-                r.subject = ae.getId();
-                r.newlines = 0;
-                reportmanager.addReport(r);
-            }
-            if (directBlow) {
-                r = new Report(3189);
-                r.subject = ae.getId();
-                r.newlines = 0;
-                reportmanager.addReport(r);
-            }
-
+            checkGlancingBlow(glancing, directBlow, ae, toHit, roll);
         }
 
         // do we hit?
@@ -14902,14 +13972,12 @@ public class Server implements Runnable {
                 damage += pr.damageRight;
                 // Only report if damage was done to the building.
                 if (damage > 0) {
-                    Vector<Report> buildingReport = damageBuilding(bldg,
-                                                                   damage, target.getPosition());
+                    Vector<Report> buildingReport = damageBuilding(bldg, damage, target.getPosition());
                     for (Report report : buildingReport) {
                         report.subject = ae.getId();
                     }
                     reportmanager.addReport(buildingReport);
                 }
-
             }
             return;
         }
@@ -14922,8 +13990,7 @@ public class Server implements Runnable {
             r = new Report(4040);
             r.subject = ae.getId();
             reportmanager.addReport(r);
-            Vector<Report> buildingReport = damageBuilding(bldg, damage,
-                                                           target.getPosition());
+            Vector<Report> buildingReport = damageBuilding(bldg, damage, target.getPosition());
             for (Report report : buildingReport) {
                 report.subject = ae.getId();
             }
@@ -14951,24 +14018,7 @@ public class Server implements Runnable {
             HitData hit = te.rollHitLocation(toHit.getHitTable(), toHit.getSideTable());
             hit.setGeneralDamageType(HitData.DAMAGE_ENERGY);
 
-            // The building shields all units from a certain amount of damage.
-            // The amount is based upon the building's CF at the phase's start.
-            if (targetInBuilding && (bldg != null)) {
-                int bldgAbsorbs = bldg.getAbsorbtion(target.getPosition());
-                int toBldg = Math.min(bldgAbsorbs, damage);
-                damage -= toBldg;
-                reportmanager.addNewLines();
-                Vector<Report> buildingReport = damageBuilding(bldg, damage,
-                                                               target.getPosition());
-                for (Report report : buildingReport) {
-                    report.subject = ae.getId();
-                }
-                reportmanager.addReport(buildingReport);
-
-                // some buildings scale remaining damage that is not absorbed
-                // TODO : this isn't quite right for castles brian
-                damage = (int) Math.floor(bldg.getDamageToScale() * damage);
-            }
+            damage = ShieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
 
             // A building may absorb the entire shot.
             if (damage == 0) {
@@ -14980,13 +14030,7 @@ public class Server implements Runnable {
                 reportmanager.addReport(r);
             } else {
                 if (glancing) {
-                    // Round up glancing blows against conventional infantry
-                    if ((te instanceof Infantry)
-                        && !(te instanceof BattleArmor)) {
-                        damage = (int) Math.ceil(damage / 2.0);
-                    } else {
-                        damage = (int) Math.floor(damage / 2.0);
-                    }
+                    damage = applyInfrantryDamageReduction(te, damage);
                 }
                 if (directBlow) {
                     damage += toHit.getMoS() / 3;
@@ -15069,24 +14113,7 @@ public class Server implements Runnable {
             roll = Integer.MAX_VALUE;
         } else {
             // report the roll
-            r = new Report(4025);
-            r.subject = ae.getId();
-            r.add(toHit.getValue());
-            r.add(roll);
-            r.newlines = 0;
-            reportmanager.addReport(r);
-            if (glancing) {
-                r = new Report(3186);
-                r.subject = ae.getId();
-                r.newlines = 0;
-                reportmanager.addReport(r);
-            }
-            if (directBlow) {
-                r = new Report(3189);
-                r.subject = ae.getId();
-                r.newlines = 0;
-                reportmanager.addReport(r);
-            }
+            checkGlancingBlow(glancing, directBlow, ae, toHit, roll);
 
         }
 
@@ -15142,24 +14169,7 @@ public class Server implements Runnable {
         r.add(te.getLocationAbbr(hit));
         reportmanager.addReport(r);
 
-        // The building shields all units from a certain amount of damage.
-        // The amount is based upon the building's CF at the phase's start.
-        if (targetInBuilding && (bldg != null)) {
-            int bldgAbsorbs = bldg.getAbsorbtion(target.getPosition());
-            int toBldg = Math.min(bldgAbsorbs, damage);
-            damage -= toBldg;
-            reportmanager.addNewLines();
-            Vector<Report> buildingReport = damageBuilding(bldg, damage,
-                                                           target.getPosition());
-            for (Report report : buildingReport) {
-                report.subject = ae.getId();
-            }
-            reportmanager.addReport(buildingReport);
-
-            // some buildings scale remaining damage that is not absorbed
-            // TODO : this isn't quite right for castles brian
-            damage = (int) Math.floor(bldg.getDamageToScale() * damage);
-        }
+        damage = ShieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
 
         // A building may absorb the entire shot.
         if (damage == 0) {
@@ -15171,12 +14181,7 @@ public class Server implements Runnable {
             reportmanager.addReport(r);
         } else {
             if (glancing) {
-                // Round up glancing blows against conventional infantry
-                if ((te instanceof Infantry) && !(te instanceof BattleArmor)) {
-                    damage = (int) Math.ceil(damage / 2.0);
-                } else {
-                    damage = (int) Math.floor(damage / 2.0);
-                }
+                damage = applyInfrantryDamageReduction(te, damage);
             }
             if (directBlow) {
                 damage += toHit.getMoS() / 3;
@@ -15248,7 +14253,6 @@ public class Server implements Runnable {
                         te.setTaserInterference(2, 4, false);
                     }
                 }
-
             }
         }
 
@@ -15393,8 +14397,7 @@ public class Server implements Runnable {
         int hits = pr.damage;
         final ToHitData toHit = pr.toHit;
         int roll = pr.roll;
-        final boolean glancing = game.getOptions().booleanOption(
-                OptionsConstants.ADVCOMBAT_TACOPS_GLANCING_BLOWS)
+        final boolean glancing = game.getOptions().booleanOption(OptionsConstants.ADVCOMBAT_TACOPS_GLANCING_BLOWS)
                                  && (roll == toHit.getValue());
 
         // Set Margin of Success/Failure.
@@ -15730,11 +14733,9 @@ public class Server implements Runnable {
             pr.roll = Integer.MAX_VALUE;
             resolveClubAttack(pr, ae.getId());
             if (ae instanceof LandAirMech && ae.isAirborneVTOLorWIGE()) {
-                game.addControlRoll(new PilotingRollData(ae.getId(), 0,
-                        "missed a flail/wrecking ball attack"));
+                game.addControlRoll(new PilotingRollData(ae.getId(), 0, "missed a flail/wrecking ball attack"));
             } else {
-                game.addPSR(new PilotingRollData(ae.getId(), 0,
-                                                 "missed a flail/wrecking ball attack"));
+                game.addPSR(new PilotingRollData(ae.getId(), 0, "missed a flail/wrecking ball attack"));
             }
             if(caa.isZweihandering()) {
                 ArrayList<Integer> criticalLocs = new ArrayList<>();
@@ -15751,9 +14752,7 @@ public class Server implements Runnable {
 
             // Buzzsaw's blade will shatter on a roll of 2.
             if (roll == 2) {
-
                 Mounted club = caa.getClub();
-
                 for (Mounted eq : ae.getWeaponList()) {
                     if ((eq.getLocation() == club.getLocation())
                         && (eq.getType() instanceof MiscType)
@@ -15780,14 +14779,7 @@ public class Server implements Runnable {
             r.subject = ae.getId();
             r.add(toHit.getDesc());
             reportmanager.addReport(r);
-            if (caa.getClub().getType().hasSubType(MiscType.S_MACE_THB)) {
-                if (ae instanceof LandAirMech && ae.isAirborneVTOLorWIGE()) {
-                    game.addControlRoll(new PilotingRollData(ae.getId(), 0, "missed a mace attack"));
-                } else {
-                    game.addPSR(new PilotingRollData(ae.getId(), 0, "missed a mace attack"));
-                }
-            }
-            if (caa.getClub().getType().hasSubType(MiscType.S_MACE)) {
+            if (caa.getClub().getType().hasSubType(MiscType.S_MACE_THB) || caa.getClub().getType().hasSubType(MiscType.S_MACE)) {
                 if (ae instanceof LandAirMech && ae.isAirborneVTOLorWIGE()) {
                     game.addControlRoll(new PilotingRollData(ae.getId(), 0, "missed a mace attack"));
                 } else {
@@ -15809,24 +14801,7 @@ public class Server implements Runnable {
             roll = Integer.MAX_VALUE;
         } else {
             // report the roll
-            r = new Report(4025);
-            r.subject = ae.getId();
-            r.add(toHit.getValue());
-            r.add(roll);
-            r.newlines = 0;
-            reportmanager.addReport(r);
-            if (glancing) {
-                r = new Report(3186);
-                r.subject = ae.getId();
-                r.newlines = 0;
-                reportmanager.addReport(r);
-            }
-            if (directBlow) {
-                r = new Report(3189);
-                r.subject = ae.getId();
-                r.newlines = 0;
-                reportmanager.addReport(r);
-            }
+            checkGlancingBlow(glancing, directBlow, ae, toHit, roll);
         }
 
         // do we hit?
@@ -15837,11 +14812,9 @@ public class Server implements Runnable {
             reportmanager.addReport(r);
             if (caa.getClub().getType().hasSubType(MiscType.S_MACE_THB)) {
                 if (ae instanceof LandAirMech && ae.isAirborneVTOLorWIGE()) {
-                    game.addControlRoll(new PilotingRollData(ae.getId(), 0,
-                            "missed a mace attack"));
+                    game.addControlRoll(new PilotingRollData(ae.getId(), 0, "missed a mace attack"));
                 } else {
-                    game.addPSR(new PilotingRollData(ae.getId(), 0,
-                            "missed a mace attack"));
+                    game.addPSR(new PilotingRollData(ae.getId(), 0, "missed a mace attack"));
                 }
             }
             if (caa.getClub().getType().hasSubType(MiscType.S_MACE)) {
@@ -15859,8 +14832,7 @@ public class Server implements Runnable {
 
                 // Only report if damage was done to the building.
                 if (damage > 0) {
-                    Vector<Report> buildingReport = damageBuilding(bldg,
-                                                                   damage, target.getPosition());
+                    Vector<Report> buildingReport = damageBuilding(bldg, damage, target.getPosition());
                     for (Report report : buildingReport) {
                         report.subject = ae.getId();
                     }
@@ -15917,23 +14889,7 @@ public class Server implements Runnable {
         r.add(te.getLocationAbbr(hit));
         reportmanager.addReport(r);
 
-        // The building shields all units from a certain amount of damage.
-        // The amount is based upon the building's CF at the phase's start.
-        if (targetInBuilding && (bldg != null)) {
-            int bldgAbsorbs = bldg.getAbsorbtion(target.getPosition());
-            int toBldg = Math.min(bldgAbsorbs, damage);
-            damage -= toBldg;
-            reportmanager.addNewLines();
-            Vector<Report> buildingReport = damageBuilding(bldg, damage, target.getPosition());
-            for (Report report : buildingReport) {
-                report.subject = ae.getId();
-            }
-            reportmanager.addReport(buildingReport);
-
-            // some buildings scale remaining damage that is not absorbed
-            // TODO : this isn't quite right for castles brian
-            damage = (int) Math.floor(bldg.getDamageToScale() * damage);
-        }
+        damage = ShieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
 
         // A building may absorb the entire shot.
         if (damage == 0) {
@@ -15945,12 +14901,7 @@ public class Server implements Runnable {
             reportmanager.addReport(r);
         } else {
             if (glancing) {
-                // Round up glancing blows against conventional infantry
-                if ((te instanceof Infantry) && !(te instanceof BattleArmor)) {
-                    damage = (int) Math.ceil(damage / 2.0);
-                } else {
-                    damage = (int) Math.floor(damage / 2.0);
-                }
+                damage = applyInfrantryDamageReduction(te, damage);
             }
             if (directBlow) {
                 damage += toHit.getMoS() / 3;
@@ -15964,9 +14915,8 @@ public class Server implements Runnable {
                                    false, throughFront));
             if (target instanceof VTOL) {
                 // destroy rotor
-                reportmanager.addReport(applyCriticalHit(te, VTOL.LOC_ROTOR,
-                                           new CriticalSlot(CriticalSlot.TYPE_SYSTEM,
-                                                            VTOL.CRIT_ROTOR_DESTROYED), false, 0, false));
+                reportmanager.addReport(applyCriticalHit(te, VTOL.LOC_ROTOR, new CriticalSlot(CriticalSlot.TYPE_SYSTEM,
+                        VTOL.CRIT_ROTOR_DESTROYED), false, 0, false));
             }
         }
 
@@ -16055,18 +15005,14 @@ public class Server implements Runnable {
                 reportmanager.addReport(r);
 
                 if (roll >= toHit.getValue()) {
-                    r = new Report(2270);
-                    r.subject = ae.getId();
-                    r.newlines = 0;
-                    reportmanager.addReport(r);
-
                     game.addPSR(new PilotingRollData(te.getId(), 3, "Snared by chain whip"));
+                    r = new Report(2270);
                 } else {
                     r = new Report(2357);
-                    r.subject = ae.getId();
-                    r.newlines = 0;
-                    reportmanager.addReport(r);
                 }
+                r.subject = ae.getId();
+                r.newlines = 0;
+                reportmanager.addReport(r);
             } else if (mightGrapple) {
                 GrappleAttackAction gaa = new GrappleAttackAction(ae.getId(), te.getId());
                 int grappleSide;
@@ -16181,8 +15127,7 @@ public class Server implements Runnable {
         }
         // if our target has a push against us,
         // and we are hitting, we need to resolve both now
-        if ((targetPushResult != null) && !targetPushResult.pushBackResolved
-            && (roll >= toHit.getValue())) {
+        if ((targetPushResult != null) && !targetPushResult.pushBackResolved && (roll >= toHit.getValue())) {
             targetPushResult.pushBackResolved = true;
             // do they hit?
             if (targetPushResult.roll >= targetPushResult.toHit.getValue()) {
@@ -16354,8 +15299,7 @@ public class Server implements Runnable {
      * Handle a grapple attack
      */
     private void resolveGrappleAttack(PhysicalResult pr, int lastEntityId) {
-        resolveGrappleAttack(pr, lastEntityId, Entity.GRAPPLE_BOTH,
-                Entity.GRAPPLE_BOTH);
+        resolveGrappleAttack(pr, lastEntityId, Entity.GRAPPLE_BOTH, Entity.GRAPPLE_BOTH);
     }
 
     /**
@@ -16388,8 +15332,7 @@ public class Server implements Runnable {
             return;
         }
 
-        if ((te.getGrappled() != Entity.NONE)
-            || (ae.getGrappled() != Entity.NONE)) {
+        if ((te.getGrappled() != Entity.NONE) || (ae.getGrappled() != Entity.NONE)) {
             toHit.addModifier(TargetRoll.IMPOSSIBLE, "Already Grappled");
         }
 
@@ -16444,8 +15387,7 @@ public class Server implements Runnable {
             ae.setPosition(pos);
             ae.setElevation(te.getElevation());
             te.setFacing((ae.getFacing() + 3) % 6);
-            reportmanager.addReport(doSetLocationsExposure(ae, game.getBoard().getHex(pos),
-                    false, ae.getElevation()));
+            reportmanager.addReport(doSetLocationsExposure(ae, game.getBoard().getHex(pos), false, ae.getElevation()));
         }
 
         ae.setGrappleSide(aeGrappleSide);
@@ -16765,21 +15707,7 @@ public class Server implements Runnable {
             reportmanager.addReport(r);
         } else {
             // report the roll
-            r = new Report(4025);
-            r.subject = ae.getId();
-            r.add(toHit.getValue());
-            r.add(roll);
-            reportmanager.addReport(r);
-            if (glancing) {
-                r = new Report(3186);
-                r.subject = ae.getId();
-                reportmanager.addReport(r);
-            }
-            if (directBlow) {
-                r = new Report(3189);
-                r.subject = ae.getId();
-                reportmanager.addReport(r);
-            }
+            checkGlancingBlow(glancing, directBlow, ae, toHit, roll);
         }
 
         // do we hit?
@@ -16931,21 +15859,7 @@ public class Server implements Runnable {
             reportmanager.addReport(r);
         } else {
             // report the roll
-            r = new Report(4025);
-            r.subject = ae.getId();
-            r.add(toHit.getValue());
-            r.add(roll);
-            reportmanager.addReport(r);
-            if (glancing) {
-                r = new Report(3186);
-                r.subject = ae.getId();
-                reportmanager.addReport(r);
-            }
-            if (directBlow) {
-                r = new Report(3189);
-                r.subject = ae.getId();
-                reportmanager.addReport(r);
-            }
+            checkGlancingBlow(glancing, directBlow, ae, toHit, roll);
         }
 
         // do we hit?
@@ -16973,8 +15887,7 @@ public class Server implements Runnable {
             reportmanager.addReport(damageInfantryIn(bldg, damage, target.getPosition()));
 
             // Apply damage to the attacker.
-            int toAttacker = AirmechRamAttackAction.getDamageTakenBy(ae, target,
-                    ae.delta_distance);
+            int toAttacker = AirmechRamAttackAction.getDamageTakenBy(ae, target, ae.delta_distance);
             HitData hit = new HitData(Mech.LOC_CT);
             hit.setGeneralDamageType(HitData.DAMAGE_PHYSICAL);
             reportmanager.addReport(damageEntity(ae, hit, toAttacker, false, DamageType.NONE,
@@ -17125,8 +16038,7 @@ public class Server implements Runnable {
             reportmanager.addReport(r);
         } else {
             // Resolve the damage.
-            HitData hit = te.rollHitLocation(ToHitData.HIT_NORMAL,
-                    te.sideTable(ae.getPosition(), true));
+            HitData hit = te.rollHitLocation(ToHitData.HIT_NORMAL, te.sideTable(ae.getPosition(), true));
             hit.setCapital(true);
             hit.setCapMisCritMod(tm.getCritMod());
             reportmanager.addReport(damageEntity(te, hit,
@@ -17150,6 +16062,7 @@ public class Server implements Runnable {
             te = (Entity) target;
         }
 
+        // TODO (Sam): Can this not go in the previous if statement because it sets te to not null
         boolean throughFront = true;
         if (te != null) {
             throughFront = Compute.isThroughFrontHex(game, ae.getPosition(), te);
@@ -17250,12 +16163,7 @@ public class Server implements Runnable {
         int damage = RamAttackAction.getDamageFor(aero, te);
         int damageTaken = RamAttackAction.getDamageTakenBy(aero, te);
         if (glancing) {
-            // Round up glancing blows against conventional infantry
-            if ((te instanceof Infantry) && !(te instanceof BattleArmor)) {
-                damage = (int) Math.ceil(damage / 2.0);
-            } else {
-                damage = (int) Math.floor(damage / 2.0);
-            }
+            damage = applyInfrantryDamageReduction(te, damage);
             damageTaken = (int) Math.floor(damageTaken / 2.0);
         }
 
@@ -17285,8 +16193,7 @@ public class Server implements Runnable {
         r.indent();
         reportmanager.addReport(r);
 
-        HitData hit = ae.rollHitLocation(ToHitData.HIT_NORMAL,
-                ae.sideTable(te.getPosition(), true));
+        HitData hit = ae.rollHitLocation(ToHitData.HIT_NORMAL, ae.sideTable(te.getPosition(), true));
         // if the damage is greater than the initial armor then destroy the
         // entity
         if ((2 * ae.getOArmor(hit)) < damageTaken) {
@@ -17351,11 +16258,7 @@ public class Server implements Runnable {
         if (glancing) {
             // Glancing Blow rule doesn't state whether damage to attacker on charge
             // or DFA is halved as well, assume yes. TODO : Check with PM
-            if ((te instanceof Infantry) && !(te instanceof BattleArmor)) {
-                damage = (int) Math.ceil(damage / 2.0);
-            } else {
-                damage = (int) Math.floor(damage / 2.0);
-            }
+            damage = applyInfrantryDamageReduction(te, damage);
             damageTaken = (int) Math.floor(damageTaken / 2.0);
         }
         boolean bDirect = false;
@@ -17530,8 +16433,7 @@ public class Server implements Runnable {
             Coords src = te.getPosition();
             Coords dest = src.translated(direction);
 
-            if (Compute.isValidDisplacement(game, te.getId(), te.getPosition(),
-                                            direction)) {
+            if (Compute.isValidDisplacement(game, te.getId(), te.getPosition(), direction)) {
                 reportmanager.addNewLines();
                 reportmanager.addReport(doEntityDisplacement(te, src, dest, new PilotingRollData(
                         te.getId(), 2, "was charged")));
@@ -17820,25 +16722,7 @@ public class Server implements Runnable {
             roll = Integer.MAX_VALUE;
         } else {
             // report the roll
-            r = new Report(4025);
-            r.subject = ae.getId();
-            r.add(toHit.getValue());
-            r.add(roll);
-            r.newlines = 0;
-            reportmanager.addReport(r);
-            if (glancing) {
-                r = new Report(3186);
-                r.subject = ae.getId();
-                r.newlines = 0;
-                reportmanager.addReport(r);
-            }
-            if (directBlow) {
-                r = new Report(3189);
-                r.subject = ae.getId();
-                r.newlines = 0;
-                reportmanager.addReport(r);
-            }
-
+            checkGlancingBlow(glancing, directBlow, ae, toHit, roll);
         }
 
         // do we hit?
@@ -17897,9 +16781,7 @@ public class Server implements Runnable {
         int damageTaken = DfaAttackAction.getDamageTakenBy(ae);
 
         // Targeting a building.
-        if ((target.getTargetType() == Targetable.TYPE_BUILDING)
-            || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
-
+        if ((target.getTargetType() == Targetable.TYPE_BUILDING) || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
             // Which building takes the damage?
             Building bldg = game.getBoard().getBuildingAt(daa.getTargetPos());
             
@@ -17913,13 +16795,8 @@ public class Server implements Runnable {
             // Damage any infantry in the hex.
             reportmanager.addReport(damageInfantryIn(bldg, damage, target.getPosition()));
         } else { // Target isn't building.
-
             if (glancing) {
-                if ((te instanceof Infantry) && !(te instanceof BattleArmor)) {
-                    damage = (int) Math.ceil(damage / 2.0);
-                } else {
-                    damage = (int) Math.floor(damage / 2.0);
-                }
+                damage = applyInfrantryDamageReduction(te, damage);
             }
             if (directBlow) {
                 damage += toHit.getMoS() / 3;
@@ -18000,8 +16877,7 @@ public class Server implements Runnable {
         reportmanager.addNewLines();
 
         // That's it for target buildings.
-        if ((target.getTargetType() == Targetable.TYPE_BUILDING)
-            || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
+        if ((target.getTargetType() == Targetable.TYPE_BUILDING) || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
             return;
         }
         ae.setElevation(ae.calcElevation(aeHex, teHex, 0, false, false));
@@ -18775,9 +17651,7 @@ public class Server implements Runnable {
                     && (entity.getHeatCapacity() > entity.getCoolantFailureAmount())
                     && (entity.heat >= 5)) {
                 int roll = Compute.d6(2);
-                int hitNumber = 10;
-
-                hitNumber -= Math.max(0, (int) Math.ceil(entity.heat / 5.0) - 2);
+                int hitNumber = 10 - Math.max(0, (int) Math.ceil(entity.heat / 5.0) - 2);
 
                 r = new Report(5525);
                 r.subject = entity.getId();
@@ -19028,12 +17902,9 @@ public class Server implements Runnable {
         }
 
         // mechs shouldn't be here, but just in case
-        if (entity instanceof Mech) {
-            return;
-        }
-
-        // fire has no effect on dropships
-        if (entity instanceof Dropship) {
+        if (entity instanceof Mech
+                // fire has no effect on dropships
+                || entity instanceof Dropship) {
             return;
         }
 
@@ -19066,8 +17937,7 @@ public class Server implements Runnable {
             // (hurray!)
             } else if (entity instanceof Tank) {
                 int bonus = -2;
-                if ((entity instanceof SupportTank)
-                    || (entity instanceof SupportVTOL)) {
+                if ((entity instanceof SupportTank) || (entity instanceof SupportVTOL)) {
                     bonus = 0;
                 }
                 // roll a critical hit
@@ -19125,12 +17995,9 @@ public class Server implements Runnable {
             final Entity entity = i.next();
 
             // Only applies to Mechs.
-            if (!(entity instanceof Mech)) {
-                continue;
-            }
-
-            // Check for existence of flawed cooling quirk.
-            if (!entity.hasQuirk(OptionsConstants.QUIRK_NEG_FLAWED_COOLING)) {
+            if (!(entity instanceof Mech)
+                    // Check for existence of flawed cooling quirk.
+                    || !entity.hasQuirk(OptionsConstants.QUIRK_NEG_FLAWED_COOLING)) {
                 continue;
             }
 
@@ -19228,13 +18095,12 @@ public class Server implements Runnable {
                 // if this mech has 20+ damage, add another roll to the list.
                 // Hulldown 'mechs ignore this rule, TO Errata
                 int psrThreshold = 20;
-                if (((Mech) entity).getCockpitType() == Mech.COCKPIT_DUAL
-                        && entity.getCrew().hasDedicatedPilot()) {
+                if (((Mech) entity).getCockpitType() == Mech.COCKPIT_DUAL && entity.getCrew().hasDedicatedPilot()) {
                     psrThreshold = 30;
                 }
                 if ((entity.damageThisPhase >= psrThreshold) && !entity.isHullDown()) {
+                    PilotingRollData damPRD = new PilotingRollData(entity.getId());
                     if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_TACOPS_TAKING_DAMAGE)) {
-                        PilotingRollData damPRD = new PilotingRollData(entity.getId());
                         int damMod = entity.damageThisPhase / psrThreshold;
                         damPRD.addModifier(damMod, (damMod * psrThreshold) + "+ damage");
                         int weightMod = 0;
@@ -19258,23 +18124,15 @@ public class Server implements Runnable {
                                 weightMod = -4;
                             }
                             // the weight class PSR modifier is not cumulative
-                            damPRD.addModifier(weightMod,
-                                               "weight class modifier", false);
+                            damPRD.addModifier(weightMod, "weight class modifier", false);
                         }
-                        if (entity.hasQuirk(OptionsConstants.QUIRK_POS_EASY_PILOT)
-                            && (entity.getCrew().getPiloting() > 3)) {
-                            damPRD.addModifier(-1, "easy to pilot");
-                        }
-                        game.addPSR(damPRD);
                     } else {
-                        PilotingRollData damPRD = new PilotingRollData(
-                                entity.getId(), 1, psrThreshold + "+ damage");
-                        if (entity.hasQuirk(OptionsConstants.QUIRK_POS_EASY_PILOT)
-                            && (entity.getCrew().getPiloting() > 3)) {
-                            damPRD.addModifier(-1, "easy to pilot");
-                        }
-                        game.addPSR(damPRD);
+                        damPRD = new PilotingRollData(entity.getId(), 1, psrThreshold + "+ damage");
                     }
+                    if (entity.hasQuirk(OptionsConstants.QUIRK_POS_EASY_PILOT) && (entity.getCrew().getPiloting() > 3)) {
+                        damPRD.addModifier(-1, "easy to pilot");
+                    }
+                    game.addPSR(damPRD);
                 }
             }
             if (entity.isAero() && entity.isAirborne() && !game.getBoard().inSpace()) {
@@ -19303,8 +18161,7 @@ public class Server implements Runnable {
                 }
             }
             // Airborne AirMechs that take 20+ damage make a control roll instead of a PSR.
-            if (entity instanceof LandAirMech && entity.isAirborneVTOLorWIGE()
-                    && entity.damageThisPhase >= 20) {
+            if (entity instanceof LandAirMech && entity.isAirborneVTOLorWIGE() && entity.damageThisPhase >= 20) {
                 PilotingRollData damPRD = new PilotingRollData(entity.getId());
                 int damMod = entity.damageThisPhase / 20;
                 damPRD.addModifier(damMod, (damMod * 20) + "+ damage");
@@ -19584,8 +18441,7 @@ public class Server implements Runnable {
      * Resolves and reports all piloting skill rolls for a single mech.
      */
     private Vector<Report> resolvePilotingRolls(Entity entity) {
-        return resolvePilotingRolls(entity, false, entity.getPosition(),
-                                    entity.getPosition());
+        return resolvePilotingRolls(entity, false, entity.getPosition(), entity.getPosition());
     }
 
     private Vector<Report> resolvePilotingRolls(Entity entity, boolean moving,
@@ -19648,25 +18504,15 @@ public class Server implements Runnable {
                         || (entity.moved == EntityMovementType.MOVE_VTOL_RUN)
                         || (entity.moved == EntityMovementType.MOVE_VTOL_SPRINT)) {
                     if (entity instanceof Mech) {
-                        int j = entity.mpUsed;
-                        int damage = 0;
-                        while (j > entity.getRunningGravityLimit()) {
-                            j--;
-                            damage++;
-                        }
+                        int damage = Math.max(0, entity.mpUsed - entity.getRunningGravityLimit());
                         // Wee, direct internal damage
-                        vPhaseReport.addAll(doExtremeGravityDamage(entity,
-                                                                   damage));
+                        vPhaseReport.addAll(doExtremeGravityDamage(entity, damage));
                     } else if (entity instanceof Tank) {
                         // if we got a pavement bonus, take care of it
                         int k = entity.gotPavementBonus ? 1 : 0;
                         if (!entity.gotPavementBonus) {
-                            int j = entity.mpUsed;
-                            int damage = 0;
-                            while (j > (entity.getRunMP(false, false, false) + k)) {
-                                j--;
-                                damage++;
-                            }
+                            int targetValue = entity.getRunMP(false, false, false) + k;
+                            int damage = Math.max(0, entity.mpUsed - targetValue);
                             vPhaseReport.addAll(doExtremeGravityDamage(entity, damage));
                         }
                     }
@@ -19677,15 +18523,10 @@ public class Server implements Runnable {
                     // low g, 1 damage for each hex jumped further than
                     // possible normally
                     if (game.getPlanetaryConditions().getGravity() < 1) {
-                        int j = entity.mpUsed;
-                        int damage = 0;
-                        while (j > entity.getJumpMP(false)) {
-                            j--;
-                            damage++;
-                        }
+                        // TODO (Sam): Test nog schrijven hiervoor want entity doet vaag
+                        int damage = Math.max(0, entity.mpUsed - entity.getJumpMP(false));
                         // Wee, direct internal damage
-                        vPhaseReport.addAll(doExtremeGravityDamage(entity,
-                                                                   damage));
+                        vPhaseReport.addAll(doExtremeGravityDamage(entity, damage));
                     }
                     // high g, 1 damage for each MP we have less than normally
                     else if (game.getPlanetaryConditions().getGravity() > 1) {
@@ -19865,9 +18706,8 @@ public class Server implements Runnable {
                             OptionsConstants.ADVGRNDMOV_TACOPS_FALLING_EXPANDED)
                         && (entity.getCrew().getPiloting() < 6)
                         && !entity.isHullDown() && entity.canGoHullDown()) {
-                        if ((entity.getCrew().getPiloting() > 1) && ((roll.getValue() - diceRoll) < 2)) {
-                            entity.setHullDown(true);
-                        } else if ((entity.getCrew().getPiloting() <= 1) && ((roll.getValue() - diceRoll) < 3)) {
+                        if (((entity.getCrew().getPiloting() > 1) && ((roll.getValue() - diceRoll) < 2))
+                                || ((entity.getCrew().getPiloting() <= 1) && ((roll.getValue() - diceRoll) < 3))) {
                             entity.setHullDown(true);
                         }
                         if (entity.isHullDown() && entity.canGoHullDown()) {
@@ -20239,20 +19079,11 @@ public class Server implements Runnable {
                 }
             }
         } else {
-            boolean isPilot = (en instanceof Mech) || ((en instanceof Aero)
-                    && !(en instanceof SmallCraft) && !(en instanceof Jumpship));
+            boolean isPilot = (en instanceof Mech) || ((en instanceof Aero) && !(en instanceof SmallCraft) && !(en instanceof Jumpship));
             if (crew.isDead() || crew.isDoomed()) {
-                if (isPilot) {
-                    r = new Report(6021);
-                } else {
-                    r = new Report(6022);
-                }
+                r = isPilot ? new Report(6021) : new Report(6022);
             } else {
-                if (isPilot) {
-                    r = new Report(6023);
-                } else {
-                    r = new Report(6024);
-                }
+                r = isPilot ? new Report(6023) : new Report(6024);
             }
             r.subject = en.getId();
             r.addDesc(en);
@@ -20286,12 +19117,9 @@ public class Server implements Runnable {
         }
 
         // no consciousness roll for pain-shunted warriors
-        if (e.hasAbility(OptionsConstants.MD_PAIN_SHUNT)) {
-            return vDesc;
-        }
-
-        // no consciousness roll for capital fighter pilots or large craft crews
-        if (e.isCapitalFighter() || e.isLargeCraft()) {
+        if (e.hasAbility(OptionsConstants.MD_PAIN_SHUNT)
+                // no consciousness roll for capital fighter pilots or large craft crews
+                || e.isCapitalFighter() || e.isLargeCraft()) {
             return vDesc;
         }
 
@@ -20712,35 +19540,22 @@ public class Server implements Runnable {
             r.add(te.getLocationAbbr(undoneLocation));
             vDesc.addElement(r);
             undoneLocation = undoneLocation.getUndoneLocation();
-        } // while
-        // if edge was uses, give at end overview of remaining
-        if (hit.getUndoneLocation() != null) {
+
+            // if edge was uses, give at end overview of remaining
             r = new Report(6510);
             r.subject = te_n;
             r.indent(2);
             r.addDesc(te);
             r.add(te.getCrew().getOptions().intOption(OptionsConstants.EDGE));
             vDesc.addElement(r);
-        } // if
+        } // while
 
         boolean autoEject = false;
         if (ammoExplosion) {
-            if (te instanceof Mech) {
-                Mech mech = (Mech) te;
-                if (mech.isAutoEject() && (!game.getOptions().booleanOption(OptionsConstants.RPG_CONDITIONAL_EJECTION)
-                        || (game.getOptions().booleanOption(OptionsConstants.RPG_CONDITIONAL_EJECTION)
-                                && mech.isCondEjectAmmo()))) {
-                    autoEject = true;
-                    vDesc.addAll(ejectEntity(te, true));
-                }
-            } else if (te instanceof Aero) {
-                Aero aero = (Aero) te;
-                if (aero.isAutoEject() && (!game.getOptions().booleanOption(OptionsConstants.RPG_CONDITIONAL_EJECTION)
-                        || (game.getOptions().booleanOption(OptionsConstants.RPG_CONDITIONAL_EJECTION)
-                                && aero.isCondEjectAmmo()))) {
-                    autoEject = true;
-                    vDesc.addAll(ejectEntity(te, true));
-                }
+            if ((te instanceof Mech && ((Mech) te).isAutoEject() && (!((Mech) te).isCondEjectAmmo() || game.getOptions().booleanOption(OptionsConstants.RPG_CONDITIONAL_EJECTION)))
+                    || (te instanceof Aero && ((Aero) te).isAutoEject() && (!((Aero) te).isCondEjectAmmo() || game.getOptions().booleanOption(OptionsConstants.RPG_CONDITIONAL_EJECTION)))) {
+                autoEject = true;
+                vDesc.addAll(ejectEntity(te, true));
             }
         }
         boolean isBattleArmor = te instanceof BattleArmor;
@@ -20840,7 +19655,11 @@ public class Server implements Runnable {
         }
 
         // area effect against infantry is double damage
-        if (isPlatoon && areaSatArty) {
+        if ((isPlatoon && areaSatArty)
+                // Is the infantry in the open?
+                || ServerHelper.infantryInOpen(te, te_hex, game, isPlatoon, ammoExplosion, hit.isIgnoreInfantryDoubleDamage())
+                // Is the infantry in vacuum?
+                || ((isPlatoon || isBattleArmor) && !te.isDestroyed() && !te.isDoomed() && game.getPlanetaryConditions().isVacuum())) {
             // PBI. Double damage.
             damage *= 2;
             r = new Report(6039);
@@ -20849,34 +19668,11 @@ public class Server implements Runnable {
             vDesc.addElement(r);
         }
 
-        // Is the infantry in the open?
-        if(ServerHelper.infantryInOpen(te, te_hex, game, isPlatoon, ammoExplosion, hit.isIgnoreInfantryDoubleDamage())) {
-            // PBI. Damage is doubled.
-            damage *= 2;
-            r = new Report(6040);
-            r.subject = te_n;
-            r.indent(2);
-            vDesc.addElement(r);
-        }
-
-        // Is the infantry in vacuum?
-        if ((isPlatoon || isBattleArmor) && !te.isDestroyed() && !te.isDoomed()
-            && game.getPlanetaryConditions().isVacuum()) {
-            // PBI. Double damage.
-            damage *= 2;
-            r = new Report(6041);
-            r.subject = te_n;
-            r.indent(2);
-            vDesc.addElement(r);
-        }
-        // If dealing with fragmentation missiles,
-        // it does double damage to infantry...
-        // We're actually going to abuse this for AX-head warheads, too, so as
-        // to not add another parameter.
+        // If dealing with fragmentation missiles, it does double damage to infantry...
+        // We're actually going to abuse this for AX-head warheads, too, so as to not add another parameter.
         switch (bFrag) {
             case FRAGMENTATION:
-                // Fragmentation missiles deal full damage to conventional
-                // infantry
+                // Fragmentation missiles deal full damage to conventional infantry
                 // (only) and no damage to other target types.
                 if (!isPlatoon) {
                     damage = 0;
@@ -20999,15 +19795,11 @@ public class Server implements Runnable {
 
         // Allocate the damage
         while (damage > 0) {
-
             // first check for ammo explosions on aeros separately, because it
-            // must be done before
-            // standard to capital damage conversions
-            if ((te instanceof Aero) && (hit.getLocation() == Aero.LOC_AFT)
-                && !damageIS) {
+            // must be done before standard to capital damage conversions
+            if ((te instanceof Aero) && (hit.getLocation() == Aero.LOC_AFT) && !damageIS) {
                 for (Mounted mAmmo : te.getAmmo()) {
-                    if (mAmmo.isDumping() && !mAmmo.isDestroyed() && !mAmmo.isHit()
-                            && !(mAmmo.getType() instanceof BombType)) {
+                    if (mAmmo.isDumping() && !mAmmo.isDestroyed() && !mAmmo.isHit() && !(mAmmo.getType() instanceof BombType)) {
                         // doh. explode it
                         vDesc.addAll(explodeEquipment(te, mAmmo.getLocation(), mAmmo));
                         mAmmo.setHit(true);
@@ -21055,8 +19847,7 @@ public class Server implements Runnable {
                     } else {
                         // Aeros eject if the SI Destroyed switch is on
                         Aero aero = (Aero) a;
-                        if (aero.isAutoEject()
-                                && (!game.getOptions().booleanOption(OptionsConstants.RPG_CONDITIONAL_EJECTION)
+                        if (aero.isAutoEject() && (!game.getOptions().booleanOption(OptionsConstants.RPG_CONDITIONAL_EJECTION)
                                     || (game.getOptions().booleanOption(OptionsConstants.RPG_CONDITIONAL_EJECTION) 
                                             && aero.isCondEjectSIDest()))) {
                             reportmanager.addReport(ejectEntity(te, true, false));
@@ -21161,6 +19952,7 @@ public class Server implements Runnable {
                         spotlightHittable = false;
                     }
                 } else if (te instanceof Tank) {
+                    // TODO (Sam): te.LOC_FRONTRIGHT instead of clas?
                     if (te instanceof SuperHeavyTank) {
                         if ((loc != Tank.LOC_FRONT)
                                 && (loc != SuperHeavyTank.LOC_FRONTRIGHT)
@@ -21178,12 +19970,10 @@ public class Server implements Runnable {
                             spotlightHittable = false;
                         }
                     } else {
-                        if ((loc != Tank.LOC_FRONT) && (loc != Tank.LOC_RIGHT)
-                                && (loc != Tank.LOC_LEFT)) {
+                        if ((loc != Tank.LOC_FRONT) && (loc != Tank.LOC_RIGHT) && (loc != Tank.LOC_LEFT)) {
                             spotlightHittable = false;
                         }
                     }
-
                 }
                 if (spotlightHittable) {
                     int spotroll = Compute.d6(2);
@@ -21335,8 +20125,7 @@ public class Server implements Runnable {
                     r.indent(3);
                     r.add(damage);
                     vDesc.addElement(r);
-                } else if (impactArmor
-                           && (hit.getGeneralDamageType() == HitData.DAMAGE_PHYSICAL)) {
+                } else if (impactArmor && (hit.getGeneralDamageType() == HitData.DAMAGE_PHYSICAL)) {
                     tmpDamageHold = damage;
                     damage -= (int) Math.ceil((double) damage / 3);
                     damage = Math.max(1, damage);
@@ -21373,8 +20162,7 @@ public class Server implements Runnable {
                     r.add(dmgToDouble);
                     r.add(damage);
                     vDesc.addElement(r);
-                } else if (reflectiveArmor
-                           && (hit.getGeneralDamageType() == HitData.DAMAGE_ENERGY)) {
+                } else if (reflectiveArmor && (hit.getGeneralDamageType() == HitData.DAMAGE_ENERGY)) {
                     tmpDamageHold = damage;
                     damage = (int) Math.floor(((double) damage) / 2);
                     if (tmpDamageHold == 1) {
@@ -21569,11 +20357,9 @@ public class Server implements Runnable {
                     if (origDamage > te.getBARRating(hit.getLocation())) {
                         if (te.hasArmoredChassis()) {
                             // crit roll with -1 mod
-                            vDesc.addAll(criticalEntity(te, hit.getLocation(),
-                                                        hit.isRear(), -1 + critBonus, damage_orig));
+                            vDesc.addAll(criticalEntity(te, hit.getLocation(), hit.isRear(), -1 + critBonus, damage_orig));
                         } else {
-                            vDesc.addAll(criticalEntity(te, hit.getLocation(),
-                                                        hit.isRear(), critBonus, damage_orig));
+                            vDesc.addAll(criticalEntity(te, hit.getLocation(), hit.isRear(), critBonus, damage_orig));
                         }
                     }
                 }
@@ -21658,8 +20444,7 @@ public class Server implements Runnable {
                             r.subject = te_n;
                             r.newlines = 0;
                             vDesc.addElement(r);
-                            int new_loc = a.getOppositeLocation(hit
-                                                                        .getLocation());
+                            int new_loc = a.getOppositeLocation(hit.getLocation());
                             damage = Math.min(damage, te.getArmor(new_loc));
                             // We don't want to deal negative damage
                             damage = Math.max(damage, 0);
@@ -21672,8 +20457,7 @@ public class Server implements Runnable {
                             r.add(te.getLocationAbbr(new_loc));
                             vDesc.addElement(r);
                             te.setArmor(te.getArmor(new_loc) - damage, new_loc);
-                            if ((te instanceof Warship)
-                                || (te instanceof Dropship)) {
+                            if ((te instanceof Warship) || (te instanceof Dropship)) {
                                 damage = 2;
                             } else {
                                 damage = 0;
@@ -21683,8 +20467,7 @@ public class Server implements Runnable {
 
                     // divide damage in half
                     // do not divide by half if it is an ammo exposion
-                    if (!ammoExplosion && !nukeS2S
-                        && !game.getOptions().booleanOption(OptionsConstants.ADVAERORULES_AERO_SANITY)) {
+                    if (!ammoExplosion && !nukeS2S && !game.getOptions().booleanOption(OptionsConstants.ADVAERORULES_AERO_SANITY)) {
                         damage /= 2;
                     }
 
@@ -21747,23 +20530,17 @@ public class Server implements Runnable {
                     r.indent(3);
                     vDesc.addElement(r);
                     int loc = hit.getLocation();
-                    if ((te instanceof Mech) && ((loc == Mech.LOC_HEAD) || ((Mech) te).isArm(loc)
-                            || te.locationIsLeg(loc))) {
+
+                    boolean isrear = true;
+                    if ((te instanceof Mech) && ((loc == Mech.LOC_HEAD) || ((Mech) te).isArm(loc) || te.locationIsLeg(loc))) {
                         int half = (int) Math.ceil(te.getOArmor(loc, false) / 2.0);
-                        if (damage > half) {
-                            damage = half;
-                        }
-                        if (damage >= te.getArmor(loc, false)) {
-                            te.setArmor(IArmorState.ARMOR_DESTROYED, loc, false);
-                        } else {
-                            te.setArmor(te.getArmor(loc, false) - damage, loc, false);
-                        }
+                        damage = Math.min(damage, half);
+                        isrear = false;
+                    }
+                    if (damage >= te.getArmor(loc, isrear)) {
+                        te.setArmor(IArmorState.ARMOR_DESTROYED, loc, isrear);
                     } else {
-                        if (damage >= te.getArmor(loc, true)) {
-                            te.setArmor(IArmorState.ARMOR_DESTROYED, loc, true);
-                        } else {
-                            te.setArmor(te.getArmor(loc, true) - damage, loc, true);
-                        }
+                        te.setArmor(te.getArmor(loc, isrear) - damage, loc, isrear);
                     }
 
                     if (te.getInternal(hit) > 0) {
@@ -21823,8 +20600,7 @@ public class Server implements Runnable {
 
                     // Now we need to consider alternate structure types!
                     int tmpDamageHold = -1;
-                    if ((te instanceof Mech)
-                        && ((Mech) te).hasCompositeStructure()) {
+                    if ((te instanceof Mech) && ((Mech) te).hasCompositeStructure()) {
                         tmpDamageHold = damage;
                         damage *= 2;
                         r = new Report(6091);
@@ -21832,8 +20608,7 @@ public class Server implements Runnable {
                         r.indent(3);
                         vDesc.add(r);
                     }
-                    if ((te instanceof Mech)
-                        && ((Mech) te).hasReinforcedStructure()) {
+                    if ((te instanceof Mech) && ((Mech) te).hasReinforcedStructure()) {
                         tmpDamageHold = damage;
                         damage /= 2;
                         damage += tmpDamageHold % 2;
@@ -21853,8 +20628,7 @@ public class Server implements Runnable {
                         // Alternate structures don't affect our damage total
                         // for later PSR purposes, so use the previously stored
                         // value here as necessary.
-                        te.damageThisPhase += (tmpDamageHold > -1) ?
-                                tmpDamageHold : damage;
+                        te.damageThisPhase += (tmpDamageHold > -1) ? tmpDamageHold : damage;
                         damage = 0;
                         r = new Report(6100);
                         r.subject = te_n;
@@ -21925,27 +20699,9 @@ public class Server implements Runnable {
                             vDesc.addElement(r);
                             IHex h = game.getBoard().getHex(te.getPosition());
                             if(null != h) {
-                                if (te instanceof BipedMech) {
-                                    if (!h.containsTerrain(Terrains.ARMS)) {
-                                        h.addTerrain(Terrains.getTerrainFactory()
-                                                             .createTerrain(Terrains.ARMS, 1));
-                                    } else {
-                                        h.addTerrain(Terrains
-                                                             .getTerrainFactory()
-                                                             .createTerrain(
-                                                                     Terrains.ARMS,
-                                                                     h.terrainLevel(Terrains.ARMS) + 1));
-                                    }
-                                } else if (!h.containsTerrain(Terrains.LEGS)) {
-                                    h.addTerrain(Terrains.getTerrainFactory()
-                                                         .createTerrain(Terrains.LEGS, 1));
-                                } else {
-                                    h.addTerrain(Terrains
-                                                         .getTerrainFactory()
-                                                         .createTerrain(
-                                                                 Terrains.LEGS,
-                                                                 h.terrainLevel(Terrains.LEGS) + 1));
-                                }
+                                int terrainType = te instanceof BipedMech ? Terrains.ARMS : Terrains.LEGS;
+                                int terrainLevel = h.containsTerrain(terrainType) ? h.terrainLevel(terrainType) + 1 : 1;
+                                h.addTerrain(Terrains.getTerrainFactory().createTerrain(terrainType, terrainLevel));
                                 gamemanager.sendChangedHex(game, te.getPosition());
                             }
                         }
@@ -21953,26 +20709,21 @@ public class Server implements Runnable {
                         // Troopers riding on a location
                         // all die when the location is destroyed.
                         if ((te instanceof Mech) || (te instanceof Tank)) {
-                            Entity passenger = te.getExteriorUnitAt(
-                                    hit.getLocation(), hit.isRear());
+                            Entity passenger = te.getExteriorUnitAt(hit.getLocation(), hit.isRear());
                             if ((null != passenger) && !passenger.isDoomed()) {
-                                HitData passHit = passenger
-                                        .getTrooperAtLocation(hit, te);
+                                HitData passHit = passenger.getTrooperAtLocation(hit, te);
                                 // ensures a kill
                                 passHit.setEffect(HitData.EFFECT_CRITICAL);
                                 if (passenger.getInternal(passHit) > 0) {
                                     vDesc.addAll(damageEntity(passenger,
                                                               passHit, damage));
                                 }
-                                passHit = new HitData(hit.getLocation(),
-                                                      !hit.isRear());
-                                passHit = passenger.getTrooperAtLocation(
-                                        passHit, te);
+                                passHit = new HitData(hit.getLocation(), !hit.isRear());
+                                passHit = passenger.getTrooperAtLocation(passHit, te);
                                 // ensures a kill
                                 passHit.setEffect(HitData.EFFECT_CRITICAL);
                                 if (passenger.getInternal(passHit) > 0) {
-                                    vDesc.addAll(damageEntity(passenger,
-                                                              passHit, damage));
+                                    vDesc.addAll(damageEntity(passenger, passHit, damage));
                                 }
                             }
                         }
@@ -22044,17 +20795,13 @@ public class Server implements Runnable {
                         if (te instanceof Mech) {
                             // Start with the number of engine crits in this
                             // location, if any...
-                            te.engineHitsThisPhase += te.getNumberOfCriticals(
-                                    CriticalSlot.TYPE_SYSTEM,
-                                    Mech.SYSTEM_ENGINE, hit.getLocation());
+                            te.engineHitsThisPhase += te.getNumberOfCriticals(CriticalSlot.TYPE_SYSTEM, Mech.SYSTEM_ENGINE, hit.getLocation());
                             // ...then deduct the ones destroyed previously or
                             // critically
                             // hit this round already. That leaves the ones
                             // actually
                             // destroyed with the location.
-                            te.engineHitsThisPhase -= te.getHitCriticals(
-                                    CriticalSlot.TYPE_SYSTEM,
-                                    Mech.SYSTEM_ENGINE, hit.getLocation());
+                            te.engineHitsThisPhase -= te.getHitCriticals(CriticalSlot.TYPE_SYSTEM, Mech.SYSTEM_ENGINE, hit.getLocation());
                         }
 
                         boolean engineExploded = checkEngineExplosion(te,
@@ -22284,10 +21031,8 @@ public class Server implements Runnable {
             if (damage > 0) {
                 hit = nextHit;
                 // Need to update armor status for the new location
-                hardenedArmor = ((te instanceof Mech) || (te instanceof Tank))
-                        && (te.getArmorType(hit.getLocation()) == EquipmentType.T_ARMOR_HARDENED);
-                ferroLamellorArmor = ((te instanceof Mech) || (te instanceof Tank) || (te instanceof Aero))
-                        && (te.getArmorType(hit.getLocation()) == EquipmentType.T_ARMOR_FERRO_LAMELLOR);
+                hardenedArmor = ((te instanceof Mech) || (te instanceof Tank)) && (te.getArmorType(hit.getLocation()) == EquipmentType.T_ARMOR_HARDENED);
+                ferroLamellorArmor = ((te instanceof Mech) || (te instanceof Tank) || (te instanceof Aero)) && (te.getArmorType(hit.getLocation()) == EquipmentType.T_ARMOR_FERRO_LAMELLOR);
                 reflectiveArmor = (((te instanceof Mech) || (te instanceof Tank) || (te instanceof Aero))
                         && (te.getArmorType(hit.getLocation()) == EquipmentType.T_ARMOR_REFLECTIVE))
                         || (isBattleArmor
@@ -27810,8 +26555,7 @@ public class Server implements Runnable {
 
         List<ECMInfo> allECMInfo = null;
         if (game.getOptions().booleanOption(OptionsConstants.ADVANCED_TACOPS_SENSORS) && useSensors) {
-            allECMInfo = ComputeECM.computeAllEntitiesECMInfo(game
-                    .getEntitiesVector());
+            allECMInfo = ComputeECM.computeAllEntitiesECMInfo(game.getEntitiesVector());
         }
 
         boolean bTeamVision = game.getOptions().booleanOption(OptionsConstants.ADVANCED_TEAM_VISION);
@@ -27908,7 +26652,6 @@ public class Server implements Runnable {
                 game.addObservers(vCanDetect);
             }
         }
-
         return vCanDetect;
     }
 
@@ -28035,13 +26778,11 @@ public class Server implements Runnable {
                         // We've found a network, join it.
                         if ((entity.getC3iNextUUIDAsString(pos) != null)
                                 && (e.getC3UUIDAsString() != null)
-                                && entity.getC3iNextUUIDAsString(pos)
-                                .equals(e.getC3UUIDAsString())) {
+                                && entity.getC3iNextUUIDAsString(pos).equals(e.getC3UUIDAsString())) {
                             entity.setC3NetId(e);
                             C3iSet = true;
                             break;
                         }
-
                         pos++;
                     }
                 }
@@ -28062,732 +26803,6 @@ public class Server implements Runnable {
                         }
                         pos++;
                     }
-                }
-            }
-        }
-    }
-
-    /**
-     * Checks if an entity added by the client is valid and if so, adds it to
-     * the list
-     *
-     * @param c the packet to be processed
-     * @param connIndex the id for connection that received the packet.
-     */
-    private void receiveEntityAdd(Packet c, int connIndex) {
-        @SuppressWarnings("unchecked")
-        final List<Entity> entities = (List<Entity>) c.getObject(0);
-        List<Integer> entityIds = new ArrayList<>(entities.size());
-        // Map client-received to server-given IDs: 
-        Map<Integer, Integer> idMap = new HashMap<>();
-
-        for (final Entity entity : entities) {
-
-            // Verify the entity's design
-            if (Server.entityVerifier == null) {
-                Server.entityVerifier = EntityVerifier.getInstance(new MegaMekFile(
-                        Configuration.unitsDir(), EntityVerifier.CONFIG_FILENAME).getFile());
-            }
-
-            // Create a TestEntity instance for supported unit types
-            TestEntity testEntity = null;
-            entity.restore();
-            if (entity instanceof Mech) {
-                testEntity = new TestMech((Mech) entity, entityVerifier.mechOption, null);
-            } else if ((entity.getEntityType() == Entity.ETYPE_TANK)
-                       && (entity.getEntityType() != Entity.ETYPE_GUN_EMPLACEMENT)) {
-                if (entity.isSupportVehicle()) {
-                    testEntity = new TestSupportVehicle(entity, entityVerifier.tankOption, null);
-                } else {
-                    testEntity = new TestTank((Tank) entity, entityVerifier.tankOption, null);
-                }
-            } else if ((entity.getEntityType() == Entity.ETYPE_AERO)
-                       && (entity.getEntityType() != Entity.ETYPE_DROPSHIP)
-                       && (entity.getEntityType() != Entity.ETYPE_SMALL_CRAFT)
-                       && (entity.getEntityType() != Entity.ETYPE_FIGHTER_SQUADRON)
-                       && (entity.getEntityType() != Entity.ETYPE_JUMPSHIP)
-                       && (entity.getEntityType() != Entity.ETYPE_SPACE_STATION)) {
-                testEntity = new TestAero((Aero) entity, entityVerifier.aeroOption, null);
-            } else if (entity instanceof BattleArmor) {
-                testEntity = new TestBattleArmor((BattleArmor) entity, entityVerifier.baOption, null);
-            }
-
-            if (testEntity != null) {
-                StringBuffer sb = new StringBuffer();
-                if (testEntity.correctEntity(sb, TechConstants.getGameTechLevel(game, entity.isClan()))) {
-                    entity.setDesignValid(true);
-                } else {
-                    MegaMek.getLogger().error(sb.toString());
-                    if (game.getOptions().booleanOption(OptionsConstants.ALLOWED_ALLOW_ILLEGAL_UNITS)) {
-                        entity.setDesignValid(false);
-                    } else {
-                        IPlayer cheater = game.getPlayer(connIndex);
-                        sendServerChat("Player " + cheater.getName()
-                                       + " attempted to add an illegal unit design ("
-                                       + entity.getShortNameRaw()
-                                       + "), the unit was rejected.");
-                        return;
-                    }
-                }
-            }
-
-            // If we're adding a ProtoMech, calculate it's unit number.
-            if (entity instanceof Protomech) {
-                // How many ProtoMechs does the player already have?
-                int numPlayerProtos = game.getSelectedEntityCount(new EntitySelector() {
-                            private final int ownerId = entity.getOwnerId();
-
-                            public boolean accept(Entity entity) {
-                                return (entity instanceof Protomech)
-                                        && (ownerId == entity.getOwnerId());
-                            }
-                        });
-
-                // According to page 54 of the BMRr, ProtoMechs must be
-                // deployed in full Points of five, unless circumstances have
-                // reduced the number to less than that.
-                entity.setUnitNumber((short) (numPlayerProtos / 5));
-            } // End added-ProtoMech
-
-            // Only assign an entity ID when the client hasn't.
-            if (Entity.NONE == entity.getId()) {
-                entity.setId(game.getNextEntityId());
-            }
-
-            int clientSideId = entity.getId();
-            game.addEntity(entity);
-            
-            // Remember which received ID corresponds to which actual ID
-            idMap.put(clientSideId, entity.getId());
-
-            relinkC3(entities, entity);
-
-            // Give the unit a spotlight, if it has the spotlight quirk
-            entity.setExternalSpotlight(entity.hasExternaSpotlight()
-                    || entity.hasQuirk(OptionsConstants.QUIRK_POS_SEARCHLIGHT));
-            entityIds.add(entity.getId());
-
-            if (game.getPhase() != Phase.PHASE_LOUNGE) {
-                entity.getOwner().increaseInitialBV(entity.calculateBattleValue(false, false));
-            }
-        }
-        
-        // Cycle through the entities again and update any carried units
-        // and carrier units to use the correct server-given IDs.
-        // Typically necessary when loading a MUL containing transported units.
-        
-        // First, deal with units loaded into bays. These are saved for the carrier
-        // in MULs and must be restored exactly to recreate the bay loading.
-        Set<Entity> transportCorrected = new HashSet<>();
-        for (final Entity carrier: entities) {
-            for (int carriedId: carrier.getBayLoadedUnitIds()) {
-                // First, see if a bay loaded unit can be found and unloaded,
-                // because it might be the wrong unit
-                Entity carried = game.getEntity(carriedId);
-                if (carried == null) {
-                    continue;
-                }
-                int bay = carrier.getBay(carried).getBayNumber();
-                carrier.unload(carried);
-                // Now, load the correct unit if there is one
-                if (idMap.containsKey(carriedId)) {
-                    Entity newCarried = game.getEntity(idMap.get(carriedId));
-                    if (carrier.canLoad(newCarried, false)) {
-                        carrier.load(newCarried, false, bay);
-                        newCarried.setTransportId(carrier.getId());
-                        // Remember that the carried unit should not be treated again below
-                        transportCorrected.add(newCarried);
-                    }
-                }
-            }
-        }
-
-        // Now restore the transport settings from the entities' transporter IDs
-        // With anything other than bays, MULs only show the carrier, not the carried units 
-        for (final Entity entity: entities) {
-            // Don't correct those that are already corrected
-            if (transportCorrected.contains(entity)) {
-                continue;
-            }
-            // Get the original (client side) ID of the transporter
-            int origTrsp = entity.getTransportId();
-            // Only act if the unit thinks it is transported
-            if (origTrsp != Entity.NONE) {
-                // If the transporter is among the new units, go on with loading 
-                if (idMap.containsKey(origTrsp)) {
-                    // The wrong transporter doesn't know of anything and does not need an update
-                    Entity carrier = game.getEntity(idMap.get(origTrsp)); 
-                    if (carrier.canLoad(entity, false)) {
-                        // The correct transporter must be told it's carrying something and
-                        // the carried unit must be told where it is embarked
-                        carrier.load(entity, false);
-                        entity.setTransportId(idMap.get(origTrsp));
-                    } else {
-                        // This seems to be an invalid carrier; update the entity accordingly
-                        entity.setTransportId(Entity.NONE);
-                    }
-                } else {
-                    // this transporter does not exist; update the entity accordingly
-                    entity.setTransportId(Entity.NONE);
-                }
-            }
-        }
-        
-        // Set the "loaded keepers" which is apparently used for deployment unloading to
-        // differentiate between units loaded in the lobby and other carried units
-        // When entering a game from the lobby, this list is generated again, but not when 
-        // the added entities are loaded during a game. When getting loaded units from a MUL,
-        // act as if they were loaded in the lobby.
-        for (final Entity entity: entities) {
-            if (entity.getLoadedUnits().size() > 0) {
-                Vector<Integer> v = new Vector<>();
-                for (Entity en : entity.getLoadedUnits()) {
-                    v.add(en.getId());
-                }
-                entity.setLoadedKeepers(v);
-            }
-        }
-
-        send(PacketFactory.createAddEntityPacket(game, entityIds));
-    }
-
-    /**
-     * adds a squadron to the game
-     * @param c the packet to be processed
-     * @param connIndex the id for connection that received the packet.
-     */
-    @SuppressWarnings("unchecked")
-    private void receiveSquadronAdd(Packet c, int connIndex) {
-        final FighterSquadron fs = (FighterSquadron) c.getObject(0);
-        final Vector<Integer> fighters = (Vector<Integer>) c.getObject(1);
-        if (fighters.size() < 1) {
-            return;
-        }
-        // fs.setOwner(fighters.firstElement().getOwner());
-        // Only assign an entity ID when the client hasn't.
-        if (Entity.NONE == fs.getId()) {
-            fs.setId(game.getNextEntityId());
-        }
-        game.addEntity(fs);
-        for (int id : fighters) {
-            Entity fighter = game.getEntity(id);
-            if (null != fighter) {
-                fs.load(fighter, false);
-                fs.autoSetMaxBombPoints();
-                fighter.setTransportId(fs.getId());
-                // If this is the lounge, we want to configure bombs
-                if (game.getPhase() == Phase.PHASE_LOUNGE) {
-                    ((IBomber)fighter).setBombChoices(fs.getBombChoices());
-                }
-                entityUpdate(fighter.getId());
-            }
-        }
-        send(PacketFactory.createAddEntityPacket(game, fs.getId()));
-    }
-
-    /**
-     * Updates an entity with the info from the client. Only valid to do this
-     * during the lounge phase, except for heat sink changing.
-     * @param c the packet to be processed
-     * @param connIndex the id for connection that received the packet.
-     */
-    private void receiveEntityUpdate(Packet c, int connIndex) {
-        Entity entity = (Entity) c.getObject(0);
-        Entity oldEntity = game.getEntity(entity.getId());
-        if ((oldEntity != null) && ((oldEntity.getOwner() == game.getPlayer(connIndex)) || (oldEntity.getOwner().getTeam() == game.getPlayer(connIndex).getTeam()))) {
-            game.setEntity(entity.getId(), entity);
-            entityUpdate(entity.getId());
-            // In the chat lounge, notify players of customizing of unit
-            if (game.getPhase() == IGame.Phase.PHASE_LOUNGE) {
-                StringBuilder message = new StringBuilder();
-                if (game.getOptions().booleanOption(OptionsConstants.BASE_REAL_BLIND_DROP)) {
-                    message.append("A Unit ");
-                    message.append('(').append(entity.getOwner().getName()).append(')');
-                } else if (game.getOptions().booleanOption(OptionsConstants.BASE_BLIND_DROP)) {
-                    message.append("Unit ");
-                    if (!entity.getExternalIdAsString().equals("-1")) {
-                        message.append('[')
-                               .append(entity.getExternalIdAsString())
-                               .append("] ");
-                    }
-                    message.append(entity.getId()).append(" (")
-                           .append(entity.getOwner().getName()).append(')');
-                } else {
-                    message.append("Unit ");
-                    message.append(entity.getDisplayName());
-                }
-                message.append(" has been customized.");
-                sendServerChat(message.toString());
-            }
-        }
-    }
-
-    /**
-     * loads an entity into another one. Meant to be called from the chat lounge
-     * @param c the packet to be processed
-     * @param connIndex the id for connection that received the packet.
-     */
-    private void receiveEntityLoad(Packet c, int connIndex) {
-        int loadeeId = (Integer) c.getObject(0);
-        int loaderId = (Integer) c.getObject(1);
-        int bayNumber = (Integer) c.getObject(2);
-        Entity loadee = game.getEntity(loadeeId);
-        Entity loader = game.getEntity(loaderId);
-
-        if ((loadee != null) && (loader != null)) {
-            loadUnit(loader, loadee, bayNumber);
-            // In the chat lounge, notify players of customizing of unit
-            if (game.getPhase() == IGame.Phase.PHASE_LOUNGE) {
-                /*
-                 * StringBuffer message = new StringBuffer();
-                 * message.append("Unit "); if
-                 * (game.getOptions().booleanOption(OptionsConstants.BASE_BLIND_DROP) ||
-                 * game.getOptions().booleanOption(OptionsConstants.BASE_REAL_BLIND_DROP)) { if
-                 * (!entity.getExternalIdAsString().equals("-1")) {
-                 * message.append('[') .append(entity.getExternalIdAsString())
-                 * .append("] "); } message.append(entity.getId()).append('(')
-                 * .append(entity.getOwner().getName()).append(')'); } else {
-                 * message.append(entity.getDisplayName()); }
-                 * message.append(" has been customized.");
-                 * sendServerChat(message.toString());
-                 */
-                // Set this so units can be unloaded in the first movement phase
-                loadee.setLoadedThisTurn(false);
-            }
-        }
-    }
-
-    /**
-     *
-     * @param c the packet to be processed
-     * @param connIndex the id for connection that received the packet.
-     */
-    private void receiveCustomInit(Packet c, int connIndex) {
-        // In the chat lounge, notify players of customizing of unit
-        if (game.getPhase() == IGame.Phase.PHASE_LOUNGE) {
-            IPlayer p = (IPlayer) c.getObject(0);
-            sendServerChat("" + p.getName() + " has customized initiative.");
-        }
-    }
-
-    /**
-     * receive and process an entity mode change packet
-     *
-     * @param c the packet to be processed
-     * @param connIndex the id for connection that received the packet.
-     */
-    private void receiveEntityModeChange(Packet c, int connIndex) {
-        int entityId = c.getIntValue(0);
-        int equipId = c.getIntValue(1);
-        int mode = c.getIntValue(2);
-        Entity e = game.getEntity(entityId);
-        if (e.getOwner() != game.getPlayer(connIndex)) {
-            return;
-        }
-        Mounted m = e.getEquipment(equipId);
-
-        if (m == null) {
-            return;
-        }
-
-        try {
-            // Check for BA dumping body mounted missile launchers
-            if ((e instanceof BattleArmor) && (!m.isMissing())
-                    && m.isBodyMounted()
-                    && m.getType().hasFlag(WeaponType.F_MISSILE)
-                    && (m.getLinked() != null)
-                    && (m.getLinked().getUsableShotsLeft() > 0)
-                    && (mode <= 0)) {
-                m.setPendingDump(mode == -1);
-            // a mode change for ammo means dumping or hot loading
-            } else if ((m.getType() instanceof AmmoType) && !m.getType().hasInstantModeSwitch() && (mode < 0 || mode == 0 && m.isPendingDump())) {
-                m.setPendingDump(mode == -1);
-            } else if ((m.getType() instanceof WeaponType) && m.isDWPMounted() && (mode <= 0)) {
-                m.setPendingDump(mode == -1);
-            } else {
-                if (!m.setMode(mode)) {
-                    String message = e.getShortName() + ": " + m.getName() + ": " + e.getLocationName(m.getLocation())
-                            + " trying to compensate";
-                    MegaMek.getLogger().error(message);
-                    sendServerChat(message);
-                    e.setGameOptions();
-
-                    if (!m.setMode(mode)) {
-                        message = e.getShortName() + ": " + m.getName() + ": " + e.getLocationName(m.getLocation())
-                                + " unable to compensate";
-                        MegaMek.getLogger().error(message);
-                        sendServerChat(message);
-                    }
-                }
-            }
-        } catch (Exception ex) {
-            MegaMek.getLogger().error(ex);
-        }
-    }
-
-    /**
-     * Receive and process an Entity Sensor Change Packet
-     * @param c the packet to be processed
-     * @param connIndex the id for connection that received the packet.
-     */
-    private void receiveEntitySensorChange(Packet c, int connIndex) {
-        int entityId = c.getIntValue(0);
-        int sensorId = c.getIntValue(1);
-        Entity e = game.getEntity(entityId);
-        e.setNextSensor(e.getSensors().elementAt(sensorId));
-    }
-
-    /**
-     * Receive and process an Entity Heat Sinks Change Packet
-     * @param c the packet to be processed
-     * @param connIndex the id for connection that received the packet.
-     */
-    private void receiveEntitySinksChange(Packet c, int connIndex) {
-        int entityId = c.getIntValue(0);
-        int numSinks = c.getIntValue(1);
-        Entity e = game.getEntity(entityId);
-        if ((e instanceof Mech) && (connIndex == e.getOwnerId())) {
-            ((Mech)e).setActiveSinksNextRound(numSinks);
-        }
-    }
-
-    /**
-     *
-     * @param c the packet to be processed
-     * @param connIndex the id for connection that received the packet.
-     */
-    private void receiveEntityActivateHidden(Packet c, int connIndex) {
-        int entityId = c.getIntValue(0);
-        IGame.Phase phase = (IGame.Phase)c.getObject(1);
-        Entity e = game.getEntity(entityId);
-        if (connIndex != e.getOwnerId()) {
-            MegaMek.getLogger().error("Player " + connIndex + " tried to activate a hidden unit owned by Player " + e.getOwnerId());
-            return;
-        }
-        e.setHiddeActivationPhase(phase);
-        entityUpdate(entityId);
-    }
-
-    /**
-     * receive and process an entity nova network mode change packet
-     *
-     * @param c the packet to be processed
-     * @param connIndex the id for connection that received the packet.
-     */
-    private void receiveEntityNovaNetworkModeChange(Packet c, int connIndex) {
-
-        try {
-            int entityId = c.getIntValue(0);
-            String networkID = c.getObject(1).toString();
-            Entity e = game.getEntity(entityId);
-            if (e.getOwner() != game.getPlayer(connIndex)) {
-                return;
-            }
-            // FIXME: Greg: This can result in setting the network to link to hostile units.
-            // However, it should be caught by both the isMemberOfNetwork test from the c3 module as well as
-            // by the clients possible input.
-            e.setNewRoundNovaNetworkString(networkID);
-        } catch (Exception ex) {
-            ex.printStackTrace();
-        }
-    }
-
-    /**
-     * receive and process an entity mounted facing change packet
-     *
-     * @param c the packet to be processed
-     * @param connIndex the id for connection that received the packet.
-     */
-    private void receiveEntityMountedFacingChange(Packet c, int connIndex) {
-        int entityId = c.getIntValue(0);
-        int equipId = c.getIntValue(1);
-        int facing = c.getIntValue(2);
-        Entity e = game.getEntity(entityId);
-        if (e.getOwner() != game.getPlayer(connIndex)) {
-            return;
-        }
-        Mounted m = e.getEquipment(equipId);
-
-        if (m == null) {
-            return;
-        }
-        m.setFacing(facing);
-    }
-
-    /**
-     * receive and process an entity mode change packet
-     *
-     * @param c the packet to be processed
-     * @param connIndex the id for connection that received the packet.
-     */
-    private void receiveEntityCalledShotChange(Packet c, int connIndex) {
-        int entityId = c.getIntValue(0);
-        int equipId = c.getIntValue(1);
-        Entity e = game.getEntity(entityId);
-        if (e.getOwner() != game.getPlayer(connIndex)) {
-            return;
-        }
-        Mounted m = e.getEquipment(equipId);
-
-        if (m == null) {
-            return;
-        }
-        m.getCalledShot().switchCalledShot();
-    }
-
-    /**
-     * receive and process an entity system mode change packet
-     *
-     * @param c the packet to be processed
-     * @param connIndex the id for connection that received the packet.
-     */
-    private void receiveEntitySystemModeChange(Packet c, int connIndex) {
-        int entityId = c.getIntValue(0);
-        int equipId = c.getIntValue(1);
-        int mode = c.getIntValue(2);
-        Entity e = game.getEntity(entityId);
-        if (e.getOwner() != game.getPlayer(connIndex)) {
-            return;
-        }
-        if ((e instanceof Mech) && (equipId == Mech.SYSTEM_COCKPIT)) {
-            ((Mech) e).setCockpitStatus(mode);
-        }
-    }
-
-    /**
-     * Receive a packet that contains an Entity ammo change
-     *
-     * @param c the packet to be processed
-     * @param connIndex the id for connection that received the packet.
-     */
-    private void receiveEntityAmmoChange(Packet c, int connIndex) {
-        int entityId = c.getIntValue(0);
-        int weaponId = c.getIntValue(1);
-        int ammoId = c.getIntValue(2);
-        Entity e = game.getEntity(entityId);
-
-        // Did we receive a request for a valid Entity?
-        if (null == e) {
-            MegaMek.getLogger().error("Could not find entity# " + entityId);
-            return;
-        }
-        IPlayer player = game.getPlayer(connIndex);
-        if ((null != player) && (e.getOwner() != player)) {
-            MegaMek.getLogger().error("Player " + player.getName() + " does not own the entity " + e.getDisplayName());
-            return;
-        }
-
-        // Make sure that the entity has the given equipment.
-        Mounted mWeap = e.getEquipment(weaponId);
-        Mounted mAmmo = e.getEquipment(ammoId);
-        if (null == mAmmo) {
-            MegaMek.getLogger().error("Entity " + e.getDisplayName() + " does not have ammo #" + ammoId);
-            return;
-        }
-        if (!(mAmmo.getType() instanceof AmmoType)) {
-            MegaMek.getLogger().error("Item #" + ammoId + " of entity " + e.getDisplayName()
-                    + " is a " + mAmmo.getName() + " and not ammo.");
-            return;
-        }
-        if (null == mWeap) {
-            MegaMek.getLogger().error("Entity " + e.getDisplayName() + " does not have weapon #" + weaponId);
-            return;
-        }
-        if (!(mWeap.getType() instanceof WeaponType)) {
-            MegaMek.getLogger().error("Item #" + weaponId + " of entity " + e.getDisplayName()
-                    + " is a " + mWeap.getName() + " and not a weapon.");
-            return;
-        }
-        if (((WeaponType) mWeap.getType()).getAmmoType() == AmmoType.T_NA) {
-            MegaMek.getLogger().error("Item #" + weaponId + " of entity " + e.getDisplayName()
-                    + " is a " + mWeap.getName() + " and does not use ammo.");
-            return;
-        }
-        if (mWeap.getType().hasFlag(WeaponType.F_ONESHOT)
-                && !mWeap.getType().hasFlag(WeaponType.F_DOUBLE_ONESHOT)) {
-            MegaMek.getLogger().error("Item #" + weaponId + " of entity " + e.getDisplayName()
-                    + " is a " + mWeap.getName() + " and cannot use external ammo.");
-            return;
-        }
-
-        // Load the weapon.
-        e.loadWeapon(mWeap, mAmmo);
-    }
-
-    /**
-     * Deletes an entity owned by a certain player from the list
-     */
-    private void receiveEntityDelete(Packet c, int connIndex) {
-        @SuppressWarnings("unchecked")
-        List<Integer> ids = (List<Integer>) c.getObject(0);
-        for (Integer entityId : ids) {
-            final Entity entity = game.getEntity(entityId);
-
-            // Only allow players to delete their *own* entities.
-            if ((entity != null) && (entity.getOwner() == game.getPlayer(connIndex))) {
-
-                // If we're deleting a ProtoMech, recalculate unit numbers.
-                if (entity instanceof Protomech) {
-
-                    // How many ProtoMechs does the player have (include this one)?
-                    int numPlayerProtos = game.getSelectedEntityCount(new EntitySelector() {
-                        private final int ownerId = entity.getOwnerId();
-
-                        public boolean accept(Entity entity) {
-                            return (entity instanceof Protomech) && (ownerId == entity.getOwnerId());
-                        }
-                    });
-
-                    // According to page 54 of the BMRr, ProtoMechs must be
-                    // deployed in full Points of five, unless "losses" have
-                    // reduced the number to less than that.
-                    final char oldMax = (char) (Math.ceil(numPlayerProtos / 5.0) - 1);
-                    char newMax = (char) (Math.ceil((numPlayerProtos - 1) / 5.0) - 1);
-                    short deletedUnitNum = entity.getUnitNumber();
-
-                    // Do we have to update a ProtoMech from the last unit?
-                    if ((oldMax != deletedUnitNum) && (oldMax != newMax)) {
-
-                        // Yup. Find a ProtoMech from the last unit, and
-                        // set it's unit number to the deleted entity.
-                        Iterator<Entity> lastUnit =
-                                game.getSelectedEntities(new EntitySelector() {
-                                    private final int ownerId = entity.getOwnerId();
-
-                                    private final char lastUnitNum = oldMax;
-
-                                    public boolean accept(Entity entity) {
-                                        return (entity instanceof Protomech)
-                                                && (ownerId == entity.getOwnerId())
-                                                && (lastUnitNum == entity.getUnitNumber());
-                                    }
-                                });
-                        Entity lastUnitMember = lastUnit.next();
-                        lastUnitMember.setUnitNumber(deletedUnitNum);
-                        entityUpdate(lastUnitMember.getId());
-                    } // End update-unit-number
-                } // End added-ProtoMech
-
-                if (game.getPhase() != IGame.Phase.PHASE_DEPLOYMENT) {
-                    // if a unit is removed during deployment just keep going
-                    // without adjusting the turn vector.
-                    game.removeTurnFor(entity);
-                    game.removeEntity(entityId, IEntityRemovalConditions.REMOVE_NEVER_JOINED);
-                }
-            }
-        }
-
-        // during deployment this absolutely must be called before game.removeEntity(), otherwise the game hangs
-        // when a unit is removed. Cause unknown.
-        send(PacketFactory.createRemoveEntityPacket(ids, IEntityRemovalConditions.REMOVE_NEVER_JOINED));
-
-        // Prevents deployment hanging. Only do this during deployment.
-        if (game.getPhase() == IGame.Phase.PHASE_DEPLOYMENT) {
-            for (Integer entityId : ids) {
-                final Entity entity = game.getEntity(entityId);
-                game.removeEntity(entityId, IEntityRemovalConditions.REMOVE_NEVER_JOINED);
-                endCurrentTurn(entity);
-            }
-        }
-    }
-
-    private void receiveInitiativeRerollRequest(Packet pkt, int connIndex) {
-        IPlayer player = game.getPlayer(connIndex);
-        if (IGame.Phase.PHASE_INITIATIVE_REPORT != game.getPhase()) {
-            StringBuilder message = new StringBuilder();
-            if (null == player) {
-                message.append("Player #").append(connIndex);
-            } else {
-                message.append(player.getName());
-            }
-            message.append(" is not allowed to ask for a reroll at this time.");
-            MegaMek.getLogger().error(message.toString());
-            sendServerChat(message.toString());
-            return;
-        }
-        if (game.hasTacticalGenius(player)) {
-            game.addInitiativeRerollRequest(game.getTeamForPlayer(player));
-        }
-        if (null != player) {
-            player.setDone(true);
-        }
-        checkReady();
-    }
-
-    /**
-     * Sets game options, providing that the player has specified the password
-     * correctly.
-     *
-     * @return true if any options have been successfully changed.
-     */
-    private boolean receiveGameOptions(Packet packet, int connId) {
-        IPlayer player = game.getPlayer(connId);
-        // Check player
-        if (null == player) {
-            MegaMek.getLogger().error("Server does not recognize player at connection " + connId);
-            return false;
-        }
-
-        // check password
-        if ((password != null) && (password.length() > 0) && !password.equals(packet.getObject(0))) {
-            sendServerChat(connId, "The password you specified to change game options is incorrect.");
-            return false;
-        }
-
-        if (game.getPhase().isDuringOrAfter(Phase.PHASE_DEPLOYMENT)) {
-            return false;
-        }
-
-        int changed = 0;
-
-        for (Enumeration<?> i = ((Vector<?>) packet.getObject(1)).elements(); i.hasMoreElements(); ) {
-            IBasicOption option = (IBasicOption) i.nextElement();
-            IOption originalOption = game.getOptions().getOption(option.getName());
-
-            if (originalOption == null) {
-                continue;
-            }
-
-            String message = "Player " + player.getName() + " changed option \"" +
-                    originalOption.getDisplayableName() + "\" to " + option.getValue().toString() + '.';
-            sendServerChat(message);
-            originalOption.setValue(option.getValue());
-            changed++;
-        }
-
-        // Set proper RNG
-        Compute.setRNG(game.getOptions().intOption(OptionsConstants.BASE_RNG_TYPE));
-
-        if (changed > 0) {
-            for (Entity en : game.getEntitiesVector()) {
-                en.setGameOptions();
-            }
-            entityAllUpdate();
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * Performs the additional processing of the received options after the the
-     * <code>receiveGameOptions<code> done its job; should be called after
-     * <code>receiveGameOptions<code> only if the <code>receiveGameOptions<code>
-     * returned <code>true</code>
-     *
-     * @param packet the packet to be processed
-     * @param connId the id for connection that received the packet.
-     */
-    private void receiveGameOptionsAux(Packet packet, int connId) {
-        for (Enumeration<?> i = ((Vector<?>) packet.getObject(1)).elements(); i.hasMoreElements(); ) {
-            IBasicOption option = (IBasicOption) i.nextElement();
-            IOption originalOption = game.getOptions().getOption(option.getName());
-            if (originalOption != null) {
-                if ("maps_include_subdir".equals(originalOption.getName())) {
-                    mapSettings.setBoardsAvailableVector(BoardUtilities.scanForBoards(new BoardDimensions(
-                            mapSettings.getBoardWidth(), mapSettings.getBoardHeight())));
-                    mapSettings.removeUnavailable();
-                    mapSettings.setNullBoards(MapSettings.DEFAULT_BOARD);
-                    send(PacketFactory.createMapSettingsPacket(mapSettings));
                 }
             }
         }
@@ -29584,8 +27599,7 @@ public class Server implements Runnable {
             // How many levels does this building have in this hex?
             final IHex curHex = game.getBoard().getHex(coords);
             final int bridgeEl = curHex.terrainLevel(Terrains.BRIDGE_ELEV);
-            final int numFloors = Math.max(bridgeEl,
-                    curHex.terrainLevel(Terrains.BLDG_ELEV));
+            final int numFloors = Math.max(bridgeEl, curHex.terrainLevel(Terrains.BLDG_ELEV));
 
             // Now collapse the building in this hex, so entities fall to
             // the ground
@@ -29666,8 +27680,7 @@ public class Server implements Runnable {
                 vPhaseReport.add(r);
                 int remaining = damage;
                 int cluster = damage;
-                if ((entity instanceof BattleArmor) || (entity instanceof Mech)
-                        || (entity instanceof Tank)) {
+                if ((entity instanceof BattleArmor) || (entity instanceof Mech) || (entity instanceof Tank)) {
                     cluster = 5;
                 }
                 while (remaining > 0) {
@@ -29718,8 +27731,7 @@ public class Server implements Runnable {
         }
         // if more than half of the hexes are gone, collapse all
         if (bldg.getCollapsedHexCount() > (bldg.getOriginalHexCount() / 2)) {
-            for (Enumeration<Coords> coordsEnum = bldg.getCoords(); coordsEnum
-                    .hasMoreElements();) {
+            for (Enumeration<Coords> coordsEnum = bldg.getCoords(); coordsEnum.hasMoreElements();) {
                 coords = coordsEnum.nextElement();
                 collapseBuilding(bldg, game.getPositionMap(), coords, false,
                         vPhaseReport);
@@ -29764,10 +27776,8 @@ public class Server implements Runnable {
 
         // If we have any buildings to collapse, collapse them now.
         if (!collapse.isEmpty()) {
-
             // Get the position map of all entities in the game.
-            Hashtable<Coords, Vector<Entity>> positionMap = game
-                    .getPositionMap();
+            Hashtable<Coords, Vector<Entity>> positionMap = game.getPositionMap();
 
             // Walk through the hexes that have collapsed.
             for (Building bldg : collapse.keySet()) {
@@ -30137,134 +28147,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * Receives an packet to unload entity is stranded on immobile transports,
-     * and queue all valid requests for execution. If all players that have
-     * stranded entities have answered, executes the pending requests and end
-     * the current turn.
-     */
-    private void receiveUnloadStranded(Packet packet, int connId) {
-        GameTurn.UnloadStrandedTurn turn;
-        final IPlayer player = game.getPlayer(connId);
-        int[] entityIds = (int[]) packet.getObject(0);
-        Vector<IPlayer> declared;
-        IPlayer other;
-        Enumeration<EntityAction> pending;
-        UnloadStrandedAction action;
-        Entity entity;
-
-        // Is this the right phase?
-        if (game.getPhase() != IGame.Phase.PHASE_MOVEMENT) {
-            MegaMek.getLogger().error("Server got unload stranded packet in wrong phase");
-            return;
-        }
-
-        // Are we in an "unload stranded entities" turn?
-        if (game.getTurn() instanceof GameTurn.UnloadStrandedTurn) {
-            turn = (GameTurn.UnloadStrandedTurn) game.getTurn();
-        } else {
-            MegaMek.getLogger().error("Server got unload stranded packet out of sequence");
-            sendServerChat(player.getName() + " should not be sending 'unload stranded entity' packets at this time.");
-            return;
-        }
-
-        // Can this player act right now?
-        if (!turn.isValid(connId, game)) {
-            MegaMek.getLogger().error("Server got unload stranded packet from invalid player");
-            sendServerChat(player.getName() + " should not be sending 'unload stranded entity' packets.");
-            return;
-        }
-
-        // Did the player already send an 'unload' request?
-        // N.B. we're also building the list of players who
-        // have declared their "unload stranded" actions.
-        declared = new Vector<>();
-        pending = game.getActions();
-        while (pending.hasMoreElements()) {
-            action = (UnloadStrandedAction) pending.nextElement();
-            if (action.getPlayerId() == connId) {
-                MegaMek.getLogger().error("Server got multiple unload stranded packets from player");
-                sendServerChat(player.getName() + " should not send multiple 'unload stranded entity' packets.");
-                return;
-            }
-            // This player is not from the current connection.
-            // Record this player to determine if this turn is done.
-            other = game.getPlayer(action.getPlayerId());
-            if (!declared.contains(other)) {
-                declared.addElement(other);
-            }
-        } // Handle the next "unload stranded" action.
-
-        // Make sure the player selected at least *one* valid entity ID.
-        boolean foundValid = false;
-        for (int index = 0; (null != entityIds) && (index < entityIds.length); index++) {
-            entity = game.getEntity(entityIds[index]);
-            if (!game.getTurn().isValid(connId, entity, game)) {
-                MegaMek.getLogger().error("Server got unload stranded packet for invalid entity");
-                StringBuilder message = new StringBuilder();
-                message.append(player.getName()).append(" can not unload stranded entity ");
-                if (null == entity) {
-                    message.append('#').append(entityIds[index]);
-                } else {
-                    message.append(entity.getDisplayName());
-                }
-                message.append(" at this time.");
-                sendServerChat(message.toString());
-            } else {
-                foundValid = true;
-                game.addAction(new UnloadStrandedAction(connId, entityIds[index]));
-            }
-        }
-
-        // Did the player choose not to unload any valid stranded entity?
-        if (!foundValid) {
-            game.addAction(new UnloadStrandedAction(connId, Entity.NONE));
-        }
-
-        // Either way, the connection's player has now declared.
-        declared.addElement(player);
-
-        // Are all players who are unloading entities done? Walk
-        // through the turn's stranded entities, and look to see
-        // if their player has finished their turn.
-        entityIds = turn.getEntityIds();
-        for (int entityId : entityIds) {
-            entity = game.getEntity(entityId);
-            other = entity.getOwner();
-            if (!declared.contains(other)) {
-                // At least one player still needs to declare.
-                return;
-            }
-        }
-
-        // All players have declared whether they're unloading stranded units.
-        // Walk the list of pending actions and unload the entities.
-        pending = game.getActions();
-        while (pending.hasMoreElements()) {
-            action = (UnloadStrandedAction) pending.nextElement();
-
-            // Some players don't want to unload any stranded units.
-            if (Entity.NONE != action.getEntityId()) {
-                entity = game.getEntity(action.getEntityId());
-                if (null == entity) {
-                    // After all this, we couldn't find the entity!!!
-                    MegaMek.getLogger().error("Server could not find stranded entity #"
-                            + action.getEntityId() + " to unload!!!");
-                } else {
-                    // Unload the entity. Get the unit's transporter.
-                    Entity transporter = game.getEntity(entity.getTransportId());
-                    unloadUnit(transporter, entity, transporter.getPosition(),
-                               transporter.getFacing(), transporter.getElevation());
-                }
-            }
-
-        } // Handle the next pending unload action
-
-        // Clear the list of pending units and move to the next turn.
-        game.resetActions();
-        changeToNextTurn(connId);
-    }
-
-    /**
      * Resolve a Physical Attack
      *
      * @param pr  The <code>PhysicalResult</code> of the physical attack
@@ -30492,8 +28374,7 @@ public class Server implements Runnable {
                     // If this is a skin of the teeth ejection...
                     if (skin_of_the_teeth && (entity.getCrew().getHits(crewPos) < 6)) {
                         Report.addNewline(vDesc);
-                        vDesc.addAll(damageCrew(entity, 6 - entity.getCrew()
-                                                                .getHits(crewPos)));
+                        vDesc.addAll(damageCrew(entity, 6 - entity.getCrew().getHits(crewPos)));
                     }
                 } else {
                     r.choose(true);
@@ -30567,17 +28448,14 @@ public class Server implements Runnable {
                 if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_EJECTED_PILOTS_FLEE)
                         // Don't create a pilot entity on low-atmospheric maps
                         || game.getBoard().inAtmosphere()) {
-                    game.removeEntity(pilot.getId(),
-                                      IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                    send(PacketFactory.createRemoveEntityPacket(pilot.getId(),
-                                                  IEntityRemovalConditions.REMOVE_IN_RETREAT));
+                    game.removeEntity(pilot.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
+                    send(PacketFactory.createRemoveEntityPacket(pilot.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
                 }
 
                 // If this is a skin of the teeth ejection...
                 if (skin_of_the_teeth && (pilot.getCrew().getHits() < 5)) {
                     Report.addNewline(vDesc);
-                    vDesc.addAll(damageCrew(pilot, 5 - pilot.getCrew()
-                                                            .getHits()));
+                    vDesc.addAll(damageCrew(pilot, 5 - pilot.getCrew().getHits()));
                 }
             } // Crew safely ejects.
 
@@ -30595,8 +28473,7 @@ public class Server implements Runnable {
                 }
             }            
         } // End entity-is-Mek or fighter
-        else if (game.getBoard().contains(entity.getPosition())
-                 && (entity instanceof Tank)) {
+        else if (game.getBoard().contains(entity.getPosition()) && (entity instanceof Tank)) {
             EjectedCrew crew = new EjectedCrew(entity);
             // Need to set game manually; since game.addEntity not called yet
             // Don't want to do this yet, as Entity may not be added
@@ -30904,16 +28781,14 @@ public class Server implements Runnable {
         if (entity.isPartOfFighterSquadron()) {
             // Because the components of a squadron have no position and will pass the next test
             Entity squadron = game.getEntity(entity.getTransportId());
-            return getEjectModifiers(game, entity, crewPos, autoEject, squadron.getPosition(),
-                    "ejecting");
+            return getEjectModifiers(game, entity, crewPos, autoEject, squadron.getPosition(), "ejecting");
         }
         if(null == entity.getPosition()) {
             // Off-board unit?
             return new PilotingRollData(entity.getId(), entity.getCrew().getPiloting(), "ejecting");
         }
         Coords targetCoords = entity.getPosition().translated((facing + 3) % 6);
-        return getEjectModifiers(game, entity, crewPos, autoEject, targetCoords,
-                "ejecting");
+        return getEjectModifiers(game, entity, crewPos, autoEject, targetCoords, "ejecting");
     }
 
     public static PilotingRollData getEjectModifiers(IGame game, Entity entity, int crewPos,
@@ -31374,8 +29249,7 @@ public class Server implements Runnable {
      * able to choose whether or not to remove all iNarc Pods that are attached.
      */
     private void resolveVeeINarcPodRemoval() {
-        Iterator<Entity> vees = game.getSelectedEntities(
-                entity -> (entity instanceof Tank) && (entity.mpUsed == 0));
+        Iterator<Entity> vees = game.getSelectedEntities(entity -> (entity instanceof Tank) && (entity.mpUsed == 0));
         boolean canSwipePods;
         while (vees.hasNext()) {
             canSwipePods = true;
@@ -31472,14 +29346,13 @@ public class Server implements Runnable {
      */
     private Vector<Report> checkQuickSand(Coords c) {
         Vector<Report> vDesc = new Vector<>();
-        Report r;
         IHex hex = game.getBoard().getHex(c);
         if (hex.terrainLevel(Terrains.SWAMP) == 1 && Compute.d6(2) == 12) {
             // better find a rope
             hex.removeTerrain(Terrains.SWAMP);
             hex.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.SWAMP, 2));
             gamemanager.sendChangedHex(game, c);
-            r = new Report(2440);
+            Report r = new Report(2440);
             r.indent(1);
             vDesc.add(r);
         }
@@ -31723,7 +29596,6 @@ public class Server implements Runnable {
      */
     public void doAssaultDrop(Entity entity) {
         //resolve according to SO p.22
-
         Report r = new Report(2380);
 
         // whatever else happens, this entity is on the ground now
@@ -31731,8 +29603,7 @@ public class Server implements Runnable {
 
         PilotingRollData psr;
         // LAMs that convert to fighter mode on the landing turn are processed as crashes
-        if ((entity instanceof LandAirMech)
-                && (entity.getConversionMode() == LandAirMech.CONV_MODE_FIGHTER)) {
+        if ((entity instanceof LandAirMech) && (entity.getConversionMode() == LandAirMech.CONV_MODE_FIGHTER)) {
             reportmanager.addReport(processCrash(entity, 0, entity.getPosition()));
             return;
         }
@@ -31803,8 +29674,7 @@ public class Server implements Runnable {
             // do fall damage from accidental fall
             //set elevation to fall height above ground or building roof
             IHex hex = game.getBoard().getHex(entity.getPosition());
-            int bldgElev = hex.containsTerrain(Terrains.BLDG_ELEV)
-                    ? hex.terrainLevel(Terrains.BLDG_ELEV) : 0;
+            int bldgElev = hex.containsTerrain(Terrains.BLDG_ELEV) ? hex.terrainLevel(Terrains.BLDG_ELEV) : 0;
             entity.setElevation(fallHeight + bldgElev);
             if ((entity instanceof Infantry) && !(entity instanceof BattleArmor)) {
                 HitData hit = new HitData(Infantry.LOC_INFANTRY);
@@ -31816,8 +29686,7 @@ public class Server implements Runnable {
         } else {
             // set entity to expected elevation
             IHex hex = game.getBoard().getHex(entity.getPosition());
-            int bldgElev = hex.containsTerrain(Terrains.BLDG_ELEV)
-                    ? hex.terrainLevel(Terrains.BLDG_ELEV) : 0;
+            int bldgElev = hex.containsTerrain(Terrains.BLDG_ELEV) ? hex.terrainLevel(Terrains.BLDG_ELEV) : 0;
             entity.setElevation(bldgElev);
 
             Building bldg = game.getBoard().getBuildingAt(entity.getPosition());
@@ -32118,12 +29987,8 @@ public class Server implements Runnable {
     }
 
     public void deliverBombDamage(Coords centre, int type, int subjectId, Entity killer, Vector<Report> vPhaseReport) {
-        int range = 0;
-        int damage = 10;
-        if (type == BombType.B_CLUSTER) {
-            range = 1;
-            damage = 5;
-        }
+        int range = (type == BombType.B_CLUSTER) ? 1 : 0;
+        int damage = (type == BombType.B_CLUSTER) ? 5 : 10;
         Vector<Integer> alreadyHit = new Vector<>();
 
         alreadyHit = artilleryDamageHex(centre, centre, damage, null, subjectId, killer, null, false, 0, vPhaseReport, false, alreadyHit, false);
@@ -32408,19 +30273,19 @@ public class Server implements Runnable {
             int reportId = 0;
             switch (mine.getMineType()) {
                 case Mounted.MINE_CONVENTIONAL:
-                    deliverThunderMinefield(coords, entity.getOwnerId(), 10, entity.getId());
+                    deliverMinefield(coords, entity.getOwnerId(), 10, entity.getId(), Minefield.TYPE_CONVENTIONAL);
                     reportId = 3500;
                     break;
                 case Mounted.MINE_VIBRABOMB:
-                    deliverThunderVibraMinefield(coords, entity.getOwnerId(), 10, mine.getVibraSetting(), entity.getId());
+                    deliverMinefield(coords, entity.getOwnerId(), 10, entity.getId(), Minefield.TYPE_VIBRABOMB);
                     reportId = 3505;
                     break;
                 case Mounted.MINE_ACTIVE:
-                    deliverThunderActiveMinefield(coords, entity.getOwnerId(), 10, entity.getId());
+                    deliverMinefield(coords, entity.getOwnerId(), 10, entity.getId(), Minefield.TYPE_ACTIVE);
                     reportId = 3510;
                     break;
                 case Mounted.MINE_INFERNO:
-                    deliverThunderInfernoMinefield(coords, entity.getOwnerId(), 10, entity.getId());
+                    deliverMinefield(coords, entity.getOwnerId(), 10, entity.getId(), Minefield.TYPE_INFERNO);
                     reportId = 3515;
                     break;
                 // TODO : command-detonated mines
@@ -32476,5 +30341,1531 @@ public class Server implements Runnable {
 
     public void sendChangedMines(Coords coords) {
         gamemanager.sendChangedMines(game, coords);
+    }
+
+    private void receivePlayerVersion(Packet packet, int connId) {
+        String version = (String) packet.getObject(0);
+        String clientChecksum = (String) packet.getObject(1);
+        String serverChecksum = MegaMek.getMegaMekSHA256();
+        StringBuilder buf = new StringBuilder();
+        boolean needs = false;
+        if (!version.equals(MegaMek.VERSION)) {
+            buf.append("Client/Server version mismatch. Server reports: ").append(MegaMek.VERSION)
+                    .append(", Client reports: ").append(version);
+            MegaMek.getLogger().error("Client/Server Version Mismatch -- Client: "
+                    + version + " Server: " + MegaMek.VERSION);
+            needs = true;
+        }
+        // print a message indicating client doesn't have jar file
+        if (clientChecksum == null) {
+            if (!version.equals(MegaMek.VERSION)) {
+                buf.append(System.lineSeparator()).append(System.lineSeparator());
+            }
+            buf.append("Client Checksum is null. Client may not have a jar file");
+            MegaMek.getLogger().info("Client does not have a jar file");
+            needs = true;
+            // print message indicating server doesn't have jar file
+        } else if (serverChecksum == null) {
+            if (!version.equals(MegaMek.VERSION)) {
+                buf.append(System.lineSeparator()).append(System.lineSeparator());
+            }
+            buf.append("Server Checksum is null. Server may not have a jar file");
+            MegaMek.getLogger().info("Server does not have a jar file");
+            needs = true;
+            // print message indicating a client/server checksum mismatch
+        } else if (!clientChecksum.equals(serverChecksum)) {
+            if (!version.equals(MegaMek.VERSION)) {
+                buf.append(System.lineSeparator()).append(System.lineSeparator());
+            }
+            buf.append("Client/Server checksum mismatch. Server reports: ").append(serverChecksum)
+                    .append(", Client reports: ").append(clientChecksum);
+            MegaMek.getLogger().error("Client/Server Checksum Mismatch -- Client: " + clientChecksum + " Server: " + serverChecksum);
+            needs = true;
+        }
+
+        // Now, if we need to, send message!
+        if (needs) {
+            IPlayer player = game.getPlayer(connId);
+            if (null != player) {
+                sendServerChat("For " + player.getName() + " Server reports:" + System.lineSeparator() + buf.toString());
+            }
+        } else {
+            MegaMek.getLogger().info("SUCCESS: Client/Server Version (" + version + ") and Checksum ("
+                    + clientChecksum + ") matched");
+        }
+    }
+
+    /**
+     * Receives a player name, sent from a pending connection, and connects that
+     * connection.
+     */
+    private void receivePlayerName(Packet packet, int connId) {
+        final IConnection conn = getPendingConnection(connId);
+        String name = (String) packet.getObject(0);
+        boolean returning = false;
+
+        // this had better be from a pending connection
+        if (conn == null) {
+            MegaMek.getLogger().warning("Got a client name from a non-pending connection");
+            return;
+        }
+
+        // check if they're connecting with the same name as a ghost player
+        for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
+            IPlayer player = i.nextElement();
+            if (player.getName().equals(name)) {
+                if (player.isGhost()) {
+                    returning = true;
+                    player.setGhost(false);
+                    // switch id
+                    connId = player.getId();
+                    conn.setId(connId);
+                }
+            }
+        }
+
+        if (!returning) {
+            // Check to avoid duplicate names...
+            name = correctDupeName(name);
+            sendToPending(connId, new Packet(Packet.COMMAND_SERVER_CORRECT_NAME, name));
+        }
+
+        // right, switch the connection into the "active" bin
+        connectionsPending.removeElement(conn);
+        connections.addElement(conn);
+        connectionIds.put(conn.getId(), conn);
+
+        // add and validate the player info
+        if (!returning) {
+            game.addNewPlayer(connId, name);
+        }
+
+        // if it is not the lounge phase, this player becomes an observer
+        IPlayer player = game.getPlayer(connId);
+        if ((game.getPhase() != IGame.Phase.PHASE_LOUNGE) && (null != player) && (game.getEntitiesOwnedBy(player) < 1)) {
+            player.setObserver(true);
+        }
+
+        // send the player the motd
+        sendServerChat(connId, motd);
+
+        // send info that the player has connected
+        send(PacketFactory.createPlayerConnectPacket(game, connId));
+
+        // tell them their local playerId
+        send(connId, new Packet(Packet.COMMAND_LOCAL_PN, connId));
+
+        // send current game info
+        sendCurrentInfo(connId);
+
+        try {
+            InetAddress[] addresses = InetAddress.getAllByName(InetAddress.getLocalHost().getHostName());
+            for (InetAddress addresse : addresses) {
+                sendServerChat(connId, "Machine IP is " + addresse.getHostAddress());
+            }
+        } catch (UnknownHostException e) {
+            // oh well.
+        }
+
+        // Send the port we're listening on. Only useful for the player
+        // on the server machine to check.
+        sendServerChat(connId, "Listening on port " + serverSocket.getLocalPort());
+
+        // Get the player *again*, because they may have disconnected.
+        player = game.getPlayer(connId);
+        if (null != player) {
+            String who = player.getName() + " connected from " + getConnection(connId).getInetAddress();
+            MegaMek.getLogger().info("s: player #" + connId + ", " + who);
+            sendServerChat(who);
+        } // Found the player
+    }
+
+    /**
+     * Hand over a turn to the next player. This is only possible if you haven't
+     * yet started your turn (i.e. not yet moved anything like infantry where
+     * you have to move multiple units)
+     *
+     * @param connectionId - connection id of the player sending the packet
+     */
+    private void receiveForwardIni(int connectionId) {
+        // this is the player sending the packet
+        IPlayer current = game.getPlayer(connectionId);
+
+        if (game.getTurn().getPlayerNum() != current.getId()) {
+            // this player is not the current player, so just ignore this
+            // command!
+            return;
+        }
+        // if individual initiative is active we cannot forward our initiative
+        // ever!
+        if (game.getOptions().booleanOption(OptionsConstants.RPG_INDIVIDUAL_INITIATIVE)) {
+            return;
+        }
+
+        // if the player isn't on a team, there is no next team by definition. Skip the rest.
+        Team currentPlayerTeam = game.getTeamForPlayer(current);
+        if (currentPlayerTeam == null) {
+            return;
+        }
+
+        // get the next player from the team this player is on.
+        IPlayer next = currentPlayerTeam.getNextValidPlayer(current, game);
+
+        while (!next.equals(current)) {
+            // if the chosen player is a valid player, we change the turn order and
+            // inform the clients.
+            if (game.getEntitiesOwnedBy(next) != 0 && game.getTurnForPlayer(next.getId()) != null) {
+                int currentTurnIndex = game.getTurnIndex();
+                // now look for the next occurrence of player next in the turn order
+                List<GameTurn> turns = game.getTurnVector();
+                GameTurn turn = game.getTurn();
+                // not entirely necessary. As we will also check this for the
+                // activity of the button but to be sure do it on the server too.
+                boolean isGeneralMoveTurn = !(turn instanceof GameTurn.SpecificEntityTurn)
+                        && !(turn instanceof GameTurn.UnitNumberTurn)
+                        && !(turn instanceof GameTurn.UnloadStrandedTurn);
+                if (!isGeneralMoveTurn) {
+                    // if this is not a general turn the player cannot forward his turn.
+                    return;
+                }
+
+                // if it is an EntityClassTurn we have to check make sure, that the
+                // turn it is exchanged with is the same kind of turn!
+                // in fact this requires an access function to the mask of an
+                // EntityClassTurn.
+                boolean isEntityClassTurn = (turn instanceof GameTurn.EntityClassTurn);
+                int classMask = 0;
+                if (isEntityClassTurn) {
+                    classMask = ((GameTurn.EntityClassTurn) turn).getTurnCode();
+                }
+
+                boolean switched = false;
+                int nextTurnId = 0;
+                for (int i = currentTurnIndex; i < turns.size(); i++) {
+                    // if we find a turn for the specific player, swap the current
+                    // player with the player noted there
+                    // and stop
+                    if (turns.get(i).isValid(next.getId(), game)) {
+                        nextTurnId = i;
+                        if (isEntityClassTurn && !(turns.get(i) instanceof GameTurn.EntityClassTurn)) {
+                            continue;
+                        }
+                        if (isEntityClassTurn && ((GameTurn.EntityClassTurn) turns.get(i)).getTurnCode() != classMask) {
+                            continue;
+                        }
+                        switched = true;
+                        break;
+                    }
+                }
+
+                // update turn order
+                if (switched) {
+                    game.swapTurnOrder(currentTurnIndex, nextTurnId);
+                    // update the turn packages for all players.
+                    send(PacketFactory.createTurnVectorPacket(game));
+                    send(PacketFactory.createTurnIndexPacket(game, connectionId));
+                    return;
+                }
+                // if nothing changed return without doing anything
+            }
+
+            next = currentPlayerTeam.getNextValidPlayer(next, game);
+        }
+    }
+
+    /**
+     * Receives an entity movement packet, and if valid, executes it and ends
+     * the current turn.
+     */
+    private void receiveMovement(Packet packet, int connId) {
+        Map<EntityTargetPair, LosEffects> losCache = new HashMap<>();
+        Entity entity = game.getEntity(packet.getIntValue(0));
+        MovePath md = (MovePath) packet.getObject(1);
+        md.setGame(getGame());
+        md.setEntity(entity);
+
+        // is this the right phase?
+        if (game.getPhase() != IGame.Phase.PHASE_MOVEMENT) {
+            MegaMek.getLogger().error("Server got movement packet in wrong phase");
+            return;
+        }
+
+        // can this player/entity act right now?
+        GameTurn turn = game.getTurn();
+        if (game.isPhaseSimultaneous()) {
+            turn = game.getTurnForPlayer(connId);
+        }
+        if ((turn == null) || !turn.isValid(connId, entity, game)) {
+            String msg = "error: server got invalid movement packet from " + "connection " + connId;
+            if (entity != null) {
+                msg += ", Entity: " + entity.getShortName();
+            } else {
+                msg += ", Entity was null!";
+            }
+            MegaMek.getLogger().error(msg);
+            return;
+        }
+
+        // looks like mostly everything's okay
+        processMovement(entity, md, losCache);
+
+        // The attacker may choose to break a chain whip grapple by expending MP
+        if ((entity.getGrappled() != Entity.NONE)
+                && entity.isChainWhipGrappled() && entity.isGrappleAttacker()
+                && (md.getMpUsed() > 0)) {
+
+            Entity te = game.getEntity(entity.getGrappled());
+            Report r = new Report(4316);
+            r.subject = entity.getId();
+            r.addDesc(entity);
+            r.addDesc(te);
+            reportmanager.addReport(r);
+
+            entity.setGrappled(Entity.NONE, false);
+            te.setGrappled(Entity.NONE, false);
+
+            entityUpdate(entity.getId());
+            entityUpdate(te.getId());
+        }
+
+        // check the LOS of any telemissiles owned by this entity
+        for (int missileId : entity.getTMTracker().getMissiles()) {
+            Entity tm = game.getEntity(missileId);
+            if ((null != tm) && !tm.isDestroyed()
+                    && (tm instanceof TeleMissile)) {
+                ((TeleMissile) tm).setOutContact(!LosEffects.calculateLos(game, entity.getId(), tm).canSee());
+                entityUpdate(tm.getId());
+            }
+        }
+
+        // Notify the clients about any building updates.
+        applyAffectedBldgs();
+
+        // Unit movement may detect hidden units
+        detectHiddenUnits();
+
+        // Update visibility indications if using double blind.
+        if (game.doBlind()) {
+            updateVisibilityIndicator(losCache);
+        }
+
+        // This entity's turn is over.
+        // N.B. if the entity fell, a *new* turn has already been added.
+        endCurrentTurn(entity);
+    }
+
+    /**
+     * Receive a deployment packet. If valid, execute it and end the current
+     * turn.
+     */
+    private void receiveDeployment(Packet packet, int connId) {
+        Entity entity = game.getEntity(packet.getIntValue(0));
+        Coords coords = (Coords) packet.getObject(1);
+        int nFacing = packet.getIntValue(2);
+        int elevation = packet.getIntValue(3);
+
+        // Handle units that deploy loaded with other units.
+        int loadedCount = packet.getIntValue(4);
+        Vector<Entity> loadVector = new Vector<>();
+        for (int i = 0; i < loadedCount; i++) {
+            int loadedId = packet.getIntValue(6 + i);
+            loadVector.addElement(game.getEntity(loadedId));
+        }
+
+        // is this the right phase?
+        if (game.getPhase() != IGame.Phase.PHASE_DEPLOYMENT) {
+            MegaMek.getLogger().error("Server got deployment packet in wrong phase");
+            return;
+        }
+
+        // can this player/entity act right now?
+        final boolean assaultDrop = packet.getBooleanValue(5);
+        // can this player/entity act right now?
+        GameTurn turn = game.getTurn();
+        if (game.isPhaseSimultaneous()) {
+            turn = game.getTurnForPlayer(connId);
+        }
+        if ((turn == null) || !turn.isValid(connId, entity, game)
+                || !(game.getBoard().isLegalDeployment(coords, entity.getStartingPos())
+                || (assaultDrop && game.getOptions().booleanOption(OptionsConstants.ADVANCED_ASSAULT_DROP)
+                && entity.canAssaultDrop()))) {
+            String msg = "server got invalid deployment packet from " + "connection " + connId;
+            if (entity != null) {
+                msg += ", Entity: " + entity.getShortName();
+            } else {
+                msg += ", Entity was null!";
+            }
+            MegaMek.getLogger().error(msg);
+            send(connId, PacketFactory.createTurnVectorPacket(game));
+            send(connId, PacketFactory.createTurnIndexPacket(game, turn.getPlayerNum()));
+            return;
+        }
+
+        // looks like mostly everything's okay
+        processDeployment(entity, coords, nFacing, elevation, loadVector, assaultDrop);
+
+        //Update Aero sensors for a space or atmospheric game
+        if (entity.isAero()) {
+            IAero a = (IAero) entity;
+            a.updateSensorOptions();
+        }
+
+        // Update visibility indications if using double blind.
+        if (game.doBlind()) {
+            updateVisibilityIndicator(null);
+        }
+
+        endCurrentTurn(entity);
+    }
+
+    /**
+     * Used when an Entity that was loaded in another Entity in the Lounge is
+     * unloaded during deployment.
+     * @param packet the packet to be processed
+     * @param connId the id for connection that received the packet.
+     */
+    private void receiveDeploymentUnload(Packet packet, int connId) {
+        Entity loader = game.getEntity(packet.getIntValue(0));
+        Entity loaded = game.getEntity(packet.getIntValue(1));
+
+        if (game.getPhase() != Phase.PHASE_DEPLOYMENT) {
+            String msg = "server received deployment unload packet "
+                    + "outside of deployment phase from connection " + connId;
+            if (loader != null) {
+                msg += ", Entity: " + loader.getShortName();
+            } else {
+                msg += ", Entity was null!";
+            }
+            MegaMek.getLogger().error(msg);
+            return;
+        }
+
+        // can this player/entity act right now?
+        GameTurn turn = game.getTurn();
+        if (game.isPhaseSimultaneous()) {
+            turn = game.getTurnForPlayer(connId);
+        }
+
+        if ((turn == null) || !turn.isValid(connId, loader, game)) {
+            String msg = "server got invalid deployment unload packet from connection " + connId;
+            if (loader != null) {
+                msg += ", Entity: " + loader.getShortName();
+            } else {
+                msg += ", Entity was null!";
+            }
+            MegaMek.getLogger().error(msg);
+            send(connId, PacketFactory.createTurnVectorPacket(game));
+            send(connId, PacketFactory.createTurnIndexPacket(game, connId));
+            return;
+        }
+
+        // Unload and call entityUpdate
+        unloadUnit(loader, loaded, null, 0, 0, false, true);
+
+        // Need to update the loader
+        entityUpdate(loader.getId());
+
+        // Now need to add a turn for the unloaded unit, to be taken immediately
+        // Turn forced to be immediate to avoid messy turn ordering issues
+        // (aka, how do we add the turn with individual initiative?)
+        game.insertTurnAfter(new GameTurn.SpecificEntityTurn(
+                loaded.getOwnerId(), loaded.getId()), game.getTurnIndex() - 1);
+        //game.insertNextTurn(new GameTurn.SpecificEntityTurn(
+        //        loaded.getOwnerId(), loaded.getId()));
+        send(PacketFactory.createTurnVectorPacket(game));
+    }
+
+    /**
+     * receive a packet that contains hexes that are automatically hit by
+     * artillery
+     *
+     * @param packet the packet to be processed
+     * @param connId the id for connection that received the packet.
+     */
+    @SuppressWarnings("unchecked")
+    private void receiveArtyAutoHitHexes(Packet packet, int connId) {
+        PlayerIDandList<Coords> artyAutoHitHexes = (PlayerIDandList<Coords>) packet.getObject(0);
+
+        int playerId = artyAutoHitHexes.getPlayerID();
+
+        // is this the right phase?
+        if (game.getPhase() != IGame.Phase.PHASE_SET_ARTYAUTOHITHEXES) {
+            MegaMek.getLogger().error("Server got set artyautohithexespacket in wrong phase");
+            return;
+        }
+        game.getPlayer(playerId).setArtyAutoHitHexes(artyAutoHitHexes);
+
+        for (Coords coord : artyAutoHitHexes) {
+            game.getBoard().addSpecialHexDisplay(coord,
+                    new SpecialHexDisplay(
+                            SpecialHexDisplay.Type.ARTILLERY_AUTOHIT,
+                            SpecialHexDisplay.NO_ROUND, game.getPlayer(playerId),
+                            "Artillery auto hit hex, for "
+                                    + game.getPlayer(playerId).getName(),
+                            SpecialHexDisplay.SHD_OBSCURED_TEAM));
+        }
+        endCurrentTurn(null);
+    }
+
+    /**
+     * receive a packet that contains minefields
+     *
+     * @param packet the packet to be processed
+     * @param connId the id for connection that received the packet.
+     */
+    @SuppressWarnings("unchecked")
+    private void receiveDeployMinefields(Packet packet, int connId) {
+        Vector<Minefield> minefields = (Vector<Minefield>) packet.getObject(0);
+
+        // is this the right phase?
+        if (game.getPhase() != IGame.Phase.PHASE_DEPLOY_MINEFIELDS) {
+            MegaMek.getLogger().error("Server got deploy minefields packet in wrong phase");
+            return;
+        }
+
+        // looks like mostly everything's okay
+        processDeployMinefields(minefields);
+        endCurrentTurn(null);
+    }
+
+    /**
+     * Gets a bunch of entity attacks from the packet. If valid, processes them
+     * and ends the current turn.
+     */
+    @SuppressWarnings("unchecked")
+    private void receiveAttack(Packet packet, int connId) {
+        Entity entity = game.getEntity(packet.getIntValue(0));
+        Vector<EntityAction> vector = (Vector<EntityAction>) packet.getObject(1);
+
+        // is this the right phase?
+        if ((game.getPhase() != IGame.Phase.PHASE_FIRING)
+                && (game.getPhase() != IGame.Phase.PHASE_PHYSICAL)
+                && (game.getPhase() != IGame.Phase.PHASE_TARGETING)
+                && (game.getPhase() != IGame.Phase.PHASE_OFFBOARD)) {
+            MegaMek.getLogger().error("Server got attack packet in wrong phase");
+            return;
+        }
+
+        // can this player/entity act right now?
+        GameTurn turn = game.getTurn();
+        if (game.isPhaseSimultaneous()) {
+            turn = game.getTurnForPlayer(connId);
+        }
+        if ((turn == null) || !turn.isValid(connId, entity, game)) {
+            String msg = "error: server got invalid attack packet from connection " + connId;
+            if (entity != null) {
+                msg += ", Entity: " + entity.getShortName();
+            } else {
+                msg += ", Entity was null!";
+            }
+            MegaMek.getLogger().error(msg);
+            send(connId, PacketFactory.createTurnVectorPacket(game));
+            send(connId, PacketFactory.createTurnIndexPacket(game, turn.getPlayerNum()));
+            return;
+        }
+
+        // looks like mostly everything's okay
+        processAttack(entity, vector);
+
+        // Update visibility indications if using double blind.
+        if (game.doBlind()) {
+            updateVisibilityIndicator(null);
+        }
+
+        endCurrentTurn(entity);
+    }
+
+    /**
+     * Checks if an entity added by the client is valid and if so, adds it to
+     * the list
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    private void receiveEntityAdd(Packet c, int connIndex) {
+        @SuppressWarnings("unchecked")
+        final List<Entity> entities = (List<Entity>) c.getObject(0);
+        List<Integer> entityIds = new ArrayList<>(entities.size());
+        // Map client-received to server-given IDs:
+        Map<Integer, Integer> idMap = new HashMap<>();
+
+        for (final Entity entity : entities) {
+
+            // Verify the entity's design
+            if (Server.entityVerifier == null) {
+                Server.entityVerifier = EntityVerifier.getInstance(new MegaMekFile(
+                        Configuration.unitsDir(), EntityVerifier.CONFIG_FILENAME).getFile());
+            }
+
+            // Create a TestEntity instance for supported unit types
+            TestEntity testEntity = null;
+            entity.restore();
+            if (entity instanceof Mech) {
+                testEntity = new TestMech((Mech) entity, entityVerifier.mechOption, null);
+            } else if ((entity.getEntityType() == Entity.ETYPE_TANK)
+                    && (entity.getEntityType() != Entity.ETYPE_GUN_EMPLACEMENT)) {
+                if (entity.isSupportVehicle()) {
+                    testEntity = new TestSupportVehicle(entity, entityVerifier.tankOption, null);
+                } else {
+                    testEntity = new TestTank((Tank) entity, entityVerifier.tankOption, null);
+                }
+            } else if ((entity.getEntityType() == Entity.ETYPE_AERO)
+                    && (entity.getEntityType() != Entity.ETYPE_DROPSHIP)
+                    && (entity.getEntityType() != Entity.ETYPE_SMALL_CRAFT)
+                    && (entity.getEntityType() != Entity.ETYPE_FIGHTER_SQUADRON)
+                    && (entity.getEntityType() != Entity.ETYPE_JUMPSHIP)
+                    && (entity.getEntityType() != Entity.ETYPE_SPACE_STATION)) {
+                testEntity = new TestAero((Aero) entity, entityVerifier.aeroOption, null);
+            } else if (entity instanceof BattleArmor) {
+                testEntity = new TestBattleArmor((BattleArmor) entity, entityVerifier.baOption, null);
+            }
+
+            if (testEntity != null) {
+                StringBuffer sb = new StringBuffer();
+                if (testEntity.correctEntity(sb, TechConstants.getGameTechLevel(game, entity.isClan()))) {
+                    entity.setDesignValid(true);
+                } else {
+                    MegaMek.getLogger().error(sb.toString());
+                    if (game.getOptions().booleanOption(OptionsConstants.ALLOWED_ALLOW_ILLEGAL_UNITS)) {
+                        entity.setDesignValid(false);
+                    } else {
+                        IPlayer cheater = game.getPlayer(connIndex);
+                        sendServerChat("Player " + cheater.getName() + " attempted to add an illegal unit design ("
+                                + entity.getShortNameRaw() + "), the unit was rejected.");
+                        return;
+                    }
+                }
+            }
+
+            // If we're adding a ProtoMech, calculate it's unit number.
+            if (entity instanceof Protomech) {
+                // How many ProtoMechs does the player already have?
+                int numPlayerProtos = game.getSelectedEntityCount(new EntitySelector() {
+                    private final int ownerId = entity.getOwnerId();
+
+                    public boolean accept(Entity entity) {
+                        return (entity instanceof Protomech) && (ownerId == entity.getOwnerId());
+                    }
+                });
+
+                // According to page 54 of the BMRr, ProtoMechs must be
+                // deployed in full Points of five, unless circumstances have
+                // reduced the number to less than that.
+                entity.setUnitNumber((short) (numPlayerProtos / 5));
+            } // End added-ProtoMech
+
+            // Only assign an entity ID when the client hasn't.
+            if (Entity.NONE == entity.getId()) {
+                entity.setId(game.getNextEntityId());
+            }
+
+            int clientSideId = entity.getId();
+            game.addEntity(entity);
+
+            // Remember which received ID corresponds to which actual ID
+            idMap.put(clientSideId, entity.getId());
+
+            relinkC3(entities, entity);
+
+            // Give the unit a spotlight, if it has the spotlight quirk
+            entity.setExternalSpotlight(entity.hasExternaSpotlight()
+                    || entity.hasQuirk(OptionsConstants.QUIRK_POS_SEARCHLIGHT));
+            entityIds.add(entity.getId());
+
+            if (game.getPhase() != Phase.PHASE_LOUNGE) {
+                entity.getOwner().increaseInitialBV(entity.calculateBattleValue(false, false));
+            }
+        }
+
+        // Cycle through the entities again and update any carried units
+        // and carrier units to use the correct server-given IDs.
+        // Typically necessary when loading a MUL containing transported units.
+
+        // First, deal with units loaded into bays. These are saved for the carrier
+        // in MULs and must be restored exactly to recreate the bay loading.
+        Set<Entity> transportCorrected = new HashSet<>();
+        for (final Entity carrier: entities) {
+            for (int carriedId: carrier.getBayLoadedUnitIds()) {
+                // First, see if a bay loaded unit can be found and unloaded,
+                // because it might be the wrong unit
+                Entity carried = game.getEntity(carriedId);
+                if (carried == null) {
+                    continue;
+                }
+                int bay = carrier.getBay(carried).getBayNumber();
+                carrier.unload(carried);
+                // Now, load the correct unit if there is one
+                if (idMap.containsKey(carriedId)) {
+                    Entity newCarried = game.getEntity(idMap.get(carriedId));
+                    if (carrier.canLoad(newCarried, false)) {
+                        carrier.load(newCarried, false, bay);
+                        newCarried.setTransportId(carrier.getId());
+                        // Remember that the carried unit should not be treated again below
+                        transportCorrected.add(newCarried);
+                    }
+                }
+            }
+        }
+
+        // Now restore the transport settings from the entities' transporter IDs
+        // With anything other than bays, MULs only show the carrier, not the carried units
+        for (final Entity entity: entities) {
+            // Don't correct those that are already corrected
+            if (transportCorrected.contains(entity)) {
+                continue;
+            }
+            // Get the original (client side) ID of the transporter
+            int origTrsp = entity.getTransportId();
+            // Only act if the unit thinks it is transported
+            if (origTrsp != Entity.NONE) {
+                // If the transporter is among the new units, go on with loading
+                if (idMap.containsKey(origTrsp)) {
+                    // The wrong transporter doesn't know of anything and does not need an update
+                    Entity carrier = game.getEntity(idMap.get(origTrsp));
+                    if (carrier.canLoad(entity, false)) {
+                        // The correct transporter must be told it's carrying something and
+                        // the carried unit must be told where it is embarked
+                        carrier.load(entity, false);
+                        entity.setTransportId(idMap.get(origTrsp));
+                    } else {
+                        // This seems to be an invalid carrier; update the entity accordingly
+                        entity.setTransportId(Entity.NONE);
+                    }
+                } else {
+                    // this transporter does not exist; update the entity accordingly
+                    entity.setTransportId(Entity.NONE);
+                }
+            }
+        }
+
+        // Set the "loaded keepers" which is apparently used for deployment unloading to
+        // differentiate between units loaded in the lobby and other carried units
+        // When entering a game from the lobby, this list is generated again, but not when
+        // the added entities are loaded during a game. When getting loaded units from a MUL,
+        // act as if they were loaded in the lobby.
+        for (final Entity entity: entities) {
+            if (entity.getLoadedUnits().size() > 0) {
+                Vector<Integer> v = new Vector<>();
+                for (Entity en : entity.getLoadedUnits()) {
+                    v.add(en.getId());
+                }
+                entity.setLoadedKeepers(v);
+            }
+        }
+        send(PacketFactory.createAddEntityPacket(game, entityIds));
+    }
+
+    /**
+     * adds a squadron to the game
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    @SuppressWarnings("unchecked")
+    private void receiveSquadronAdd(Packet c, int connIndex) {
+        final FighterSquadron fs = (FighterSquadron) c.getObject(0);
+        final Vector<Integer> fighters = (Vector<Integer>) c.getObject(1);
+        if (fighters.size() < 1) {
+            return;
+        }
+        // fs.setOwner(fighters.firstElement().getOwner());
+        // Only assign an entity ID when the client hasn't.
+        if (Entity.NONE == fs.getId()) {
+            fs.setId(game.getNextEntityId());
+        }
+        game.addEntity(fs);
+        for (int id : fighters) {
+            Entity fighter = game.getEntity(id);
+            if (null != fighter) {
+                fs.load(fighter, false);
+                fs.autoSetMaxBombPoints();
+                fighter.setTransportId(fs.getId());
+                // If this is the lounge, we want to configure bombs
+                if (game.getPhase() == Phase.PHASE_LOUNGE) {
+                    ((IBomber)fighter).setBombChoices(fs.getBombChoices());
+                }
+                entityUpdate(fighter.getId());
+            }
+        }
+        send(PacketFactory.createAddEntityPacket(game, fs.getId()));
+    }
+
+    /**
+     * Updates an entity with the info from the client. Only valid to do this
+     * during the lounge phase, except for heat sink changing.
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    private void receiveEntityUpdate(Packet c, int connIndex) {
+        Entity entity = (Entity) c.getObject(0);
+        Entity oldEntity = game.getEntity(entity.getId());
+        if ((oldEntity != null) && ((oldEntity.getOwner() == game.getPlayer(connIndex)) || (oldEntity.getOwner().getTeam() == game.getPlayer(connIndex).getTeam()))) {
+            game.setEntity(entity.getId(), entity);
+            entityUpdate(entity.getId());
+            // In the chat lounge, notify players of customizing of unit
+            if (game.getPhase() == IGame.Phase.PHASE_LOUNGE) {
+                StringBuilder message = new StringBuilder();
+                if (game.getOptions().booleanOption(OptionsConstants.BASE_REAL_BLIND_DROP)) {
+                    message.append("A Unit ");
+                    message.append('(').append(entity.getOwner().getName()).append(')');
+                } else if (game.getOptions().booleanOption(OptionsConstants.BASE_BLIND_DROP)) {
+                    message.append("Unit ");
+                    if (!entity.getExternalIdAsString().equals("-1")) {
+                        message.append('[')
+                                .append(entity.getExternalIdAsString())
+                                .append("] ");
+                    }
+                    message.append(entity.getId()).append(" (")
+                            .append(entity.getOwner().getName()).append(')');
+                } else {
+                    message.append("Unit ");
+                    message.append(entity.getDisplayName());
+                }
+                message.append(" has been customized.");
+                sendServerChat(message.toString());
+            }
+        }
+    }
+
+    /**
+     * loads an entity into another one. Meant to be called from the chat lounge
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    private void receiveEntityLoad(Packet c, int connIndex) {
+        int loadeeId = (Integer) c.getObject(0);
+        int loaderId = (Integer) c.getObject(1);
+        int bayNumber = (Integer) c.getObject(2);
+        Entity loadee = game.getEntity(loadeeId);
+        Entity loader = game.getEntity(loaderId);
+
+        if ((loadee != null) && (loader != null)) {
+            loadUnit(loader, loadee, bayNumber);
+            // In the chat lounge, notify players of customizing of unit
+            if (game.getPhase() == IGame.Phase.PHASE_LOUNGE) {
+                /*
+                 * StringBuffer message = new StringBuffer();
+                 * message.append("Unit "); if
+                 * (game.getOptions().booleanOption(OptionsConstants.BASE_BLIND_DROP) ||
+                 * game.getOptions().booleanOption(OptionsConstants.BASE_REAL_BLIND_DROP)) { if
+                 * (!entity.getExternalIdAsString().equals("-1")) {
+                 * message.append('[') .append(entity.getExternalIdAsString())
+                 * .append("] "); } message.append(entity.getId()).append('(')
+                 * .append(entity.getOwner().getName()).append(')'); } else {
+                 * message.append(entity.getDisplayName()); }
+                 * message.append(" has been customized.");
+                 * sendServerChat(message.toString());
+                 */
+                // Set this so units can be unloaded in the first movement phase
+                loadee.setLoadedThisTurn(false);
+            }
+        }
+    }
+
+    /**
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    private void receiveCustomInit(Packet c, int connIndex) {
+        // In the chat lounge, notify players of customizing of unit
+        if (game.getPhase() == IGame.Phase.PHASE_LOUNGE) {
+            IPlayer p = (IPlayer) c.getObject(0);
+            sendServerChat("" + p.getName() + " has customized initiative.");
+        }
+    }
+
+    /**
+     * receive and process an entity mode change packet
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    private void receiveEntityModeChange(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        int equipId = c.getIntValue(1);
+        int mode = c.getIntValue(2);
+        Entity e = game.getEntity(entityId);
+        if (e.getOwner() != game.getPlayer(connIndex)) {
+            return;
+        }
+        Mounted m = e.getEquipment(equipId);
+
+        if (m == null) {
+            return;
+        }
+
+        try {
+            // Check for BA dumping body mounted missile launchers
+            if ((e instanceof BattleArmor) && (!m.isMissing())
+                    && m.isBodyMounted()
+                    && m.getType().hasFlag(WeaponType.F_MISSILE)
+                    && (m.getLinked() != null)
+                    && (m.getLinked().getUsableShotsLeft() > 0)
+                    && (mode <= 0)) {
+                m.setPendingDump(mode == -1);
+                // a mode change for ammo means dumping or hot loading
+            } else if ((m.getType() instanceof AmmoType) && !m.getType().hasInstantModeSwitch() && (mode < 0 || mode == 0 && m.isPendingDump())) {
+                m.setPendingDump(mode == -1);
+            } else if ((m.getType() instanceof WeaponType) && m.isDWPMounted() && (mode <= 0)) {
+                m.setPendingDump(mode == -1);
+            } else {
+                if (!m.setMode(mode)) {
+                    String message = e.getShortName() + ": " + m.getName() + ": " + e.getLocationName(m.getLocation())
+                            + " trying to compensate";
+                    MegaMek.getLogger().error(message);
+                    sendServerChat(message);
+                    e.setGameOptions();
+
+                    if (!m.setMode(mode)) {
+                        message = e.getShortName() + ": " + m.getName() + ": " + e.getLocationName(m.getLocation())
+                                + " unable to compensate";
+                        MegaMek.getLogger().error(message);
+                        sendServerChat(message);
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            MegaMek.getLogger().error(ex);
+        }
+    }
+
+    /**
+     * Receive and process an Entity Sensor Change Packet
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    private void receiveEntitySensorChange(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        int sensorId = c.getIntValue(1);
+        Entity e = game.getEntity(entityId);
+        e.setNextSensor(e.getSensors().elementAt(sensorId));
+    }
+
+    /**
+     * Receive and process an Entity Heat Sinks Change Packet
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    private void receiveEntitySinksChange(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        int numSinks = c.getIntValue(1);
+        Entity e = game.getEntity(entityId);
+        if ((e instanceof Mech) && (connIndex == e.getOwnerId())) {
+            ((Mech)e).setActiveSinksNextRound(numSinks);
+        }
+    }
+
+    /**
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    private void receiveEntityActivateHidden(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        IGame.Phase phase = (IGame.Phase)c.getObject(1);
+        Entity e = game.getEntity(entityId);
+        if (connIndex != e.getOwnerId()) {
+            MegaMek.getLogger().error("Player " + connIndex + " tried to activate a hidden unit owned by Player " + e.getOwnerId());
+            return;
+        }
+        e.setHiddeActivationPhase(phase);
+        entityUpdate(entityId);
+    }
+
+    /**
+     * receive and process an entity nova network mode change packet
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    private void receiveEntityNovaNetworkModeChange(Packet c, int connIndex) {
+
+        try {
+            int entityId = c.getIntValue(0);
+            String networkID = c.getObject(1).toString();
+            Entity e = game.getEntity(entityId);
+            if (e.getOwner() != game.getPlayer(connIndex)) {
+                return;
+            }
+            // FIXME: Greg: This can result in setting the network to link to hostile units.
+            // However, it should be caught by both the isMemberOfNetwork test from the c3 module as well as
+            // by the clients possible input.
+            e.setNewRoundNovaNetworkString(networkID);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    /**
+     * receive and process an entity mounted facing change packet
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    private void receiveEntityMountedFacingChange(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        int equipId = c.getIntValue(1);
+        int facing = c.getIntValue(2);
+        Entity e = game.getEntity(entityId);
+        if (e.getOwner() != game.getPlayer(connIndex)) {
+            return;
+        }
+        Mounted m = e.getEquipment(equipId);
+
+        if (m == null) {
+            return;
+        }
+        m.setFacing(facing);
+    }
+
+    /**
+     * receive and process an entity mode change packet
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    private void receiveEntityCalledShotChange(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        int equipId = c.getIntValue(1);
+        Entity e = game.getEntity(entityId);
+        if (e.getOwner() != game.getPlayer(connIndex)) {
+            return;
+        }
+        Mounted m = e.getEquipment(equipId);
+
+        if (m == null) {
+            return;
+        }
+        m.getCalledShot().switchCalledShot();
+    }
+
+    /**
+     * receive and process an entity system mode change packet
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    private void receiveEntitySystemModeChange(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        int equipId = c.getIntValue(1);
+        int mode = c.getIntValue(2);
+        Entity e = game.getEntity(entityId);
+        if (e.getOwner() != game.getPlayer(connIndex)) {
+            return;
+        }
+        if ((e instanceof Mech) && (equipId == Mech.SYSTEM_COCKPIT)) {
+            ((Mech) e).setCockpitStatus(mode);
+        }
+    }
+
+    /**
+     * Receive a packet that contains an Entity ammo change
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    private void receiveEntityAmmoChange(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        int weaponId = c.getIntValue(1);
+        int ammoId = c.getIntValue(2);
+        Entity e = game.getEntity(entityId);
+
+        // Did we receive a request for a valid Entity?
+        if (null == e) {
+            MegaMek.getLogger().error("Could not find entity# " + entityId);
+            return;
+        }
+        IPlayer player = game.getPlayer(connIndex);
+        if ((null != player) && (e.getOwner() != player)) {
+            MegaMek.getLogger().error("Player " + player.getName() + " does not own the entity " + e.getDisplayName());
+            return;
+        }
+
+        // Make sure that the entity has the given equipment.
+        Mounted mWeap = e.getEquipment(weaponId);
+        Mounted mAmmo = e.getEquipment(ammoId);
+        if (null == mAmmo) {
+            MegaMek.getLogger().error("Entity " + e.getDisplayName() + " does not have ammo #" + ammoId);
+            return;
+        }
+        if (!(mAmmo.getType() instanceof AmmoType)) {
+            MegaMek.getLogger().error("Item #" + ammoId + " of entity " + e.getDisplayName()
+                    + " is a " + mAmmo.getName() + " and not ammo.");
+            return;
+        }
+        if (null == mWeap) {
+            MegaMek.getLogger().error("Entity " + e.getDisplayName() + " does not have weapon #" + weaponId);
+            return;
+        }
+        if (!(mWeap.getType() instanceof WeaponType)) {
+            MegaMek.getLogger().error("Item #" + weaponId + " of entity " + e.getDisplayName()
+                    + " is a " + mWeap.getName() + " and not a weapon.");
+            return;
+        }
+        if (((WeaponType) mWeap.getType()).getAmmoType() == AmmoType.T_NA) {
+            MegaMek.getLogger().error("Item #" + weaponId + " of entity " + e.getDisplayName()
+                    + " is a " + mWeap.getName() + " and does not use ammo.");
+            return;
+        }
+        if (mWeap.getType().hasFlag(WeaponType.F_ONESHOT)
+                && !mWeap.getType().hasFlag(WeaponType.F_DOUBLE_ONESHOT)) {
+            MegaMek.getLogger().error("Item #" + weaponId + " of entity " + e.getDisplayName()
+                    + " is a " + mWeap.getName() + " and cannot use external ammo.");
+            return;
+        }
+
+        // Load the weapon.
+        e.loadWeapon(mWeap, mAmmo);
+    }
+
+    /**
+     * Deletes an entity owned by a certain player from the list
+     */
+    private void receiveEntityDelete(Packet c, int connIndex) {
+        @SuppressWarnings("unchecked")
+        List<Integer> ids = (List<Integer>) c.getObject(0);
+        for (Integer entityId : ids) {
+            final Entity entity = game.getEntity(entityId);
+
+            // Only allow players to delete their *own* entities.
+            if ((entity != null) && (entity.getOwner() == game.getPlayer(connIndex))) {
+
+                // If we're deleting a ProtoMech, recalculate unit numbers.
+                if (entity instanceof Protomech) {
+
+                    // How many ProtoMechs does the player have (include this one)?
+                    int numPlayerProtos = game.getSelectedEntityCount(new EntitySelector() {
+                        private final int ownerId = entity.getOwnerId();
+
+                        public boolean accept(Entity entity) {
+                            return (entity instanceof Protomech) && (ownerId == entity.getOwnerId());
+                        }
+                    });
+
+                    // According to page 54 of the BMRr, ProtoMechs must be
+                    // deployed in full Points of five, unless "losses" have
+                    // reduced the number to less than that.
+                    final char oldMax = (char) (Math.ceil(numPlayerProtos / 5.0) - 1);
+                    char newMax = (char) (Math.ceil((numPlayerProtos - 1) / 5.0) - 1);
+                    short deletedUnitNum = entity.getUnitNumber();
+
+                    // Do we have to update a ProtoMech from the last unit?
+                    if ((oldMax != deletedUnitNum) && (oldMax != newMax)) {
+
+                        // Yup. Find a ProtoMech from the last unit, and
+                        // set it's unit number to the deleted entity.
+                        Iterator<Entity> lastUnit =
+                                game.getSelectedEntities(new EntitySelector() {
+                                    private final int ownerId = entity.getOwnerId();
+
+                                    private final char lastUnitNum = oldMax;
+
+                                    public boolean accept(Entity entity) {
+                                        return (entity instanceof Protomech)
+                                                && (ownerId == entity.getOwnerId())
+                                                && (lastUnitNum == entity.getUnitNumber());
+                                    }
+                                });
+                        Entity lastUnitMember = lastUnit.next();
+                        lastUnitMember.setUnitNumber(deletedUnitNum);
+                        entityUpdate(lastUnitMember.getId());
+                    } // End update-unit-number
+                } // End added-ProtoMech
+
+                if (game.getPhase() != IGame.Phase.PHASE_DEPLOYMENT) {
+                    // if a unit is removed during deployment just keep going
+                    // without adjusting the turn vector.
+                    game.removeTurnFor(entity);
+                    game.removeEntity(entityId, IEntityRemovalConditions.REMOVE_NEVER_JOINED);
+                }
+            }
+        }
+
+        // during deployment this absolutely must be called before game.removeEntity(), otherwise the game hangs
+        // when a unit is removed. Cause unknown.
+        send(PacketFactory.createRemoveEntityPacket(ids, IEntityRemovalConditions.REMOVE_NEVER_JOINED));
+
+        // Prevents deployment hanging. Only do this during deployment.
+        if (game.getPhase() == IGame.Phase.PHASE_DEPLOYMENT) {
+            for (Integer entityId : ids) {
+                final Entity entity = game.getEntity(entityId);
+                game.removeEntity(entityId, IEntityRemovalConditions.REMOVE_NEVER_JOINED);
+                endCurrentTurn(entity);
+            }
+        }
+    }
+
+    private void receiveInitiativeRerollRequest(Packet pkt, int connIndex) {
+        IPlayer player = game.getPlayer(connIndex);
+        if (IGame.Phase.PHASE_INITIATIVE_REPORT != game.getPhase()) {
+            StringBuilder message = new StringBuilder();
+            if (null == player) {
+                message.append("Player #").append(connIndex);
+            } else {
+                message.append(player.getName());
+            }
+            message.append(" is not allowed to ask for a reroll at this time.");
+            MegaMek.getLogger().error(message.toString());
+            sendServerChat(message.toString());
+            return;
+        }
+        if (game.hasTacticalGenius(player)) {
+            game.addInitiativeRerollRequest(game.getTeamForPlayer(player));
+        }
+        if (null != player) {
+            player.setDone(true);
+        }
+        checkReady();
+    }
+
+    /**
+     * Sets game options, providing that the player has specified the password
+     * correctly.
+     *
+     * @return true if any options have been successfully changed.
+     */
+    private boolean receiveGameOptions(Packet packet, int connId) {
+        IPlayer player = game.getPlayer(connId);
+        // Check player
+        if (null == player) {
+            MegaMek.getLogger().error("Server does not recognize player at connection " + connId);
+            return false;
+        }
+
+        // check password
+        if ((password != null) && (password.length() > 0) && !password.equals(packet.getObject(0))) {
+            sendServerChat(connId, "The password you specified to change game options is incorrect.");
+            return false;
+        }
+
+        if (game.getPhase().isDuringOrAfter(Phase.PHASE_DEPLOYMENT)) {
+            return false;
+        }
+
+        int changed = 0;
+
+        for (Enumeration<?> i = ((Vector<?>) packet.getObject(1)).elements(); i.hasMoreElements(); ) {
+            IBasicOption option = (IBasicOption) i.nextElement();
+            IOption originalOption = game.getOptions().getOption(option.getName());
+
+            if (originalOption == null) {
+                continue;
+            }
+
+            String message = "Player " + player.getName() + " changed option \"" +
+                    originalOption.getDisplayableName() + "\" to " + option.getValue().toString() + '.';
+            sendServerChat(message);
+            originalOption.setValue(option.getValue());
+            changed++;
+        }
+
+        // Set proper RNG
+        Compute.setRNG(game.getOptions().intOption(OptionsConstants.BASE_RNG_TYPE));
+
+        if (changed > 0) {
+            for (Entity en : game.getEntitiesVector()) {
+                en.setGameOptions();
+            }
+            entityAllUpdate();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Performs the additional processing of the received options after the the
+     * <code>receiveGameOptions<code> done its job; should be called after
+     * <code>receiveGameOptions<code> only if the <code>receiveGameOptions<code>
+     * returned <code>true</code>
+     *
+     * @param packet the packet to be processed
+     * @param connId the id for connection that received the packet.
+     */
+    private void receiveGameOptionsAux(Packet packet, int connId) {
+        for (Enumeration<?> i = ((Vector<?>) packet.getObject(1)).elements(); i.hasMoreElements(); ) {
+            IBasicOption option = (IBasicOption) i.nextElement();
+            IOption originalOption = game.getOptions().getOption(option.getName());
+            if (originalOption != null) {
+                if ("maps_include_subdir".equals(originalOption.getName())) {
+                    mapSettings.setBoardsAvailableVector(BoardUtilities.scanForBoards(new BoardDimensions(
+                            mapSettings.getBoardWidth(), mapSettings.getBoardHeight())));
+                    mapSettings.removeUnavailable();
+                    mapSettings.setNullBoards(MapSettings.DEFAULT_BOARD);
+                    send(PacketFactory.createMapSettingsPacket(mapSettings));
+                }
+            }
+        }
+    }
+
+    /**
+     * Receives an packet to unload entity is stranded on immobile transports,
+     * and queue all valid requests for execution. If all players that have
+     * stranded entities have answered, executes the pending requests and end
+     * the current turn.
+     */
+    private void receiveUnloadStranded(Packet packet, int connId) {
+        GameTurn.UnloadStrandedTurn turn;
+        final IPlayer player = game.getPlayer(connId);
+        int[] entityIds = (int[]) packet.getObject(0);
+        Vector<IPlayer> declared;
+        IPlayer other;
+        Enumeration<EntityAction> pending;
+        UnloadStrandedAction action;
+        Entity entity;
+
+        // Is this the right phase?
+        if (game.getPhase() != IGame.Phase.PHASE_MOVEMENT) {
+            MegaMek.getLogger().error("Server got unload stranded packet in wrong phase");
+            return;
+        }
+
+        // Are we in an "unload stranded entities" turn?
+        if (game.getTurn() instanceof GameTurn.UnloadStrandedTurn) {
+            turn = (GameTurn.UnloadStrandedTurn) game.getTurn();
+        } else {
+            MegaMek.getLogger().error("Server got unload stranded packet out of sequence");
+            sendServerChat(player.getName() + " should not be sending 'unload stranded entity' packets at this time.");
+            return;
+        }
+
+        // Can this player act right now?
+        if (!turn.isValid(connId, game)) {
+            MegaMek.getLogger().error("Server got unload stranded packet from invalid player");
+            sendServerChat(player.getName() + " should not be sending 'unload stranded entity' packets.");
+            return;
+        }
+
+        // Did the player already send an 'unload' request?
+        // N.B. we're also building the list of players who
+        // have declared their "unload stranded" actions.
+        declared = new Vector<>();
+        pending = game.getActions();
+        while (pending.hasMoreElements()) {
+            action = (UnloadStrandedAction) pending.nextElement();
+            if (action.getPlayerId() == connId) {
+                MegaMek.getLogger().error("Server got multiple unload stranded packets from player");
+                sendServerChat(player.getName() + " should not send multiple 'unload stranded entity' packets.");
+                return;
+            }
+            // This player is not from the current connection.
+            // Record this player to determine if this turn is done.
+            other = game.getPlayer(action.getPlayerId());
+            if (!declared.contains(other)) {
+                declared.addElement(other);
+            }
+        } // Handle the next "unload stranded" action.
+
+        // Make sure the player selected at least *one* valid entity ID.
+        boolean foundValid = false;
+        for (int index = 0; (null != entityIds) && (index < entityIds.length); index++) {
+            entity = game.getEntity(entityIds[index]);
+            if (!game.getTurn().isValid(connId, entity, game)) {
+                MegaMek.getLogger().error("Server got unload stranded packet for invalid entity");
+                StringBuilder message = new StringBuilder();
+                message.append(player.getName()).append(" can not unload stranded entity ");
+                if (null == entity) {
+                    message.append('#').append(entityIds[index]);
+                } else {
+                    message.append(entity.getDisplayName());
+                }
+                message.append(" at this time.");
+                sendServerChat(message.toString());
+            } else {
+                foundValid = true;
+                game.addAction(new UnloadStrandedAction(connId, entityIds[index]));
+            }
+        }
+
+        // Did the player choose not to unload any valid stranded entity?
+        if (!foundValid) {
+            game.addAction(new UnloadStrandedAction(connId, Entity.NONE));
+        }
+
+        // Either way, the connection's player has now declared.
+        declared.addElement(player);
+
+        // Are all players who are unloading entities done? Walk
+        // through the turn's stranded entities, and look to see
+        // if their player has finished their turn.
+        entityIds = turn.getEntityIds();
+        for (int entityId : entityIds) {
+            entity = game.getEntity(entityId);
+            other = entity.getOwner();
+            if (!declared.contains(other)) {
+                // At least one player still needs to declare.
+                return;
+            }
+        }
+
+        // All players have declared whether they're unloading stranded units.
+        // Walk the list of pending actions and unload the entities.
+        pending = game.getActions();
+        while (pending.hasMoreElements()) {
+            action = (UnloadStrandedAction) pending.nextElement();
+
+            // Some players don't want to unload any stranded units.
+            if (Entity.NONE != action.getEntityId()) {
+                entity = game.getEntity(action.getEntityId());
+                if (null == entity) {
+                    // After all this, we couldn't find the entity!!!
+                    MegaMek.getLogger().error("Server could not find stranded entity #"
+                            + action.getEntityId() + " to unload!!!");
+                } else {
+                    // Unload the entity. Get the unit's transporter.
+                    Entity transporter = game.getEntity(entity.getTransportId());
+                    unloadUnit(transporter, entity, transporter.getPosition(),
+                            transporter.getFacing(), transporter.getElevation());
+                }
+            }
+
+        } // Handle the next pending unload action
+
+        // Clear the list of pending units and move to the next turn.
+        game.resetActions();
+        changeToNextTurn(connId);
+    }
+
+    public void createThunderMinefield(Minefield minefield, Coords coords, int playerId, int damage, int entityId, int type) {
+        // Create a new Thunder minefield
+        if (minefield == null) {
+            minefield = Minefield.createMinefield(coords, playerId, type, damage);
+            game.addMinefield(minefield);
+            checkForRevealMinefield(minefield, game.getEntity(entityId));
+        } else if (minefield.getDensity() < Minefield.MAX_DAMAGE) {
+            // Add to the old one
+            removeMinefield(minefield);
+            int oldDamage = minefield.getDensity();
+            damage += oldDamage;
+            damage = Math.min(damage, Minefield.MAX_DAMAGE);
+            minefield.setDensity(damage);
+            game.addMinefield(minefield);
+            checkForRevealMinefield(minefield, game.getEntity(entityId));
+        }
+    }
+
+    /**
+     * Delivers a thunder-aug shot to the targeted hex area. Thunder-Augs are 7
+     * hexes, though, so...
+     *
+     * @param damage
+     *            The per-hex density of the incoming minefield; that is, the
+     *            final value with any modifiers (such as halving and rounding
+     *            just for <em>being</em> T-Aug) already applied.
+     */
+    public void deliverThunderAugMinefield(Coords coords, int playerId, int damage, int entityId) {
+        Coords mfCoord;
+        for (int dir = 0; dir < 7; dir++) {
+            // May need to reset here for each new hex.
+            int hexDamage = damage;
+            if (dir == 6) {// The targeted hex.
+                mfCoord = coords;
+            } else {// The hex in the dir direction from the targeted hex.
+                mfCoord = coords.translated(dir);
+            }
+
+            // Only if this is on the board...
+            if (game.getBoard().contains(mfCoord)) {
+                Minefield minefield = null;
+                // Check if there already are Thunder minefields in the hex.
+                for (Minefield mf : game.getMinefields(mfCoord)) {
+                    if (mf.getType() == Minefield.TYPE_CONVENTIONAL) {
+                        minefield = mf;
+                        break;
+                    }
+                }
+
+                // Did we find a Thunder minefield in the hex?
+                // N.B. damage Thunder minefields equals the number of
+                // missiles, divided by two, rounded up.
+                if (minefield == null) {
+                    // Nope. Create a new Thunder minefield
+                    minefield = Minefield.createMinefield(mfCoord, playerId, Minefield.TYPE_CONVENTIONAL, hexDamage);
+                    game.addMinefield(minefield);
+                    checkForRevealMinefield(minefield, game.getEntity(entityId));
+                } else if (minefield.getDensity() < Minefield.MAX_DAMAGE) {
+                    // Yup. Replace the old one.
+                    removeMinefield(minefield);
+                    hexDamage += minefield.getDensity();
+
+                    // Damage from Thunder minefields are capped.
+                    hexDamage = Math.min(hexDamage, Minefield.MAX_DAMAGE);
+                    minefield.setDensity(hexDamage);
+                    game.addMinefield(minefield);
+                    checkForRevealMinefield(minefield, game.getEntity(entityId));
+                }
+            } // End coords-on-board
+        } // Handle the next coords
+    }
+
+    /**
+     * Delivers an artillery FASCAM shot to the targeted hex area.
+     */
+    public void deliverFASCAMMinefield(Coords coords, int playerId, int damage, int entityId) {
+        // Only if this is on the board...
+        if (game.getBoard().contains(coords)) {
+            Minefield minefield = null;
+            Enumeration<Minefield> minefields = game.getMinefields(coords).elements();
+            // Check if there already are Thunder minefields in the hex.
+            while (minefields.hasMoreElements()) {
+                Minefield mf = minefields.nextElement();
+                if (mf.getType() == Minefield.TYPE_CONVENTIONAL) {
+                    minefield = mf;
+                    break;
+                }
+            }
+            // Did we find a Thunder minefield in the hex?
+            createThunderMinefield(minefield, coords, playerId, damage, entityId, Minefield.TYPE_CONVENTIONAL);
+        } // End coords-on-board
+    }
+
+    public void deliverMinefield(Coords coords, int playerId, int damage, int entityId, int type) {
+        if (type == Minefield.TYPE_VIBRABOMB) {
+            throw new RuntimeException("This function call should not be used for type VIBRABOMB");
+        }
+        deliverMinefield(coords, playerId, damage, entityId, 0, type);
+    }
+    /**
+     * Adds a minefield of a certain type to the hex.
+     * @param coords   the minefield's coordinates
+     * @param playerId the deploying player's id
+     * @param damage   the amount of damage the minefield does
+     * @param entityId an entity that might spot the minefield
+     * @param type the type of the minefield:
+     *             - TYPE_CONVENTIONAL: Thunder minefield
+     *             - TYPE_INFERNO: Thunder-inferno minefield
+     *             - TYPE_ACTIVE: Thunder-active minefield
+     *             - TYPE_VIBRABOMB: Thunder-vibra minefield
+     */
+    public void deliverMinefield(Coords coords, int playerId, int damage, int entityId, int sensitivity, int type) {
+        Minefield minefield = null;
+        // Check if there already are minefields of that type in the hex.
+        for (Minefield mf : game.getMinefields(coords)) {
+            if (mf.getType() == type) {
+                minefield = mf;
+                break;
+            }
+        }
+
+        // Create a new thunder minefield
+        if (type == Minefield.TYPE_CONVENTIONAL || type == Minefield.TYPE_ACTIVE || type == Minefield.TYPE_INFERNO) {
+            createThunderMinefield(minefield, coords, playerId, damage, entityId, type);
+        } else if (type == Minefield.TYPE_VIBRABOMB) {
+            if (minefield == null) {
+                minefield = Minefield.createMinefield(coords, playerId, Minefield.TYPE_VIBRABOMB, damage, sensitivity);
+                game.addMinefield(minefield);
+                game.addVibrabomb(minefield);
+                checkForRevealMinefield(minefield, game.getEntity(entityId));
+            } else if (minefield.getDensity() < Minefield.MAX_DAMAGE) {
+                // Add to the old one
+                removeMinefield(minefield);
+                int oldDamage = minefield.getDensity();
+                damage += oldDamage;
+                damage = Math.min(damage, Minefield.MAX_DAMAGE);
+                minefield.setDensity(damage);
+                game.addMinefield(minefield);
+                game.addVibrabomb(minefield);
+                checkForRevealMinefield(minefield, game.getEntity(entityId));
+            }
+        }
     }
 }
