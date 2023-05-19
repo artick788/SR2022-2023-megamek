@@ -2366,7 +2366,7 @@ public class Server implements Runnable {
                 game.setVictoryContext(new HashMap<>());
                 game.createVictoryConditions();
                 // some entities may need to be checked and updated
-                checkEntityExchange();
+                entityManager.checkEntityExchange();
                 break;
             case PHASE_MOVEMENT:
                 // write Movement Phase header to report
@@ -2392,103 +2392,6 @@ public class Server implements Runnable {
      */
     public void calculatePlayerBVs() {
         game.calculatePlayerBVs();
-    }
-
-    /**
-     * loop through entities in the exchange phase (i.e. after leaving
-     * chat lounge) and do any actions that need to be done
-     */
-    public void checkEntityExchange() {
-        for (Iterator<Entity> entities = game.getEntities(); entities.hasNext(); ) {
-            Entity entity = entities.next();
-            // apply bombs
-            if (entity.isBomber()) {
-                ((IBomber)entity).applyBombs();
-            }
-
-            if (entity.isAero()) {
-                IAero a = (IAero) entity;
-                if (a.isSpaceborne()) {
-                    // altitude and elevation don't matter in space
-                    a.liftOff(0);
-                } else {
-                    // check for grounding
-                    if (game.getBoard().inAtmosphere() && !entity.isAirborne()) {
-                        // you have to be airborne on the atmospheric map
-                        a.liftOff(entity.getAltitude());
-                    }
-                }
-
-                if (entity.isFighter()) {
-                    a.updateWeaponGroups();
-                    entity.loadAllWeapons();
-                }
-            }
-
-            // if units were loaded in the chat lounge, I need to keep track of
-            // it here because they can get dumped in the deployment phase
-            if (entity.getLoadedUnits().size() > 0) {
-                Vector<Integer> v = new Vector<>();
-                for (Entity en : entity.getLoadedUnits()) {
-                    v.add(en.getId());
-                }
-                entity.setLoadedKeepers(v);
-            }
-
-            if (game.getOptions().booleanOption(OptionsConstants.ADVAERORULES_AERO_SANITY)
-                    && (entity.isAero())) {
-                Aero a = null;
-                if (entity instanceof Aero) {
-                    a = (Aero) entity;
-                }
-                if (entity.isCapitalScale()) {
-                    if (a != null) {
-                        int currentSI = a.getSI() * 20;
-                        a.initializeSI(a.get0SI() * 20);
-                        a.setSI(currentSI);
-                    }
-                    if (entity.isCapitalFighter()) {
-                        ((IAero)entity).autoSetCapArmor();
-                        ((IAero)entity).autoSetFatalThresh();
-                    } else {
-                        // all armor and SI is going to be at standard scale, so
-                        // we need to adjust
-                        for (int loc = 0; loc < entity.locations(); loc++) {
-                            if (entity.getArmor(loc) > 0) {
-                                int currentArmor = entity.getArmor(loc) * 10;
-                                entity.initializeArmor(entity.getOArmor(loc) * 10, loc);
-                                entity.setArmor(currentArmor, loc);
-
-                            }
-                        }
-                    }
-                } else if (a != null) {
-                    int currentSI = a.getSI() * 2;
-                    a.initializeSI(a.get0SI() * 2);
-                    a.setSI(currentSI);
-                }
-            }
-            // Give the unit a spotlight, if it has the spotlight quirk
-            entity.setExternalSpotlight(entity.hasExternaSpotlight()
-                    || entity.hasQuirk(OptionsConstants.QUIRK_POS_SEARCHLIGHT));
-            entityManager.entityUpdate(entity.getId());
-
-            // Remove hot-loading some from LRMs for meks
-            if (!game.getOptions().booleanOption(OptionsConstants.ADVCOMBAT_HOTLOAD_IN_GAME)) {
-                for (Entity e : game.getEntitiesVector()) {
-                    // Vehicles are allowed to hot load, just meks cannot
-                    if (!(e instanceof Mech)) {
-                        continue;
-                    }
-                    for (Mounted weapon : e.getWeaponList()) {
-                        weapon.getType().removeMode("HotLoad");
-                    }
-                    for (Mounted ammo : e.getAmmo()) {
-                        ammo.getType().removeMode("HotLoad");
-                    }
-                }
-            }
-        }
     }
 
     /**
