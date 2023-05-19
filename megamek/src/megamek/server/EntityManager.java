@@ -469,4 +469,415 @@ public class EntityManager {
         // Otherwise, send the full list.
         server.send(PacketFactory.createEntitiesPacket(game));
     }
+
+    /**
+     * Called at the beginning of each phase. Sets and resets any entity
+     * parameters that need to be reset.
+     */
+    public void resetEntityPhase(IGame.Phase phase) {
+        // first, mark doomed entities as destroyed and flag them
+        Vector<Entity> toRemove = new Vector<>(0, 10);
+        for (Iterator<Entity> e = game.getEntities(); e.hasNext(); ) {
+            final Entity entity = e.next();
+            entity.newPhase(phase);
+            if (entity.isDoomed()) {
+                entity.setDestroyed(true);
+
+                // Is this unit swarming somebody? Better let go before
+                // it's too late.
+                final int swarmedId = entity.getSwarmTargetId();
+                if (Entity.NONE != swarmedId) {
+                    final Entity swarmed = game.getEntity(swarmedId);
+                    swarmed.setSwarmAttackerId(Entity.NONE);
+                    entity.setSwarmTargetId(Entity.NONE);
+                    Report r = new Report(5165);
+                    r.subject = swarmedId;
+                    r.addDesc(swarmed);
+                    server.getReportmanager().addReport(r);
+                    entityUpdate(swarmedId);
+                }
+            }
+
+            if (entity.isDestroyed()) {
+                if (game.getEntity(entity.getTransportId()) != null
+                        && game.getEntity(entity.getTransportId()).isLargeCraft()) {
+                    //Leaving destroyed entities in dropship bays alone here
+                } else {
+                    toRemove.addElement(entity);
+                }
+            }
+        }
+
+        // actually remove all flagged entities
+        for (Entity entity : toRemove) {
+            int condition = IEntityRemovalConditions.REMOVE_SALVAGEABLE;
+            if (!entity.isSalvage()) {
+                condition = IEntityRemovalConditions.REMOVE_DEVASTATED;
+            }
+
+            entityUpdate(entity.getId());
+            game.removeEntity(entity.getId(), condition);
+            server.send(PacketFactory.createRemoveEntityPacket(entity.getId(), condition));
+        }
+
+        // do some housekeeping on all the remaining
+        for (Iterator<Entity> e = game.getEntities(); e.hasNext(); ) {
+            final Entity entity = e.next();
+
+            entity.applyDamage();
+
+            entity.reloadEmptyWeapons();
+
+            // reset damage this phase
+            // telemissiles need a record of damage last phase
+            entity.damageThisRound += entity.damageThisPhase;
+            entity.damageThisPhase = 0;
+            entity.engineHitsThisPhase = 0;
+            entity.rolledForEngineExplosion = false;
+            entity.dodging = false;
+            entity.setShutDownThisPhase(false);
+            entity.setStartupThisPhase(false);
+
+            // reset done to false
+
+            if (phase == IGame.Phase.PHASE_DEPLOYMENT) {
+                entity.setDone(!entity.shouldDeploy(game.getRoundCount()));
+            } else {
+                entity.setDone(false);
+            }
+
+            // reset spotlights
+            entity.setIlluminated(false);
+            entity.setUsedSearchlight(false);
+            entity.setCarefulStand(false);
+            entity.setNetworkBAP(false);
+
+            if (entity instanceof MechWarrior) {
+                ((MechWarrior) entity).setLanded(true);
+            }
+        }
+        game.clearIlluminatedPositions();
+        server.send(new Packet(Packet.COMMAND_CLEAR_ILLUM_HEXES));
+    }
+
+    /**
+     * receive and process an entity mode change packet
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    public void receiveEntityModeChange(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        int equipId = c.getIntValue(1);
+        int mode = c.getIntValue(2);
+        Entity e = game.getEntity(entityId);
+        if (e.getOwner() != game.getPlayer(connIndex)) {
+            return;
+        }
+        Mounted m = e.getEquipment(equipId);
+
+        if (m == null) {
+            return;
+        }
+
+        try {
+            // Check for BA dumping body mounted missile launchers
+            if ((e instanceof BattleArmor) && (!m.isMissing())
+                    && m.isBodyMounted()
+                    && m.getType().hasFlag(WeaponType.F_MISSILE)
+                    && (m.getLinked() != null)
+                    && (m.getLinked().getUsableShotsLeft() > 0)
+                    && (mode <= 0)) {
+                m.setPendingDump(mode == -1);
+                // a mode change for ammo means dumping or hot loading
+            } else if ((m.getType() instanceof AmmoType) && !m.getType().hasInstantModeSwitch() && (mode < 0 || mode == 0 && m.isPendingDump())) {
+                m.setPendingDump(mode == -1);
+            } else if ((m.getType() instanceof WeaponType) && m.isDWPMounted() && (mode <= 0)) {
+                m.setPendingDump(mode == -1);
+            } else {
+                if (!m.setMode(mode)) {
+                    String message = e.getShortName() + ": " + m.getName() + ": " + e.getLocationName(m.getLocation())
+                            + " trying to compensate";
+                    MegaMek.getLogger().error(message);
+                    server.sendServerChat(message);
+                    e.setGameOptions();
+
+                    if (!m.setMode(mode)) {
+                        message = e.getShortName() + ": " + m.getName() + ": " + e.getLocationName(m.getLocation())
+                                + " unable to compensate";
+                        MegaMek.getLogger().error(message);
+                        server.sendServerChat(message);
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            MegaMek.getLogger().error(ex);
+        }
+    }
+
+    /**
+     * Receive and process an Entity Sensor Change Packet
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    public void receiveEntitySensorChange(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        int sensorId = c.getIntValue(1);
+        Entity e = game.getEntity(entityId);
+        e.setNextSensor(e.getSensors().elementAt(sensorId));
+    }
+
+    /**
+     * Receive and process an Entity Heat Sinks Change Packet
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    public void receiveEntitySinksChange(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        int numSinks = c.getIntValue(1);
+        Entity e = game.getEntity(entityId);
+        if ((e instanceof Mech) && (connIndex == e.getOwnerId())) {
+            ((Mech)e).setActiveSinksNextRound(numSinks);
+        }
+    }
+
+    /**
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    public void receiveEntityActivateHidden(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        IGame.Phase phase = (IGame.Phase)c.getObject(1);
+        Entity e = game.getEntity(entityId);
+        if (connIndex != e.getOwnerId()) {
+            MegaMek.getLogger().error("Player " + connIndex + " tried to activate a hidden unit owned by Player " + e.getOwnerId());
+            return;
+        }
+        e.setHiddeActivationPhase(phase);
+        entityUpdate(entityId);
+    }
+
+    /**
+     * receive and process an entity nova network mode change packet
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    public void receiveEntityNovaNetworkModeChange(Packet c, int connIndex) {
+
+        try {
+            int entityId = c.getIntValue(0);
+            String networkID = c.getObject(1).toString();
+            Entity e = game.getEntity(entityId);
+            if (e.getOwner() != game.getPlayer(connIndex)) {
+                return;
+            }
+            // FIXME: Greg: This can result in setting the network to link to hostile units.
+            // However, it should be caught by both the isMemberOfNetwork test from the c3 module as well as
+            // by the clients possible input.
+            e.setNewRoundNovaNetworkString(networkID);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    /**
+     * receive and process an entity mounted facing change packet
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    public void receiveEntityMountedFacingChange(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        int equipId = c.getIntValue(1);
+        int facing = c.getIntValue(2);
+        Entity e = game.getEntity(entityId);
+        if (e.getOwner() != game.getPlayer(connIndex)) {
+            return;
+        }
+        Mounted m = e.getEquipment(equipId);
+
+        if (m == null) {
+            return;
+        }
+        m.setFacing(facing);
+    }
+
+    /**
+     * receive and process an entity mode change packet
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    public void receiveEntityCalledShotChange(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        int equipId = c.getIntValue(1);
+        Entity e = game.getEntity(entityId);
+        if (e.getOwner() != game.getPlayer(connIndex)) {
+            return;
+        }
+        Mounted m = e.getEquipment(equipId);
+
+        if (m == null) {
+            return;
+        }
+        m.getCalledShot().switchCalledShot();
+    }
+
+    /**
+     * receive and process an entity system mode change packet
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    public void receiveEntitySystemModeChange(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        int equipId = c.getIntValue(1);
+        int mode = c.getIntValue(2);
+        Entity e = game.getEntity(entityId);
+        if (e.getOwner() != game.getPlayer(connIndex)) {
+            return;
+        }
+        if ((e instanceof Mech) && (equipId == Mech.SYSTEM_COCKPIT)) {
+            ((Mech) e).setCockpitStatus(mode);
+        }
+    }
+
+    /**
+     * Receive a packet that contains an Entity ammo change
+     *
+     * @param c the packet to be processed
+     * @param connIndex the id for connection that received the packet.
+     */
+    public void receiveEntityAmmoChange(Packet c, int connIndex) {
+        int entityId = c.getIntValue(0);
+        int weaponId = c.getIntValue(1);
+        int ammoId = c.getIntValue(2);
+        Entity e = game.getEntity(entityId);
+
+        // Did we receive a request for a valid Entity?
+        if (null == e) {
+            MegaMek.getLogger().error("Could not find entity# " + entityId);
+            return;
+        }
+        IPlayer player = game.getPlayer(connIndex);
+        if ((null != player) && (e.getOwner() != player)) {
+            MegaMek.getLogger().error("Player " + player.getName() + " does not own the entity " + e.getDisplayName());
+            return;
+        }
+
+        // Make sure that the entity has the given equipment.
+        Mounted mWeap = e.getEquipment(weaponId);
+        Mounted mAmmo = e.getEquipment(ammoId);
+        if (null == mAmmo) {
+            MegaMek.getLogger().error("Entity " + e.getDisplayName() + " does not have ammo #" + ammoId);
+            return;
+        }
+        if (!(mAmmo.getType() instanceof AmmoType)) {
+            MegaMek.getLogger().error("Item #" + ammoId + " of entity " + e.getDisplayName()
+                    + " is a " + mAmmo.getName() + " and not ammo.");
+            return;
+        }
+        if (null == mWeap) {
+            MegaMek.getLogger().error("Entity " + e.getDisplayName() + " does not have weapon #" + weaponId);
+            return;
+        }
+        if (!(mWeap.getType() instanceof WeaponType)) {
+            MegaMek.getLogger().error("Item #" + weaponId + " of entity " + e.getDisplayName()
+                    + " is a " + mWeap.getName() + " and not a weapon.");
+            return;
+        }
+        if (((WeaponType) mWeap.getType()).getAmmoType() == AmmoType.T_NA) {
+            MegaMek.getLogger().error("Item #" + weaponId + " of entity " + e.getDisplayName()
+                    + " is a " + mWeap.getName() + " and does not use ammo.");
+            return;
+        }
+        if (mWeap.getType().hasFlag(WeaponType.F_ONESHOT)
+                && !mWeap.getType().hasFlag(WeaponType.F_DOUBLE_ONESHOT)) {
+            MegaMek.getLogger().error("Item #" + weaponId + " of entity " + e.getDisplayName()
+                    + " is a " + mWeap.getName() + " and cannot use external ammo.");
+            return;
+        }
+
+        // Load the weapon.
+        e.loadWeapon(mWeap, mAmmo);
+    }
+
+    /**
+     * Deletes an entity owned by a certain player from the list
+     */
+    public void receiveEntityDelete(Packet c, int connIndex) {
+        @SuppressWarnings("unchecked")
+        List<Integer> ids = (List<Integer>) c.getObject(0);
+        for (Integer entityId : ids) {
+            final Entity entity = game.getEntity(entityId);
+
+            // Only allow players to delete their *own* entities.
+            if ((entity != null) && (entity.getOwner() == game.getPlayer(connIndex))) {
+
+                // If we're deleting a ProtoMech, recalculate unit numbers.
+                if (entity instanceof Protomech) {
+
+                    // How many ProtoMechs does the player have (include this one)?
+                    int numPlayerProtos = game.getSelectedEntityCount(new EntitySelector() {
+                        private final int ownerId = entity.getOwnerId();
+
+                        public boolean accept(Entity entity) {
+                            return (entity instanceof Protomech) && (ownerId == entity.getOwnerId());
+                        }
+                    });
+
+                    // According to page 54 of the BMRr, ProtoMechs must be
+                    // deployed in full Points of five, unless "losses" have
+                    // reduced the number to less than that.
+                    final char oldMax = (char) (Math.ceil(numPlayerProtos / 5.0) - 1);
+                    char newMax = (char) (Math.ceil((numPlayerProtos - 1) / 5.0) - 1);
+                    short deletedUnitNum = entity.getUnitNumber();
+
+                    // Do we have to update a ProtoMech from the last unit?
+                    if ((oldMax != deletedUnitNum) && (oldMax != newMax)) {
+
+                        // Yup. Find a ProtoMech from the last unit, and
+                        // set it's unit number to the deleted entity.
+                        Iterator<Entity> lastUnit =
+                                game.getSelectedEntities(new EntitySelector() {
+                                    private final int ownerId = entity.getOwnerId();
+
+                                    private final char lastUnitNum = oldMax;
+
+                                    public boolean accept(Entity entity) {
+                                        return (entity instanceof Protomech)
+                                                && (ownerId == entity.getOwnerId())
+                                                && (lastUnitNum == entity.getUnitNumber());
+                                    }
+                                });
+                        Entity lastUnitMember = lastUnit.next();
+                        lastUnitMember.setUnitNumber(deletedUnitNum);
+                        entityUpdate(lastUnitMember.getId());
+                    } // End update-unit-number
+                } // End added-ProtoMech
+
+                if (game.getPhase() != IGame.Phase.PHASE_DEPLOYMENT) {
+                    // if a unit is removed during deployment just keep going
+                    // without adjusting the turn vector.
+                    game.removeTurnFor(entity);
+                    game.removeEntity(entityId, IEntityRemovalConditions.REMOVE_NEVER_JOINED);
+                }
+            }
+        }
+
+        // during deployment this absolutely must be called before game.removeEntity(), otherwise the game hangs
+        // when a unit is removed. Cause unknown.
+        server.send(PacketFactory.createRemoveEntityPacket(ids, IEntityRemovalConditions.REMOVE_NEVER_JOINED));
+
+        // Prevents deployment hanging. Only do this during deployment.
+        if (game.getPhase() == IGame.Phase.PHASE_DEPLOYMENT) {
+            for (Integer entityId : ids) {
+                final Entity entity = game.getEntity(entityId);
+                game.removeEntity(entityId, IEntityRemovalConditions.REMOVE_NEVER_JOINED);
+                server.endCurrentTurn(entity);
+            }
+        }
+    }
 }
