@@ -179,6 +179,7 @@ public class Server implements Runnable {
 
     private GameManager gamemanager;
     private PacketFactory packetFactory;
+    private EntityManager entityManager;
 
     private static class ReceivedPacket {
         public int connId;
@@ -341,6 +342,7 @@ public class Server implements Runnable {
                   String metaServerUrl) throws IOException {
         gamemanager = new GameManager();
         reportmanager = new ReportManager();
+        entityManager = new EntityManager(game, gamemanager, this);
 
 
         this.metaServerUrl = metaServerUrl;
@@ -1594,7 +1596,7 @@ public class Server implements Runnable {
                     r.subject = swarmedId;
                     r.addDesc(swarmed);
                     reportmanager.addReport(r);
-                    entityUpdate(swarmedId);
+                    entityManager.entityUpdate(swarmedId);
                 }
             }
 
@@ -1615,7 +1617,7 @@ public class Server implements Runnable {
                 game.removeTurnFor(entity);
                 send(PacketFactory.createTurnVectorPacket(game));
             }
-            entityUpdate(entity.getId());
+            entityManager.entityUpdate(entity.getId());
             game.removeEntity(entity.getId(), condition);
             send(PacketFactory.createRemoveEntityPacket(entity.getId(), condition));
         }
@@ -1645,7 +1647,7 @@ public class Server implements Runnable {
                     r.subject = swarmedId;
                     r.addDesc(swarmed);
                     reportmanager.addReport(r);
-                    entityUpdate(swarmedId);
+                    entityManager.entityUpdate(swarmedId);
                 }
             }
 
@@ -1666,7 +1668,7 @@ public class Server implements Runnable {
                 condition = IEntityRemovalConditions.REMOVE_DEVASTATED;
             }
 
-            entityUpdate(entity.getId());
+            entityManager.entityUpdate(entity.getId());
             game.removeEntity(entity.getId(), condition);
             send(PacketFactory.createRemoveEntityPacket(entity.getId(), condition));
         }
@@ -1756,7 +1758,7 @@ public class Server implements Runnable {
             }
         }
         for (Entity e : toRemove) {
-            destroyEntity(e, "crew death", false, true);
+            entityManager.destroyEntity(e, "crew death", false, true);
             game.removeEntity(e.getId(), IEntityRemovalConditions.REMOVE_SALVAGEABLE);
             e.setDestroyed(true);
         }
@@ -2287,7 +2289,7 @@ public class Server implements Runnable {
                 game.setIneligible(phase);
                 determineTurnOrder(phase);
                 // send(createEntitiesPacket());
-                entityAllUpdate();
+                entityManager.entityAllUpdate();
                 reportmanager.clearReports();
                 doTryUnstuck();
                 break;
@@ -2338,7 +2340,7 @@ public class Server implements Runnable {
 
                 game.checkForObservers();
                 transmitAllPlayerUpdates();
-                entityAllUpdate();
+                entityManager.entityAllUpdate();
                 break;
             case PHASE_INITIATIVE_REPORT:
                 autoSave();
@@ -2559,7 +2561,7 @@ public class Server implements Runnable {
             // Give the unit a spotlight, if it has the spotlight quirk
             entity.setExternalSpotlight(entity.hasExternaSpotlight()
                     || entity.hasQuirk(OptionsConstants.QUIRK_POS_SEARCHLIGHT));
-            entityUpdate(entity.getId());
+            entityManager.entityUpdate(entity.getId());
 
             // Remove hot-loading some from LRMs for meks
             if (!game.getOptions().booleanOption(OptionsConstants.ADVCOMBAT_HOTLOAD_IN_GAME)) {
@@ -3499,7 +3501,7 @@ public class Server implements Runnable {
         Hashtable<Coords, Vector<Entity>> positionMap = game.getPositionMap();
         for (Entity en : game.getEntitiesVector(centralPos)) {
             if (!en.isAirborne()) {
-                reportmanager.addReport(destroyEntity(en, "DropShip proximity damage", false, false));
+                reportmanager.addReport(entityManager.destroyEntity(en, "DropShip proximity damage", false, false));
                 alreadyHit.add(en.getId());
             }
         }
@@ -3511,7 +3513,7 @@ public class Server implements Runnable {
             Coords pos = centralPos.translated(i);
             for (Entity en : game.getEntitiesVector(pos)) {
                 if (!en.isAirborne()) {
-                    reportmanager.addReport(destroyEntity(en, "DropShip proximity damage",
+                    reportmanager.addReport(entityManager.destroyEntity(en, "DropShip proximity damage",
                                             false, false));
                 }
                 alreadyHit.add(en.getId());
@@ -3598,14 +3600,14 @@ public class Server implements Runnable {
         }
 
         // Update the loaded unit.
-        entityUpdate(unit.getId());
+        entityManager.entityUpdate(unit.getId());
 
         // Taharqa (2/28/13): I am not sure why the loader is not getting
         // updated too - not updating it
         // is causing problem in the chat lounge loading, so I am going to do it
         // here, but if we get
         // weird results for other loading, then the reason is probably this
-        entityUpdate(loader.getId());
+        entityManager.entityUpdate(loader.getId());
     }
 
     /**
@@ -3629,8 +3631,8 @@ public class Server implements Runnable {
         unit.setDeployRound(loader.getDeployRound());
 
         // Update the loader and towed units.
-        entityUpdate(unit.getId());
-        entityUpdate(loader.getId());
+        entityManager.entityUpdate(unit.getId());
+        entityManager.entityUpdate(loader.getId());
     }
 
     /**
@@ -3646,7 +3648,7 @@ public class Server implements Runnable {
      * @return <code>true</code> if the unit was successfully unloaded,
      *         <code>false</code> if the trailer isn't carried by tractor.
      */
-    private boolean disconnectUnit(Entity tractor, Targetable unloaded, Coords pos) {
+    public boolean disconnectUnit(Entity tractor, Targetable unloaded, Coords pos) {
 
         // We can only unload Entities.
         Entity trailer;
@@ -3666,16 +3668,16 @@ public class Server implements Runnable {
 
         // Update the tractor and all affected trailers.
         for (int id : trailerList) {
-            entityUpdate(id);
+            entityManager.entityUpdate(id);
         }
-        entityUpdate(trailer.getId());
-        entityUpdate(tractor.getId());
+        entityManager.entityUpdate(trailer.getId());
+        entityManager.entityUpdate(tractor.getId());
 
         // Unloaded successfully.
         return true;
     }
 
-    private boolean unloadUnit(Entity unloader, Targetable unloaded,
+    public boolean unloadUnit(Entity unloader, Targetable unloaded,
                                Coords pos, int facing, int elevation) {
         return unloadUnit(unloader, unloaded, pos, facing, elevation, false,
                 false);
@@ -3702,7 +3704,7 @@ public class Server implements Runnable {
      * @return <code>true</code> if the unit was successfully unloaded,
      *         <code>false</code> if the unit isn't carried in unloader.
      */
-    private boolean unloadUnit(Entity unloader, Targetable unloaded,
+    public boolean unloadUnit(Entity unloader, Targetable unloaded,
             Coords pos, int facing, int elevation, boolean evacuation,
             boolean duringDeployment) {
 
@@ -3876,7 +3878,7 @@ public class Server implements Runnable {
         }
 
         // Update the unloaded unit.
-        entityUpdate(unit.getId());
+        entityManager.entityUpdate(unit.getId());
 
         // Unloaded successfully.
         return true;
@@ -4063,7 +4065,7 @@ public class Server implements Runnable {
         }
 
         // Update the unloaded unit.
-        entityUpdate(unit.getId());
+        entityManager.entityUpdate(unit.getId());
 
         // Set the turn mask. We need to be specific otherwise we run the risk
         // of having a unit of another class consume the turn and leave the
@@ -4199,7 +4201,7 @@ public class Server implements Runnable {
         drop.setSecondaryFacing(entity.getFacing());
 
         drop.setAltitude(altitude);
-        entityUpdate(drop.getId());
+        entityManager.entityUpdate(drop.getId());
     }
 
     /**
@@ -4261,7 +4263,7 @@ public class Server implements Runnable {
                             game.moveToGraveyard(entity.getId());
                             send(PacketFactory.createRemoveEntityPacket(entity.getId()));
                         } else { // Infantry that aren't dead are damaged.
-                            entityUpdate(entity.getId());
+                            entityManager.entityUpdate(entity.getId());
                         }
                     } // End entity-is-infantry
                 } // Check the next entity.
@@ -4522,7 +4524,7 @@ public class Server implements Runnable {
                             .containsTerrain(Terrains.ICE))
                             || nextHex.containsTerrain(Terrains.WOODS)
                             || nextHex.containsTerrain(Terrains.JUNGLE)) {
-                        reportmanager.addReport(destroyEntity(entity, "could not land in crash site"));
+                        reportmanager.addReport(entityManager.destroyEntity(entity, "could not land in crash site"));
                     } else if (elevation < nextHex.terrainLevel(Terrains.BLDG_ELEV)) {
                         Building bldg = game.getBoard().getBuildingAt(nextPos);
 
@@ -4530,15 +4532,15 @@ public class Server implements Runnable {
                         // before the wall not in the wall
                         // Like a building.
                         if (bldg.getType() == Building.WALL) {
-                            reportmanager.addReport(destroyEntity(entity, "crashed into a wall"));
+                            reportmanager.addReport(entityManager.destroyEntity(entity, "crashed into a wall"));
                             break;
                         }
                         if (bldg.getBldgClass() == Building.GUN_EMPLACEMENT) {
-                            reportmanager.addReport(destroyEntity(entity, "crashed into a gun emplacement"));
+                            reportmanager.addReport(entityManager.destroyEntity(entity, "crashed into a gun emplacement"));
                             break;
                         }
 
-                        reportmanager.addReport(destroyEntity(entity, "crashed into building"));
+                        reportmanager.addReport(entityManager.destroyEntity(entity, "crashed into building"));
                     } else {
                         entity.setPosition(nextPos);
                         entity.setElevation(0);
@@ -4808,7 +4810,7 @@ public class Server implements Runnable {
                     // Update the target's position,
                     // unless it is off the game map.
                     if (!game.isOutOfGame(target)) {
-                        entityUpdate(target.getId());
+                        entityManager.entityUpdate(target.getId());
                     }
                 } // Check the next entity in the hex.
 
@@ -4924,7 +4926,7 @@ public class Server implements Runnable {
                         && (entity instanceof Tank)
                         && (entity.getMovementMode() != EntityMovementMode.HOVER)
                         && (entity.getMovementMode() != EntityMovementMode.WIGE)) {
-                    reportmanager.addReport(destroyEntity(entity,
+                    reportmanager.addReport(entityManager.destroyEntity(entity,
                             "skidded into a watery grave", false, true));
                 }
 
@@ -4982,7 +4984,7 @@ public class Server implements Runnable {
                     reportmanager.addReport(doEntityDisplacement(violation, curPos, targetDest,
                             new PilotingRollData(violation.getId(), 0, "domino effect")));
                     // Update the violating entity's position on the client.
-                    entityUpdate(violation.getId());
+                    entityManager.entityUpdate(violation.getId());
                 }
                 // stay here and stop skidding, see bug 1115608
                 break;
@@ -5374,7 +5376,7 @@ public class Server implements Runnable {
         // Update the target's position,
         // unless it is off the game map.
         if (!game.isOutOfGame(target)) {
-            entityUpdate(target.getId());
+            entityManager.entityUpdate(target.getId());
         }
 
         return true;
@@ -5387,7 +5389,7 @@ public class Server implements Runnable {
             r = new Report(9701);
             r.subject = entity.getId();
             vReport.add(r);
-            vReport.addAll(destroyEntity(entity, "crashed off the map", true, true));
+            vReport.addAll(entityManager.destroyEntity(entity, "crashed off the map", true, true));
             return vReport;
         }
 
@@ -5488,7 +5490,7 @@ public class Server implements Runnable {
                 // if the crasher is a DropShip and the victim is not a mech,
                 // then it is automatically destroyed
                 if ((entity instanceof Dropship) && !(victim instanceof Mech)) {
-                    vReport.addAll(destroyEntity(victim, "hit by crashing DropShip"));
+                    vReport.addAll(entityManager.destroyEntity(victim, "hit by crashing DropShip"));
                 } else {
                     crash_damage = orig_crash_damage / 2;
                     // roll dice to see if they got hit
@@ -5537,7 +5539,7 @@ public class Server implements Runnable {
                     } else if (!(victim instanceof Dropship)) {
                         // destroy entity - but not dropships which are
                         // immovable
-                        reportmanager.addReport(destroyEntity(victim,
+                        reportmanager.addReport(entityManager.destroyEntity(victim,
                                                 "impossible displacement",
                                                 victim instanceof Mech, victim instanceof Mech));
                     }
@@ -5595,7 +5597,7 @@ public class Server implements Runnable {
                 // ack! automatic death! Tanks
                 // suffer an ammo/power plant hit.
                 // TODO : a Mech suffers a Head Blown Off crit.
-                reportmanager.getvPhaseReport().addAll(destroyEntity(entity,
+                reportmanager.getvPhaseReport().addAll(entityManager.destroyEntity(entity,
                                                   "impossible displacement", entity instanceof Mech,
                                                   entity instanceof Mech));
             }
@@ -5611,7 +5613,7 @@ public class Server implements Runnable {
 
             if (h.depth() >= lethalDepth) {
                 // Oh snap... we is dead
-                vReport.addAll(destroyEntity(entity, "crashing into deep water", true, true));
+                vReport.addAll(entityManager.destroyEntity(entity, "crashing into deep water", true, true));
             }
         }
 
@@ -5678,7 +5680,7 @@ public class Server implements Runnable {
                 default:
                     entity.setStartingPos(Board.START_EDGE);
             }
-            entityUpdate(entity.getId());
+            entityManager.entityUpdate(entity.getId());
             return vReport;
         }
 
@@ -5786,7 +5788,7 @@ public class Server implements Runnable {
                 reportmanager.addReport(r);
                 Aero ship = (Aero) entity;
                 ship.setEjecting(true);
-                entityUpdate(ship.getId());
+                entityManager.entityUpdate(ship.getId());
                 Coords legalPos = entity.getPosition();
                 //Get the step so we can pass it in and get the abandon coords from it
                 for (final Enumeration<MoveStep> i = md.getSteps(); i.hasMoreElements();) {
@@ -5872,7 +5874,7 @@ public class Server implements Runnable {
             }
 
             entity.setDone(true);
-            entityUpdate(entity.getId());
+            entityManager.entityUpdate(entity.getId());
             return;
         }
 
@@ -5975,7 +5977,7 @@ public class Server implements Runnable {
                 reportmanager.addReport(r);
             }
             entity.setDone(true);
-            entityUpdate(entity.getId());
+            entityManager.entityUpdate(entity.getId());
             return;
         }
         
@@ -6016,7 +6018,7 @@ public class Server implements Runnable {
                                     step.getPosition()) != null)) {
                         // Moving into hex of a hidden unit detects the unit
                         e.setHidden(false);
-                        entityUpdate(e.getId());
+                        entityManager.entityUpdate(e.getId());
                         r = new Report(9960);
                         r.addDesc(entity);
                         r.subject = entity.getId();
@@ -6045,7 +6047,7 @@ public class Server implements Runnable {
                             send(entity.getOwner().getId(), PacketFactory.createSpecialReportPacket(reportmanager));
                         }
                         entity.setDone(true);
-                        entityUpdate(entity.getId(), movePath, true, losCache);
+                        entityManager.entityUpdate(entity.getId(), movePath, true, losCache);
                         return;
                         // Potential point-blank shot
                     } else if ((dist == 1) && !e.madePointblankShot()) {
@@ -6060,7 +6062,7 @@ public class Server implements Runnable {
                         if (tookPBS) {
                             // Attacking reveals hidden unit
                             e.setHidden(false);
-                            entityUpdate(e.getId());
+                            entityManager.entityUpdate(e.getId());
                             r = new Report(9960);
                             r.addDesc(entity);
                             r.subject = entity.getId();
@@ -6262,7 +6264,7 @@ public class Server implements Runnable {
                                         reportmanager.addReport(ejectEntity(entity, true, false));
                                     }
                                 }
-                                reportmanager.addReport(destroyEntity(entity, "Structural Integrity Collapse",
+                                reportmanager.addReport(entityManager.destroyEntity(entity, "Structural Integrity Collapse",
                                         false));
                             }
                         }
@@ -7218,7 +7220,7 @@ public class Server implements Runnable {
                                 new PilotingRollData(violation.getId(), 0,
                                         "domino effect")));
                         // Update the violating entity's position on the client.
-                        entityUpdate(violation.getId());
+                        entityManager.entityUpdate(violation.getId());
                     }
                     break;
                 }
@@ -7532,7 +7534,7 @@ public class Server implements Runnable {
                             currentBay.destroyDoorNext();
                         }
                         // Stop looking.
-                        entityUpdate(dropShip.getId());
+                        entityManager.entityUpdate(dropShip.getId());
                         return;
                     }
                 }
@@ -7626,7 +7628,7 @@ public class Server implements Runnable {
                     }
                     // now apply any damage to bay doors
                     entity.resetBayDoors();
-                    entityUpdate(entity.getId());
+                    entityManager.entityUpdate(entity.getId());
                     // ok now add another turn for the transport so it can
                     // continue to unload units
                     if (entity.getUnitsUnloadableFromBays().size() > 0) {
@@ -8180,7 +8182,7 @@ public class Server implements Runnable {
                     r.indent();
                     r.addDesc(swarmer);
                     reportmanager.addReport(r);
-                    reportmanager.addReport(destroyEntity(swarmer, "a watery grave", false));
+                    reportmanager.addReport(entityManager.destroyEntity(swarmer, "a watery grave", false));
                 } else {
                     // Swarming infantry take a 3d6 point hit.
                     // ASSUMPTION : damage should not be doubled.
@@ -8196,7 +8198,7 @@ public class Server implements Runnable {
                     reportmanager.addNewLines();
                     swarmer.setPosition(curPos);
                 }
-                entityUpdate(swarmerId);
+                entityManager.entityUpdate(swarmerId);
             } // End successful-PSR
 
         } // End try-to-dislodge-swarmers
@@ -8378,7 +8380,7 @@ public class Server implements Runnable {
                         r.indent();
                         r.addDesc(swarmer);
                         reportmanager.addReport(r);
-                        reportmanager.addReport(destroyEntity(swarmer, "a watery grave", false));
+                        reportmanager.addReport(entityManager.destroyEntity(swarmer, "a watery grave", false));
                     } else {
                         // Swarming infantry take a 3d6 point hit.
                         // ASSUMPTION : damage should not be doubled.
@@ -8394,7 +8396,7 @@ public class Server implements Runnable {
                         reportmanager.addNewLines();
                         swarmer.setPosition(curPos);
                     }
-                    entityUpdate(swarmerId);
+                    entityManager.entityUpdate(swarmerId);
                 } // End successful-PSR
 
             } // End try-to-dislodge-swarmers
@@ -8554,12 +8556,12 @@ public class Server implements Runnable {
                                     entity.getPosition(), targetDest, prd));
                             // Update the violating entity's position on the
                             // client.
-                            entityUpdate(violation.getId());
+                            entityManager.entityUpdate(violation.getId());
                         } else {
                             // ack! automatic death! Tanks
                             // suffer an ammo/power plant hit.
                             // TODO : a Mech suffers a Head Blown Off crit.
-                            reportmanager.addReport(destroyEntity(violation,
+                            reportmanager.addReport(entityManager.destroyEntity(violation,
                                     "impossible displacement",
                                     violation instanceof Mech, violation instanceof Mech));
                         }
@@ -8620,13 +8622,13 @@ public class Server implements Runnable {
                 r.add(swarmer.getShortName(), true);
                 reportmanager.addReport(r);
             }
-            entityUpdate(swarmerId);
+            entityManager.entityUpdate(swarmerId);
         }
 
         // Update the entity's position,
         // unless it is off the game map.
         if (!game.isOutOfGame(entity)) {
-            entityUpdate(entity.getId(), movePath, true, losCache);
+            entityManager.entityUpdate(entity.getId(), movePath, true, losCache);
             if (entity.isDoomed()) {
                 send(PacketFactory.createRemoveEntityPacket(entity.getId(),
                         entity.getRemovalCondition()));
@@ -8664,7 +8666,7 @@ public class Server implements Runnable {
                     fs.setPosition(loader.getPosition());
                     loadUnit(fs, loader, -1);
                     loader = fs;
-                    entityUpdate(fs.getId());
+                    entityManager.entityUpdate(fs.getId());
                 }
                 loader.load(entity);
             } else {
@@ -8679,12 +8681,12 @@ public class Server implements Runnable {
             entity.setPosition(null);
 
             // Update the loaded unit.
-            entityUpdate(entity.getId());
+            entityManager.entityUpdate(entity.getId());
         }
 
         // even if load was unsuccessful, I may need to update the loader
         if (null != loader) {
-            entityUpdate(loader.getId());
+            entityManager.entityUpdate(loader.getId());
         }
 
         // if using double blind, update the player on new units he might see
@@ -8724,7 +8726,7 @@ public class Server implements Runnable {
                 trailer.moved = tractor.moved;
                 trailer.setSecondaryFacing(trailer.getFacing());
                 trailer.setDone(true);
-                entityUpdate(eId);
+                entityManager.entityUpdate(eId);
                 continue;
             }
             int stepNumber; // The Coords in trainPath that this trailer should move to
@@ -8764,7 +8766,7 @@ public class Server implements Runnable {
             trailer.moved = tractor.moved;
             trailer.setSecondaryFacing(trailer.getFacing());
             trailer.setDone(true);
-            entityUpdate(eId);
+            entityManager.entityUpdate(eId);
         }
     }
 
@@ -9034,7 +9036,7 @@ public class Server implements Runnable {
                                             Entity.NONE, Entity.NONE }));
                         }
                         // Update all clients with the position of the PBS
-                        entityUpdate(target.getId());
+                        entityManager.entityUpdate(target.getId());
                         continue;
                     }
                 }
@@ -9390,7 +9392,7 @@ public class Server implements Runnable {
         // place on board
         tele.setPosition(ae.getPosition());
         // Update the entity
-        entityUpdate(tele.getId());
+        entityManager.entityUpdate(tele.getId());
         // check to see if the launching of this missile removes control of any
         // prior missiles
         if (ae.getTMTracker().containsLauncher(wId)) {
@@ -9714,7 +9716,7 @@ public class Server implements Runnable {
                                                 && ftr.isCondEjectSIDest()))) {
                                 vPhaseReport.addAll(ejectEntity(te, true, false));
                             }
-                            vPhaseReport.addAll(destroyEntity(te,"Structural Integrity Collapse"));
+                            vPhaseReport.addAll(entityManager.destroyEntity(te,"Structural Integrity Collapse"));
                             ftr.setSI(0);
                             if (null != ae) {
                                 game.creditKill(te, ae);
@@ -9759,7 +9761,7 @@ public class Server implements Runnable {
                                         Protomech.POSSIBLE_PILOT_DAMAGE[hit.getLocation()]);
                             }
                             if (te.getTransferLocation(hit).getLocation() == Entity.LOC_DESTROYED) {
-                                vPhaseReport.addAll(destroyEntity(te,
+                                vPhaseReport.addAll(entityManager.destroyEntity(te,
                                         "flaming inferno death", false, true));
                                 Report.addNewline(vPhaseReport);
                             }
@@ -9802,7 +9804,7 @@ public class Server implements Runnable {
                         r.indent(3);
                         vPhaseReport.add(r);
                     } else {
-                        vPhaseReport.addAll(destroyEntity(te, "damage", false));
+                        vPhaseReport.addAll(entityManager.destroyEntity(te, "damage", false));
                         game.creditKill(te, ae);
                         Report.addNewline(vPhaseReport);
                     }
@@ -10557,7 +10559,7 @@ public class Server implements Runnable {
             game.resetPSRs(entity);
             entity.applyDamage();
             Report.addNewline(vBoomReport);
-            entityUpdate(entity.getId());
+            entityManager.entityUpdate(entity.getId());
         }
 
         // check the direct reduction of mine
@@ -10588,8 +10590,8 @@ public class Server implements Runnable {
                 r.indent();
                 r.add(entity.getShortName(), true);
                 reportmanager.addReport(r);
-                reportmanager.addReport(destroyEntity(swarmer, "a watery grave", false));
-                entityUpdate(swarmerId);
+                reportmanager.addReport(entityManager.destroyEntity(swarmer, "a watery grave", false));
+                entityManager.entityUpdate(swarmerId);
             }
         }
     }
@@ -11281,12 +11283,12 @@ public class Server implements Runnable {
                             vPhaseReport.addAll(doEntityDisplacement(violation, dest, targetDest, prd));
                             // Update the violating entity's position on the
                             // client.
-                            entityUpdate(violation.getId());
+                            entityManager.entityUpdate(violation.getId());
                         } else {
                             // ack! automatic death! Tanks
                             // suffer an ammo/power plant hit.
                             // TODO : a Mech suffers a Head Blown Off crit.
-                            vPhaseReport.addAll(destroyEntity(violation, "impossible displacement",
+                            vPhaseReport.addAll(entityManager.destroyEntity(violation, "impossible displacement",
                                     violation instanceof Mech, violation instanceof Mech));
                         }
                     }
@@ -11306,12 +11308,12 @@ public class Server implements Runnable {
                         new PilotingRollData(entity.getId(), TargetRoll.IMPOSSIBLE, "pushed off a cliff"),
                         false));
                 // Update the entity's position on the client.
-                entityUpdate(entity.getId());
+                entityManager.entityUpdate(entity.getId());
             } else {
                 // ack! automatic death! Tanks
                 // suffer an ammo/power plant hit.
                 // TODO : a Mech suffers a Head Blown Off crit.
-                vPhaseReport.addAll(destroyEntity(entity,
+                vPhaseReport.addAll(entityManager.destroyEntity(entity,
                         "impossible displacement", entity instanceof Mech, entity instanceof Mech));
             }
         } else {
@@ -11329,7 +11331,7 @@ public class Server implements Runnable {
                 vPhaseReport.addAll(doEntityDisplacement(violation, dest, targetDest, prd));
                 // Update the violating entity's position on the client.
                 if (!game.getOutOfGameEntitiesVector().contains(violation)) {
-                    entityUpdate(violation.getId());
+                    entityManager.entityUpdate(violation.getId());
                 }
             }
         }
@@ -11492,7 +11494,7 @@ public class Server implements Runnable {
                 && (entity.getMovementMode() != EntityMovementMode.NAVAL)
                 && (entity.getMovementMode() != EntityMovementMode.SUBMARINE)
                 && (entity.getMovementMode() != EntityMovementMode.INF_UMU)) {
-            vPhaseReport.addAll(destroyEntity(entity, "a watery grave", false));
+            vPhaseReport.addAll(entityManager.destroyEntity(entity, "a watery grave", false));
         } else if ((waterDepth > 0)
                 && !(entity.getMovementMode() == EntityMovementMode.HOVER)) {
             PilotingRollData waterRoll = entity.checkWaterMove(waterDepth, entity.moved);
@@ -11501,7 +11503,7 @@ public class Server implements Runnable {
             }
         }
         // Update the entity's position on the client.
-        entityUpdate(entity.getId());
+        entityManager.entityUpdate(entity.getId());
 
         if (violation != null) {
             // Can the violating unit move out of the way?
@@ -11604,7 +11606,7 @@ public class Server implements Runnable {
             // Update the violating entity's position on the client,
             // if it didn't get displaced off the board.
             if (!game.isOutOfGame(violation)) {
-                entityUpdate(violation.getId());
+                entityManager.entityUpdate(violation.getId());
             }
         }
         return vPhaseReport;
@@ -11793,7 +11795,7 @@ public class Server implements Runnable {
 
         entity.setDone(true);
         entity.setDeployed(true);
-        entityUpdate(entity.getId());
+        entityManager.entityUpdate(entity.getId());
         reportmanager.addReport(doSetLocationsExposure(entity, hex, false, entity.getElevation()));
     }
 
@@ -12028,7 +12030,7 @@ public class Server implements Runnable {
                 entity.setAltitude(entity.getAltitude() - aero.getAltLoss());
                 aero.setAltLossThisRound(aero.getAltLoss());
                 aero.resetAltLoss();
-                entityUpdate(entity.getId());
+                entityManager.entityUpdate(entity.getId());
             }
         }
 
@@ -12037,7 +12039,7 @@ public class Server implements Runnable {
         if (setDone) {
             entity.setDone(true);
         }
-        entityUpdate(entity.getId());
+        entityManager.entityUpdate(entity.getId());
 
         Packet p = PacketFactory.createAttackPacket(vector, 0);
         if (game.isPhaseSimultaneous()) {
@@ -12409,7 +12411,7 @@ public class Server implements Runnable {
                 LosEffects los = LosEffects.calculateLos(game, detector.getId(), detected);
                 if (los.canSee() || dist <= 1) {
                     detected.setHidden(false);
-                    entityUpdate(detected.getId());
+                    entityManager.entityUpdate(detected.getId());
                     Report r = new Report(9960);
                     r.addDesc(detector);
                     r.subject = detector.getId();
@@ -14376,7 +14378,7 @@ public class Server implements Runnable {
                 ae.removeINarcPod((INarcPod) target);
                 // // TODO : confirm that we don't need to update the attacker.
                 // //killme
-                // entityUpdate( ae.getId() ); // killme
+                // entityManager.entityUpdate( ae.getId() ); // killme
                 r = new Report(4105);
                 r.subject = ae.getId();
                 r.add(target.getDisplayName());
@@ -15746,7 +15748,7 @@ public class Server implements Runnable {
             reportmanager.addReport(damageEntity(ae, hit, toAttacker, false, DamageType.NONE,
                                    false, false, throughFront));
             reportmanager.addNewLines();
-            entityUpdate(ae.getId());
+            entityManager.entityUpdate(ae.getId());
 
             // TODO : Does the attacker enter the building?
             // TODO : What if the building collapses?
@@ -15893,7 +15895,7 @@ public class Server implements Runnable {
             reportmanager.addReport(damageEntity(ae, hit, toAttacker, false, DamageType.NONE,
                                    false, false, throughFront));
             reportmanager.addNewLines();
-            entityUpdate(ae.getId());
+            entityManager.entityUpdate(ae.getId());
 
             // TODO : Does the attacker enter the building?
             // TODO : What if the building collapses?
@@ -16044,7 +16046,7 @@ public class Server implements Runnable {
             reportmanager.addReport(damageEntity(te, hit,
                     TeleMissileAttackAction.getDamageFor(ae), false,
                     DamageType.NONE, false, false, throughFront));
-            destroyEntity(ae, "successful attack");
+            entityManager.destroyEntity(ae, "successful attack");
         }
     }
 
@@ -16197,7 +16199,7 @@ public class Server implements Runnable {
         // if the damage is greater than the initial armor then destroy the
         // entity
         if ((2 * ae.getOArmor(hit)) < damageTaken) {
-            reportmanager.addReport(destroyEntity(ae, "by massive ramming damage", false));
+            reportmanager.addReport(entityManager.destroyEntity(ae, "by massive ramming damage", false));
         } else {
             reportmanager.addReport(damageEntity(ae, hit, damageTaken, false,
                     DamageType.NONE, false, false, throughFront));
@@ -16212,7 +16214,7 @@ public class Server implements Runnable {
 
         hit = te.rollHitLocation(toHit.getHitTable(), toHit.getSideTable());
         if ((2 * te.getOArmor(hit)) < damage) {
-            reportmanager.addReport(destroyEntity(te, "by massive ramming damage", false));
+            reportmanager.addReport(entityManager.destroyEntity(te, "by massive ramming damage", false));
         } else {
             reportmanager.addReport(damageEntity(te, hit, damage, false, DamageType.NONE,
                     false, false, throughFront));
@@ -16757,14 +16759,14 @@ public class Server implements Runnable {
                                     0, "domino effect")));
                     // Update the violating entity's position on the client.
                     if (!game.getOutOfGameEntitiesVector().contains(violation)) {
-                        entityUpdate(violation.getId());
+                        entityManager.entityUpdate(violation.getId());
                     }
                 }
             } else {
                 // attacker destroyed
                 // Tanks suffer an ammo/power plant hit.
                 // TODO : a Mech suffers a Head Blown Off crit.
-                reportmanager.addReport(destroyEntity(ae, "impossible displacement",
+                reportmanager.addReport(entityManager.destroyEntity(ae, "impossible displacement",
                         ae instanceof Mech, ae instanceof Mech));
             }
             return;
@@ -16836,7 +16838,7 @@ public class Server implements Runnable {
                 // ack! automatic death! Tanks
                 // suffer an ammo/power plant hit.
                 // TODO : a Mech suffers a Head Blown Off crit.
-                reportmanager.addReport(destroyEntity(te, "impossible displacement",
+                reportmanager.addReport(entityManager.destroyEntity(te, "impossible displacement",
                         te instanceof Mech, te instanceof Mech));
             }
         }
@@ -17614,7 +17616,7 @@ public class Server implements Runnable {
                 r.subject = entity.getId();
                 r.addDesc(entity);
                 reportmanager.addReport(r);
-                reportmanager.addReport(destroyEntity(entity, "crew death", true));
+                reportmanager.addReport(entityManager.destroyEntity(entity, "crew death", true));
             }
 
             // With MaxTech Heat Scale, there may occur critical damage
@@ -17972,13 +17974,13 @@ public class Server implements Runnable {
                                 Protomech.POSSIBLE_PILOT_DAMAGE[hit.getLocation()]);
                     }
                     if (entity.getTransferLocation(hit).getLocation() == Entity.LOC_DESTROYED) {
-                        reportmanager.addReport(destroyEntity(entity, "flaming death", false, true));
+                        reportmanager.addReport(entityManager.destroyEntity(entity, "flaming death", false, true));
                         Report.addNewline(reportmanager.getvPhaseReport());
                     }
                 }
             } else {
                 // sucks to be you
-                reportmanager.addReport(destroyEntity(entity, "fire", false, false));
+                reportmanager.addReport(entityManager.destroyEntity(entity, "fire", false, false));
                 Report.addNewline(reportmanager.getvPhaseReport());
             }
         }
@@ -18279,7 +18281,7 @@ public class Server implements Runnable {
                 r.addDesc(entity);
                 r.add(reason);
                 reportmanager.addReport(r);
-                reportmanager.addReport(destroyEntity(entity, reason, true, true));
+                reportmanager.addReport(entityManager.destroyEntity(entity, reason, true, true));
             }
         }
     }
@@ -18301,7 +18303,7 @@ public class Server implements Runnable {
                 r.subject = entity.getId();
                 r.addDesc(entity);
                 reportmanager.addReport(r);
-                reportmanager.addReport(destroyEntity(entity,
+                reportmanager.addReport(entityManager.destroyEntity(entity,
                         "being in atmosphere where it can't survive", true, true));
             }
         }
@@ -18321,7 +18323,7 @@ public class Server implements Runnable {
             }
             if ((entity instanceof Mech) && ((Mech) entity).isIndustrial()
                     && ((Mech) entity).shouldDieAtEndOfTurnBecauseOfWater()) {
-                reportmanager.addReport(destroyEntity(entity, "being in water without environmental shielding", true, true));
+                reportmanager.addReport(entityManager.destroyEntity(entity, "being in water without environmental shielding", true, true));
             }
         }
     }
@@ -18392,7 +18394,7 @@ public class Server implements Runnable {
                 r.subject = entity.getId();
                 r.addDesc(entity);
                 reportmanager.addReport(r);
-                reportmanager.addReport(destroyEntity(entity,
+                reportmanager.addReport(entityManager.destroyEntity(entity,
                         "being in space where it can't survive", true, true));
             }
         }
@@ -18750,7 +18752,7 @@ public class Server implements Runnable {
                     r.add(entity.getDisplayName());
                     r.add(p.getName());
                     entity.setOwner(p);
-                    entityUpdate(entity.getId());
+                    entityManager.entityUpdate(entity.getId());
                     vFullReport.add(r);
                 }
                 entity.setTraitorId(-1);
@@ -19044,10 +19046,10 @@ public class Server implements Runnable {
                         crew.setDoomed(true);
                         //Safety. We might use this logic for large naval vessels later on
                         if (en instanceof Aero && ((Aero)en).isEjecting()) {
-                            vDesc.addAll(destroyEntity(en, "ejection", true));
+                            vDesc.addAll(entityManager.destroyEntity(en, "ejection", true));
                             ((Aero)en).setEjecting(false);
                         } else {
-                            vDesc.addAll(destroyEntity(en, "crew casualties", true));
+                            vDesc.addAll(entityManager.destroyEntity(en, "crew casualties", true));
                         }
                     }
                 } else {
@@ -19074,7 +19076,7 @@ public class Server implements Runnable {
                         vDesc.addAll(resolveCrewDamage(en, damage, pos));
                     } else if (!crew.isDoomed()) {
                         crew.setDoomed(true);
-                        vDesc.addAll(destroyEntity(en, "pilot death", true));
+                        vDesc.addAll(entityManager.destroyEntity(en, "pilot death", true));
                     }
                 }
             }
@@ -19319,7 +19321,7 @@ public class Server implements Runnable {
                             reportmanager.addReport(ejectEntity(en, true, false));
                         }
                     }
-                    vDesc.addAll(destroyEntity((Entity)ship, "fatal damage threshold"));
+                    vDesc.addAll(entityManager.destroyEntity((Entity)ship, "fatal damage threshold"));
                     ship.doDisbandDamage();
                     if (prevAE != Entity.NONE) {
                         game.creditKill(en, game.getEntity(prevAE));
@@ -19853,7 +19855,7 @@ public class Server implements Runnable {
                             reportmanager.addReport(ejectEntity(te, true, false));
                         }
                     }
-                    vDesc.addAll(destroyEntity(te, "Structural Integrity Collapse"));
+                    vDesc.addAll(entityManager.destroyEntity(te, "Structural Integrity Collapse"));
                     a.doDisbandDamage();
                     a.setCapArmor(0);
                     if (hit.getAttackerId() != Entity.NONE) {
@@ -20308,7 +20310,7 @@ public class Server implements Runnable {
                     // telemissiles are destroyed if they lose all armor
                     if ((te instanceof TeleMissile)
                         && (te.getArmor(hit) == damage)) {
-                        vDesc.addAll(destroyEntity(te, "damage", false));
+                        vDesc.addAll(entityManager.destroyEntity(te, "damage", false));
                     }
 
                 } else {
@@ -20346,7 +20348,7 @@ public class Server implements Runnable {
                         vDesc.addElement(r);
 
                         if (te.getTransferLocation(hit).getLocation() == Entity.LOC_DESTROYED) {
-                            vDesc.addAll(destroyEntity(te, "damage", false));
+                            vDesc.addAll(entityManager.destroyEntity(te, "damage", false));
                         }
                     }
                 }
@@ -20503,7 +20505,7 @@ public class Server implements Runnable {
                                             && a.isCondEjectSIDest()))) {
                             vDesc.addAll(ejectEntity(te, true, false));
                         } else {
-                            vDesc.addAll(destroyEntity(te,"Structural Integrity Collapse"));
+                            vDesc.addAll(entityManager.destroyEntity(te,"Structural Integrity Collapse"));
                         }
                         a.setSI(0);
                         if (hit.getAttackerId() != Entity.NONE) {
@@ -20811,7 +20813,7 @@ public class Server implements Runnable {
                             // Entity destroyed. Ammo explosions are
                             // neither survivable nor salvageable.
                             // Only ammo explosions in the CT are devastating.
-                            vDesc.addAll(destroyEntity(te, "damage", !ammoExplosion,
+                            vDesc.addAll(entityManager.destroyEntity(te, "damage", !ammoExplosion,
                                     !((ammoExplosion || areaSatArty) && ((te instanceof Tank)
                                             || ((te instanceof Mech) && (hit.getLocation() == Mech.LOC_CT))))));
                             // If the head is destroyed, kill the crew.
@@ -20997,7 +20999,7 @@ public class Server implements Runnable {
 
                     if (!engineExploded && (numEngineHits >= hitsToDestroy)) {
                         // third engine hit
-                        vDesc.addAll(destroyEntity(te, "engine destruction"));
+                        vDesc.addAll(entityManager.destroyEntity(te, "engine destruction"));
                         if (game.getOptions()
                                 .booleanOption(OptionsConstants.ADVGRNDMOV_AUTO_ABANDON_UNIT)) {
                             vDesc.addAll(abandonEntity(te));
@@ -21290,7 +21292,7 @@ public class Server implements Runnable {
                 Coords targetDest = Compute.getValidDisplacement(game, passenger.getId(), position, Compute.d6() - 1);
                 reportmanager.addReport(doEntityDisplacement(violation, position, targetDest, null));
                 // Update the violating entity's position on the client.
-                entityUpdate(violation.getId());
+                entityManager.entityUpdate(violation.getId());
             }
         }
         return damage;
@@ -21389,7 +21391,7 @@ public class Server implements Runnable {
             r.subject = en.getId();
             r.indent(2);
             vDesc.addElement(r);
-            vDesc.addAll(destroyEntity(en, "engine explosion", false, false));
+            vDesc.addAll(entityManager.destroyEntity(en, "engine explosion", false, false));
             // kill the crew
             en.getCrew().setDoomed(true);
 
@@ -21589,7 +21591,7 @@ public class Server implements Runnable {
             // We might need to nuke everyone in the explosion hex. If so...
             if ((range == 0) && autoDestroyInSameHex) {
                 // Add the reports
-                vDesc.addAll(destroyEntity(entity, "explosion proximity", false, false));
+                vDesc.addAll(entityManager.destroyEntity(entity, "explosion proximity", false, false));
                 // Add it to the "blasted units" list
                 vUnits.add(entity.getId());
                 // Kill the crew
@@ -21832,7 +21834,7 @@ public class Server implements Runnable {
                 continue;
             }
 
-            vDesc.addAll(destroyEntity(entity, "nuclear explosion proximity",
+            vDesc.addAll(entityManager.destroyEntity(entity, "nuclear explosion proximity",
                     false, false));
             // Kill the crew
             entity.getCrew().setDoomed(true);
@@ -22038,7 +22040,7 @@ public class Server implements Runnable {
             // Sucks, doesn't it?
             // This applies to all units.
             // Yup, just sucks.
-            vDesc.addAll(destroyEntity(entity, "nuclear explosion secondary effects", false, false));
+            vDesc.addAll(entityManager.destroyEntity(entity, "nuclear explosion secondary effects", false, false));
             // Kill the crew
             entity.getCrew().setDoomed(true);
         } else if (roll <= 6) {
@@ -22057,7 +22059,7 @@ public class Server implements Runnable {
                     int damage = (int) (Math.ceil((entity.getInternal(Infantry.LOC_INFANTRY)) / 2.0));
                     vDesc.addAll(damageEntity(entity, new HitData(Infantry.LOC_INFANTRY), damage, true));
                 } else {
-                    vDesc.addAll(destroyEntity(entity, "nuclear explosion secondary effects", false, false));
+                    vDesc.addAll(entityManager.destroyEntity(entity, "nuclear explosion secondary effects", false, false));
                     entity.getCrew().setDoomed(true);
                 }
             } else if (entity instanceof Tank) {
@@ -22355,7 +22357,7 @@ public class Server implements Runnable {
                         // Single pilot or tripod cockpit; all crew are killed.
                         en.getCrew().setDoomed(true);
                         Report.addNewline(reports);
-                        reports.addAll(destroyEntity(en, "pilot death", true));
+                        reports.addAll(entityManager.destroyEntity(en, "pilot death", true));
                     }
                 } else if (!en.getCrew().isMissing(crewSlot)){
                     boolean wasPilot = en.getCrew().getCurrentPilotIndex() == crewSlot;
@@ -22390,7 +22392,7 @@ public class Server implements Runnable {
 
                 if (!engineExploded && (numEngineHits >= hitsToDestroy)) {
                     // third engine hit
-                    reports.addAll(destroyEntity(en, "engine destruction"));
+                    reports.addAll(entityManager.destroyEntity(en, "engine destruction"));
                     if (game.getOptions()
                             .booleanOption(OptionsConstants.ADVGRNDMOV_AUTO_ABANDON_UNIT)) {
                         reports.addAll(abandonEntity(en));
@@ -22526,7 +22528,7 @@ public class Server implements Runnable {
                 break;
             case Protomech.SYSTEM_TORSOCRIT:
                 if (3 == numHit) {
-                    reports.addAll(destroyEntity(pm, "torso destruction"));
+                    reports.addAll(entityManager.destroyEntity(pm, "torso destruction"));
                 }
                 // Torso weapon hits are secondary effects and
                 // do not occur when loading from a scenario.
@@ -22786,7 +22788,7 @@ public class Server implements Runnable {
                             reports.addAll(ejectEntity(aero, true, false));
                         }
                     }
-                    reports.addAll(destroyEntity(aero, "fuel explosion", false, false));
+                    reports.addAll(entityManager.destroyEntity(aero, "fuel explosion", false, false));
                 } else {
                     r.choose(false);
                     reports.add(r);
@@ -22825,7 +22827,7 @@ public class Server implements Runnable {
                 reports.addAll(damageCrew(aero, 1));
                 // The pilot may have just expired.
                 if ((aero.getCrew().isDead() || aero.getCrew().isDoomed()) && !aero.getCrew().isEjected()) {
-                    reports.addAll(destroyEntity(aero, "pilot death", true, true));
+                    reports.addAll(entityManager.destroyEntity(aero, "pilot death", true, true));
                 }
                 break;
             case Aero.CRIT_GEAR:
@@ -23144,7 +23146,7 @@ public class Server implements Runnable {
                 if ((aero.getEngineHits() >= aero.getMaxEngineHits())
                     || engineExploded) {
                     // this engine hit puts the ASF out of commission
-                    reports.addAll(destroyEntity(aero, "engine destruction", true,
+                    reports.addAll(entityManager.destroyEntity(aero, "engine destruction", true,
                                                true));
                     aero.setSelfDestructing(false);
                     aero.setSelfDestructInitiated(false);
@@ -23396,7 +23398,7 @@ public class Server implements Runnable {
                 units.removeAll(toRemove);
                 while ((destroyed > 0) && !units.isEmpty()) {
                     Entity target = units.remove(Compute.randomInt(units.size()));
-                    reports.addAll(destroyEntity(target, "cargo damage",
+                    reports.addAll(entityManager.destroyEntity(target, "cargo damage",
                             false, true));
                     destroyed--;
                 }
@@ -23577,7 +23579,7 @@ public class Server implements Runnable {
                 tank.engineHitsThisPhase++;
                 boolean engineExploded = checkEngineExplosion(tank, reports, 1);
                 if (engineExploded) {
-                    reports.addAll(destroyEntity(tank, "engine destruction", true, true));
+                    reports.addAll(entityManager.destroyEntity(tank, "engine destruction", true, true));
                     tank.setSelfDestructing(false);
                     tank.setSelfDestructInitiated(false);
                 }
@@ -23590,7 +23592,7 @@ public class Server implements Runnable {
                 r = new Report(6215);
                 r.subject = tank.getId();
                 reports.add(r);
-                reports.addAll(destroyEntity(tank, "fuel explosion", false, false));
+                reports.addAll(entityManager.destroyEntity(tank, "fuel explosion", false, false));
                 break;
             case Tank.CRIT_SENSOR:
                 r = new Report(6620);
@@ -23609,7 +23611,7 @@ public class Server implements Runnable {
                 r.subject = tank.getId();
                 reports.add(r);
                 tank.destroyLocation(tank.getLocTurret());
-                reports.addAll(destroyEntity(tank, "turret blown off", true, true));
+                reports.addAll(entityManager.destroyEntity(tank, "turret blown off", true, true));
                 break;
             case Tank.CRIT_TURRET_JAM:
                 if (tank.isTurretEverJammed(loc)) {
@@ -24073,7 +24075,7 @@ public class Server implements Runnable {
                     r = new Report(6275);
                     r.subject = en.getId();
                     vDesc.addElement(r);
-                    vDesc.addAll(destroyEntity(en, "Fell into water", false, false));
+                    vDesc.addAll(entityManager.destroyEntity(en, "Fell into water", false, false));
                     // not sure, is this salvageable?
                 }
             }
@@ -24202,7 +24204,7 @@ public class Server implements Runnable {
             } else {
                 ignite(pos, Terrains.FIRE_LVL_INFERNO, vDesc);
             }
-            vDesc.addAll(destroyEntity(en, "crashed and burned", false, false));
+            vDesc.addAll(entityManager.destroyEntity(en, "crashed and burned", false, false));
         }
 
         return vDesc;
@@ -24343,7 +24345,7 @@ public class Server implements Runnable {
                 vDesc.addElement(r);
                 if (a.getSI() <= 0) {
                     //No auto-ejection chance here. Nuke would vaporize the pilot.
-                    vDesc.addAll(destroyEntity(a, "Structural Integrity Collapse"));
+                    vDesc.addAll(entityManager.destroyEntity(a, "Structural Integrity Collapse"));
                     a.setSI(0);
                     if (hit.getAttackerId() != Entity.NONE) {
                         game.creditKill(a, game.getEntity(hit.getAttackerId()));
@@ -24603,7 +24605,7 @@ public class Server implements Runnable {
                         if (Crew.DEATH > en.getCrew().getHits()) {
                             en.getCrew().setDoomed(true);
                             Report.addNewline(vDesc);
-                            vDesc.addAll(destroyEntity(en, "pilot death", true));
+                            vDesc.addAll(entityManager.destroyEntity(en, "pilot death", true));
                         }
                     }
                     return vDesc;
@@ -24925,7 +24927,7 @@ public class Server implements Runnable {
         vDesc.addElement(r);
 
         if (entity instanceof Tank) {
-            vDesc.addAll(destroyEntity(entity, "hull breach", true, true));
+            vDesc.addAll(entityManager.destroyEntity(entity, "hull breach", true, true));
             return vDesc;
         }
         if (entity instanceof Mech) {
@@ -24971,14 +24973,14 @@ public class Server implements Runnable {
 
             // Check location for engine/cockpit breach and report accordingly
             if (loc == Mech.LOC_CT) {
-                vDesc.addAll(destroyEntity(entity, "hull breach"));
+                vDesc.addAll(entityManager.destroyEntity(entity, "hull breach"));
                 if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_AUTO_ABANDON_UNIT)) {
                     vDesc.addAll(abandonEntity(entity));
                 }
             }
             if (loc == Mech.LOC_HEAD) {
                 entity.getCrew().setDoomed(true);
-                vDesc.addAll(destroyEntity(entity, "hull breach"));
+                vDesc.addAll(entityManager.destroyEntity(entity, "hull breach"));
                 if (entity.getLocationStatus(loc) == ILocationExposureStatus.WET) {
                     r = new Report(6355);
                 } else {
@@ -25004,7 +25006,7 @@ public class Server implements Runnable {
                     + entity.getHitCriticals(CriticalSlot.TYPE_SYSTEM, Mech.SYSTEM_ENGINE, Mech.LOC_CT)
                     + entity.getHitCriticals(CriticalSlot.TYPE_SYSTEM, Mech.SYSTEM_ENGINE, Mech.LOC_RT))
                     >= hitsToDestroy) {
-                vDesc.addAll(destroyEntity(entity, "engine destruction"));
+                vDesc.addAll(entityManager.destroyEntity(entity, "engine destruction"));
                 if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_AUTO_ABANDON_UNIT)) {
                     vDesc.addAll(abandonEntity(entity));
                 }
@@ -25069,276 +25071,8 @@ public class Server implements Runnable {
      * sent to the output log.
      */
     public Vector<Report> destroyEntity(Entity entity, String reason, boolean survivable,
-                                         boolean canSalvage) {
-        // can't destroy an entity if it's already been destroyed        
-        if(entity.isDestroyed()) {
-            return new Vector<Report>();
-        }
-        
-        Vector<Report> vDesc = new Vector<>();
-        Report r;
-        
-        //We'll need this later...
-        Aero ship = null;
-        if (entity.isLargeCraft()) {
-            ship = (Aero) entity;
-        }
-
-        // regardless of what was passed in, units loaded onto aeros not on the
-        // ground are destroyed
-        if (entity.isAirborne()) {
-            survivable = false;
-        } else if (entity.isAero()) {
-            survivable = true;
-        }
-
-        // The unit can suffer an ammo explosion after it has been destroyed.
-        int condition = IEntityRemovalConditions.REMOVE_SALVAGEABLE;
-        if (!canSalvage) {
-            entity.setSalvage(false);
-            condition = IEntityRemovalConditions.REMOVE_DEVASTATED;
-        }
-
-        // Destroy the entity, unless it's already destroyed.
-        if (!entity.isDoomed() && !entity.isDestroyed()) {
-            r = new Report(6365);
-            r.subject = entity.getId();
-            r.addDesc(entity);
-            r.add(reason);
-            vDesc.addElement(r);
-
-            entity.setDoomed(true);
-
-            // Kill any picked up MechWarriors
-            Enumeration<Integer> iter = entity.getPickedUpMechWarriors().elements();
-            while (iter.hasMoreElements()) {
-                int mechWarriorId = iter.nextElement();
-                Entity mw = game.getEntity(mechWarriorId);
-
-                // in some situations, a "picked up" mechwarrior won't actually exist
-                // probably this is brought about by picking up a mechwarrior in a previous MekHQ scenario
-                // then having the same unit get blown up in a subsequent scenario
-                // in that case, we simply move on
-                if(mw == null) {
-                    continue;
-                }
-
-                mw.setDestroyed(true);
-                // We can safely remove these, as they can't be targeted
-                game.removeEntity(mw.getId(), condition);
-                entityUpdate(mw.getId());
-                send(PacketFactory.createRemoveEntityPacket(mw.getId(), condition));
-                r = new Report(6370);
-                r.subject = mw.getId();
-                r.addDesc(mw);
-                vDesc.addElement(r);
-            }
-
-            // make any remaining telemissiles operated by this entity
-            // out of contact
-            for (int missileId : entity.getTMTracker().getMissiles()) {
-                Entity tm = game.getEntity(missileId);
-                if ((null != tm) && !tm.isDestroyed() && (tm instanceof TeleMissile)) {
-                    ((TeleMissile) tm).setOutContact(true);
-                    entityUpdate(tm.getId());
-                }
-            }
-
-            // Mechanized BA that could die on a 3+
-            ArrayList<Entity> externalUnits = entity.getExternalUnits();
-
-            // Handle escape of transported units.
-            if (entity.getLoadedUnits().size() > 0) {
-                Coords curPos = entity.getPosition();
-                int curFacing = entity.getFacing();
-                for (Entity other : entity.getLoadedUnits()) {
-                    //If the unit has been destroyed (as from a cargo hit), skip it
-                    if (other.isDestroyed()) {
-                        continue;
-                    }
-                    // Can the other unit survive?
-                    boolean survived = false;
-                    if (entity instanceof Tank) {
-                        if ((entity.getMovementMode() == EntityMovementMode.NAVAL)
-                                || (entity.getMovementMode() == EntityMovementMode.HYDROFOIL)) {
-                            if (other.getMovementMode() == EntityMovementMode.INF_UMU) {
-                                survived = Compute.d6() <= 3;
-                            } else if (other.getMovementMode() == EntityMovementMode.INF_JUMP) {
-                                survived = Compute.d6() == 1;
-                            } else if (other.getMovementMode() == EntityMovementMode.VTOL) {
-                                survived = Compute.d6() <= 2;
-                            }
-                        } else if (entity.getMovementMode() == EntityMovementMode.SUBMARINE) {
-                            if (other.getMovementMode() == EntityMovementMode.INF_UMU) {
-                                survived = Compute.d6() == 1;
-                            }
-                        } else {
-                            survived = Compute.d6() <= 4;
-                        }
-                    } else if (entity instanceof Mech) {
-                        // mechanized BA can escape on a roll of 1 or 2
-                        if (externalUnits.contains(other)) {
-                            survived = Compute.d6() < 3;
-                        }
-                    }
-                    if (!survivable || (externalUnits.contains(other) && !survived)
-                            //Don't unload from ejecting spacecraft. The crews aren't in their units...
-                            || (ship != null && ship.isEjecting())) {
-                        // Nope.
-                        other.setDestroyed(true);
-                        // We need to unload the unit, since it's ID goes away
-                        entity.unload(other);
-                        // Safe to remove, as they aren't targeted
-                        game.moveToGraveyard(other.getId());
-                        send(PacketFactory.createRemoveEntityPacket(other.getId(), condition));
-                        r = new Report(6370);
-                        r.subject = other.getId();
-                        r.addDesc(other);
-                        vDesc.addElement(r);
-                    }
-                    // Can we unload the unit to the current hex?
-                    // TODO : unloading into stacking violation is not
-                    // explicitly prohibited in the BMRr.
-                    else if ((null != Compute.stackingViolation(game, other.getId(), curPos))
-                             || other.isLocationProhibited(curPos)) {
-                        // Nope.
-                        other.setDestroyed(true);
-                        // We need to unload the unit, since it's ID goes away
-                        entity.unload(other);
-                        // Safe to remove, as they aren't targeted
-                        game.moveToGraveyard(other.getId());
-                        send(PacketFactory.createRemoveEntityPacket(other.getId(), condition));
-                        r = new Report(6375);
-                        r.subject = other.getId();
-                        r.addDesc(other);
-                        vDesc.addElement(r);
-                    } // End can-not-unload
-                    else {
-                        // The other unit survives.
-                        unloadUnit(entity, other, curPos, curFacing,
-                                   entity.getElevation(), true, false);
-                    }
-
-                } // Handle the next transported unit.
-
-            } // End has-transported-unit
-
-            // Handle transporting unit.
-            if (Entity.NONE != entity.getTransportId()) {
-                final Entity transport = game.getEntity(entity.getTransportId());
-                Coords curPos = transport.getPosition();
-                int curFacing = transport.getFacing();
-                if (!transport.isLargeCraft()) {
-                    unloadUnit(transport, entity, curPos, curFacing, transport.getElevation());
-                }
-                entityUpdate(transport.getId());
-
-                // if this is the last fighter in a fighter squadron then remove
-                // the squadron
-                if ((transport instanceof FighterSquadron)
-                        && transport.getSubEntities().orElse(Collections.emptyList()).isEmpty()) {
-                    transport.setDestroyed(true);
-                    // Can't remove this here, otherwise later attacks will fail
-                    //game.moveToGraveyard(transport.getId());
-                    //entityUpdate(transport.getId());
-                    //send(PacketFactory.createRemoveEntityPacket(transport.getId(), condition));
-                    r = new Report(6365);
-                    r.subject = transport.getId();
-                    r.addDesc(transport);
-                    r.add("fighter destruction");
-                    vDesc.addElement(r);
-                }
-
-            } // End unit-is-transported
-
-            // Is this unit towing some trailers?
-            // If so, disconnect them
-            if (!entity.getAllTowedUnits().isEmpty()) {
-                //Find the first trailer in the list and drop it
-                //this will disconnect all that follow too
-                Entity leadTrailer = game.getEntity(entity.getAllTowedUnits().get(0));
-                disconnectUnit(entity, leadTrailer, entity.getPosition());
-            }
-
-            // Is this unit a trailer being towed? If so, disconnect it from its tractor
-            if (entity.getTractor() != Entity.NONE) {
-                Entity tractor = game.getEntity(entity.getTractor());
-                disconnectUnit(tractor, entity, tractor.getPosition());
-            }
-
-            // Is this unit being swarmed?
-            final int swarmerId = entity.getSwarmAttackerId();
-            if (Entity.NONE != swarmerId) {
-                final Entity swarmer = game.getEntity(swarmerId);
-
-                swarmer.setSwarmTargetId(Entity.NONE);
-                // a unit that stopped swarming due to the swarmed unit dieing
-                // should be able to move: setSwarmTargetId to Entity.None
-                // changes done to true and unloaded to true, need to undo this
-                swarmer.setUnloaded(false);
-                swarmer.setDone(false);
-                entity.setSwarmAttackerId(Entity.NONE);
-                Report.addNewline(vDesc);
-                r = new Report(6380);
-                r.subject = swarmerId;
-                r.addDesc(swarmer);
-                vDesc.addElement(r);
-                // Swarming infantry shouldn't take damage when their target dies
-                // http://bg.battletech.com/forums/total-warfare/swarming-question
-                entityUpdate(swarmerId);
-            }
-
-            // Is this unit swarming somebody?
-            final int swarmedId = entity.getSwarmTargetId();
-            if (Entity.NONE != swarmedId) {
-                final Entity swarmed = game.getEntity(swarmedId);
-                swarmed.setSwarmAttackerId(Entity.NONE);
-                entity.setSwarmTargetId(Entity.NONE);
-                r = new Report(6385);
-                r.subject = swarmed.getId();
-                r.addDesc(swarmed);
-                vDesc.addElement(r);
-                entityUpdate(swarmedId);
-            }
-
-            // If in a grapple, release both mechs
-            if (entity.getGrappled() != Entity.NONE) {
-                int grappler = entity.getGrappled();
-                entity.setGrappled(Entity.NONE, false);
-                Entity e = game.getEntity(grappler);
-                if (e != null) {
-                    e.setGrappled(Entity.NONE, false);
-                }
-                entityUpdate(grappler);
-            }
-        } // End entity-not-already-destroyed.
-
-        // if using battlefield wreckage rules, then the destruction of this
-        // unit
-        // might convert the hex to rough
-        Coords curPos = entity.getPosition();
-        IHex entityHex = game.getBoard().getHex(curPos);
-        if (game.getOptions().booleanOption(OptionsConstants.ADVANCED_TACOPS_BATTLE_WRECK)
-                && (entityHex != null) && game.getBoard().onGround()
-                && !((entity instanceof Infantry) || (entity instanceof Protomech))) {
-            // large support vees will create ultra rough, otherwise rough
-            if (entity instanceof LargeSupportTank) {
-                if (entityHex.terrainLevel(Terrains.ROUGH) < 2) {
-                    entityHex.addTerrain(Terrains.getTerrainFactory()
-                            .createTerrain(Terrains.ROUGH, 2));
-                    gamemanager.sendChangedHex(game, curPos);
-                }
-            } else if ((entity.getWeight() >= 40) && !entityHex.containsTerrain(Terrains.ROUGH)) {
-                entityHex.addTerrain(Terrains.getTerrainFactory()
-                        .createTerrain(Terrains.ROUGH, 1));
-                gamemanager.sendChangedHex(game, curPos);
-            }
-        }
-
-        // update our entity, so clients have correct data needed for MekWars stuff
-        entityUpdate(entity.getId());
-
-        return vDesc;
+                                        boolean canSalvage){
+        return entityManager.destroyEntity(entity, reason, survivable, canSalvage);
     }
 
     /**
@@ -25553,7 +25287,7 @@ public class Server implements Runnable {
             vDesc.addAll(damageCrew(en, pilotDamage, en.getCrew().getCurrentPilotIndex()));
         }
         if (en.getCrew().isDoomed() || en.getCrew().isDead()) {
-            vDesc.addAll(destroyEntity(en, "crew death", true));
+            vDesc.addAll(entityManager.destroyEntity(en, "crew death", true));
         } else {
             Report.addNewline(vDesc);
         }
@@ -25795,7 +25529,7 @@ public class Server implements Runnable {
             && (entity.getMovementMode() != EntityMovementMode.NAVAL)
             && (entity.getMovementMode() != EntityMovementMode.SUBMARINE)
             && (entity.getMovementMode() != EntityMovementMode.INF_UMU)) {
-            vPhaseReport.addAll(destroyEntity(entity, "a watery grave", false));
+            vPhaseReport.addAll(entityManager.destroyEntity(entity, "a watery grave", false));
             return vPhaseReport;
         }
 
@@ -25980,7 +25714,7 @@ public class Server implements Runnable {
                 r.subject = swarmer.getId();
                 r.addDesc(swarmer);
                 vPhaseReport.add(r);
-                vPhaseReport.addAll(destroyEntity(swarmer, "a watery grave",
+                vPhaseReport.addAll(entityManager.destroyEntity(swarmer, "a watery grave",
                                                   false));
             } else {
                 // Swarming infantry take a 2d6 point hit.
@@ -25996,7 +25730,7 @@ public class Server implements Runnable {
                 Report.addNewline(vPhaseReport);
             }
             swarmer.setPosition(fallPos);
-            entityUpdate(swarmerId);
+            entityManager.entityUpdate(swarmerId);
             if (!swarmer.isDone()) {
                 game.removeTurnFor(swarmer);
                 swarmer.setDone(true);
@@ -26419,119 +26153,10 @@ public class Server implements Runnable {
     }
 
     /**
-     * In a double-blind game, update only visible entities. Otherwise, update
-     * everyone
-     */
-    public void entityUpdate(int nEntityID) {
-        entityUpdate(nEntityID, new Vector<>(), true, null);
-    }
-
-    /**
-     * In a double-blind game, update only visible entities. Otherwise, update
-     * everyone
-     *
-     * @param updateVisibility Flag that determines if whoCanSee needs to be
-     *                         called to update who can see the entity for
-     *                         double-blind games.
-     */
-    public void entityUpdate(int nEntityID, Vector<UnitLocation> movePath, boolean updateVisibility,
-                             Map<EntityTargetPair, LosEffects> losCache) {
-        Entity eTarget = game.getEntity(nEntityID);
-        if (eTarget == null) {
-            if (game.getOutOfGameEntity(nEntityID) != null) {
-                MegaMek.getLogger().error("S: attempted to send entity update for out of game entity, id was " + nEntityID);
-            } else {
-                MegaMek.getLogger().error("S: attempted to send entity update for null entity, id was " + nEntityID);
-            }
-
-            return; // do not send the update it will crash the client
-        }
-
-        // If we're doing double blind, be careful who can see it...
-        if (game.doBlind()) {
-            Vector<IPlayer> playersVector = game.getPlayersVector();
-            Vector<IPlayer> vCanSee;
-            if (updateVisibility) {
-                vCanSee = whoCanSee(eTarget, true, losCache);
-            } else {
-                vCanSee = eTarget.getWhoCanSee();
-            }
-
-            // If this unit has ECM, players with units affected by the ECM will
-            //  need to know about this entity, even if they can't see it.
-            //  Otherwise, the client can't properly report things like to-hits.
-            if ((eTarget.getECMRange() > 0) && (eTarget.getPosition() != null)) {
-                int ecmRange = eTarget.getECMRange();
-                Coords pos = eTarget.getPosition();
-                for (Entity ent : game.getEntitiesVector()) {
-                    if ((ent.getPosition() != null) && (pos.distance(ent.getPosition()) <= ecmRange)) {
-                        if (!vCanSee.contains(ent.getOwner())) {
-                            vCanSee.add(ent.getOwner());
-                        }
-                    }
-                }
-            }
-
-            // send an entity update to everyone who can see
-            Packet pack = PacketFactory.createEntityPacket(game, nEntityID, movePath);
-            for (int x = 0; x < vCanSee.size(); x++) {
-                IPlayer p = vCanSee.elementAt(x);
-                send(p.getId(), pack);
-            }
-            // send an entity delete to everyone else
-            pack = PacketFactory.createRemoveEntityPacket(nEntityID, eTarget.getRemovalCondition());
-            for (int x = 0; x < playersVector.size(); x++) {
-                if (!vCanSee.contains(playersVector.elementAt(x))) {
-                    IPlayer p = playersVector.elementAt(x);
-                    send(p.getId(), pack);
-                }
-            }
-
-            entityUpdateLoadedUnits(eTarget, vCanSee, playersVector);
-        } else {
-            // But if we're not, then everyone can see.
-            send(PacketFactory.createEntityPacket(game, nEntityID, movePath));
-        }
-    }
-
-    /**
-     * Whenever updating an Entity, we also need to update all of its loaded
-     * Entity's, otherwise it could cause issues with Clients.
-     *
-     * @param loader        An Entity being updated that is transporting units that should
-     *                      also send an update
-     * @param vCanSee       The list of Players who can see the loader.
-     * @param playersVector The list of all Players
-     */
-    private void entityUpdateLoadedUnits(Entity loader, Vector<IPlayer> vCanSee, Vector<IPlayer> playersVector) {
-        Packet pack;
-
-        // In double-blind, the client may not know about the loaded units,
-        // so we need to send them.
-        for (Entity eLoaded : loader.getLoadedUnits()) {
-            // send an entity update to everyone who can see
-            pack = PacketFactory.createEntityPacket(game, eLoaded.getId(), null);
-            for (int x = 0; x < vCanSee.size(); x++) {
-                IPlayer p = vCanSee.elementAt(x);
-                send(p.getId(), pack);
-            }
-            // send an entity delete to everyone else
-            pack = PacketFactory.createRemoveEntityPacket(eLoaded.getId(), eLoaded.getRemovalCondition());
-            for (int x = 0; x < playersVector.size(); x++) {
-                if (!vCanSee.contains(playersVector.elementAt(x))) {
-                    IPlayer p = playersVector.elementAt(x);
-                    send(p.getId(), pack);
-                }
-            }
-            entityUpdateLoadedUnits(eLoaded, vCanSee, playersVector);
-        }
-    }
-
-    /**
      * Returns a vector of which players can see this entity, always allowing
      * for sensor detections.
      */
-    private Vector<IPlayer> whoCanSee(Entity entity) {
+    public Vector<IPlayer> whoCanSee(Entity entity) {
         return whoCanSee(entity, true, null);
     }
 
@@ -26543,7 +26168,7 @@ public class Server implements Runnable {
      * @param useSensors A flag that determines whether sensors are allowed
      * @return A vector of the players who can see the entity
      */
-    private Vector<IPlayer> whoCanSee(Entity entity, boolean useSensors,
+    public Vector<IPlayer> whoCanSee(Entity entity, boolean useSensors,
             Map<EntityTargetPair, LosEffects> losCache) {
         if (losCache == null) {
             losCache = new HashMap<>();
@@ -26656,26 +26281,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * Send the complete list of entities to the players. If double_blind is in
-     * effect, enforce it by filtering the entities
-     */
-    private void entityAllUpdate() {
-        // If double-blind is in effect, filter each players' list individually,
-        // and then quit out...
-        if (game.doBlind()) {
-            Vector<IPlayer> playersVector = game.getPlayersVector();
-            for (int x = 0; x < playersVector.size(); x++) {
-                IPlayer p = playersVector.elementAt(x);
-                send(p.getId(), PacketFactory.createFilteredEntitiesPacket(p, null, game, gamemanager));
-            }
-            return;
-        }
-
-        // Otherwise, send the full list.
-        send(PacketFactory.createEntitiesPacket(game));
-    }
-
-    /**
      * Updates entities graphical "visibility indications" which are used in
      * double-blind games.
      *
@@ -26738,7 +26343,7 @@ public class Server implements Runnable {
                 }
             }
             if (hasClientWithoutEntity) {
-                entityUpdate(e.getId(), new Vector<>(), false, losCache);
+                entityManager.entityUpdate(e.getId(), new Vector<>(), false, losCache);
             } else {
                 gamemanager.sendVisibilityIndicator(e);
             }
@@ -26765,7 +26370,7 @@ public class Server implements Runnable {
                         // I am not sure if I like the idea of updating other entities in this method, but it
                         // will work for now.
                         if (!entities.contains(e)) {
-                            entityUpdate(e.getId());
+                            entityManager.entityUpdate(e.getId());
                         }
                     }
                 }
@@ -27540,7 +27145,7 @@ public class Server implements Runnable {
 
                 // Update this entity.
                 // ASSUMPTION: this is the correct thing to do.
-                entityUpdate(entity.getId());
+                entityManager.entityUpdate(entity.getId());
 
             } // Handle the next entity.
 
@@ -27629,7 +27234,7 @@ public class Server implements Runnable {
                 final Entity entity = entities.nextElement();
                 // all gun emplacements are simply destroyed
                 if (entity instanceof GunEmplacement) {
-                    vPhaseReport.addAll(destroyEntity(entity, "building collapse"));
+                    vPhaseReport.addAll(entityManager.destroyEntity(entity, "building collapse"));
                     reportmanager.addNewLines();
                     continue;
                 }
@@ -27643,7 +27248,7 @@ public class Server implements Runnable {
                 // units trapped in a basement under a collapsing building are
                 // destroyed
                 if (floor < 0) {
-                    vPhaseReport.addAll(destroyEntity(entity,
+                    vPhaseReport.addAll(entityManager.destroyEntity(entity,
                             "Crushed under building rubble", false, false));
                 }
 
@@ -27716,7 +27321,7 @@ public class Server implements Runnable {
                 }
                 // Update this entity.
                 // ASSUMPTION: this is the correct thing to do.
-                entityUpdate(entity.getId());
+                entityManager.entityUpdate(entity.getId());
 
             } // Handle the next entity.
 
@@ -28084,7 +27689,7 @@ public class Server implements Runnable {
                 // when a building collapses due to an ammo explosion, we can consider
                 // that turret annihilated for the purposes of salvage.
                 for (GunEmplacement gun : guns) {
-                    vDesc.addAll(destroyEntity(gun, "ammo explosion", false, false));
+                    vDesc.addAll(entityManager.destroyEntity(gun, "ammo explosion", false, false));
                 }
                 
                 if (bldg instanceof FuelTank) {
@@ -28414,7 +28019,7 @@ public class Server implements Runnable {
             }
 
             if (entity.getCrew().isDoomed()) {
-                vDesc.addAll(destroyEntity(pilot, "deadly ejection", false,
+                vDesc.addAll(entityManager.destroyEntity(pilot, "deadly ejection", false,
                                            false));
             } else {
                 // Add the pilot as an infantry unit on the battlefield.
@@ -28426,7 +28031,7 @@ public class Server implements Runnable {
                     r.indent(3);
                     vDesc.addElement(r);
                     // Update the entity
-                    entityUpdate(pilot.getId());
+                    entityManager.entityUpdate(pilot.getId());
                     // check if the pilot lands in a minefield
                     if (!entity.isAirborne()) {
                         vDesc.addAll(doEntityDisplacementMinefieldCheck(pilot,
@@ -28507,7 +28112,7 @@ public class Server implements Runnable {
             // Tell clients about new entity
             send(PacketFactory.createAddEntityPacket(game, crew.getId()));
             // Sent entity info to clients
-            entityUpdate(crew.getId());
+            entityManager.entityUpdate(crew.getId());
             // Check if the crew lands in a minefield
             vDesc.addAll(doEntityDisplacementMinefieldCheck(crew,
                     entity.getPosition(), entity.getPosition(),
@@ -28523,7 +28128,7 @@ public class Server implements Runnable {
         if (entity instanceof VTOL) {
             vDesc.addAll(crashVTOLorWiGE((VTOL) entity));
         }
-        vDesc.addAll(destroyEntity(entity, "ejection", true, true));
+        vDesc.addAll(entityManager.destroyEntity(entity, "ejection", true, true));
 
         // only remove the unit that ejected manually
         if (!autoEject) {
@@ -28668,7 +28273,7 @@ public class Server implements Runnable {
             // Tell clients about new entity
             send(PacketFactory.createAddEntityPacket(game, pods.getId()));
             // Sent entity info to clients
-            entityUpdate(pods.getId());
+            entityManager.entityUpdate(pods.getId());
             if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_EJECTED_PILOTS_FLEE)) {
                 game.removeEntity(pods.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
                 send(PacketFactory.createRemoveEntityPacket(pods.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT));
@@ -28759,7 +28364,7 @@ public class Server implements Runnable {
             // Tell clients about new entity
             send(PacketFactory.createAddEntityPacket(game, crew.getId()));
             // Sent entity info to clients
-            entityUpdate(crew.getId());
+            entityManager.entityUpdate(crew.getId());
             // Check if the crew lands in a minefield
             vDesc.addAll(doEntityDisplacementMinefieldCheck(crew,
                     entity.getPosition(), entity.getPosition(),
@@ -28771,7 +28376,7 @@ public class Server implements Runnable {
         }
         // If we get here, end movement and return the report
         entity.setDone(true);
-        entityUpdate(entity.getId());
+        entityManager.entityUpdate(entity.getId());
         return vDesc;
     }
 
@@ -29002,7 +28607,7 @@ public class Server implements Runnable {
             }
             pilot.setCommander(entity.isCommander());
             // Update the entity
-            entityUpdate(pilot.getId());
+            entityManager.entityUpdate(pilot.getId());
             // check if the pilot lands in a minefield
             vDesc.addAll(doEntityDisplacementMinefieldCheck(pilot, entity.getPosition(),
                     targetCoords, entity.getElevation()));
@@ -29030,7 +28635,7 @@ public class Server implements Runnable {
                 crew.setPosition(entity.getPosition());
             }
             // Update the entity
-            entityUpdate(crew.getId());
+            entityManager.entityUpdate(crew.getId());
             // Check if the crew lands in a minefield
             vDesc.addAll(doEntityDisplacementMinefieldCheck(crew, entity.getPosition(),
                     entity.getPosition(), entity.getElevation()));
@@ -29159,7 +28764,7 @@ public class Server implements Runnable {
                 // Remove the picked-up unit from the screen.
                 e.setPosition(null);
                 // Update the loaded unit.
-                entityUpdate(e.getId());
+                entityManager.entityUpdate(e.getId());
             }
         }
     }
@@ -29185,7 +28790,7 @@ public class Server implements Runnable {
                 });
         while (sinkableTanks.hasNext()) {
             Entity e = sinkableTanks.next();
-            reportmanager.addReport(destroyEntity(e, "a watery grave", false));
+            reportmanager.addReport(entityManager.destroyEntity(e, "a watery grave", false));
         }
     }
 
@@ -29237,7 +28842,7 @@ public class Server implements Runnable {
                 entity.setStuck(false);
                 entity.setCanUnstickByJumping(false);
                 entity.setElevation(0);
-                entityUpdate(entity.getId());
+                entityManager.entityUpdate(entity.getId());
             }
             reportmanager.addReport(r);
         }
@@ -29578,7 +29183,7 @@ public class Server implements Runnable {
                 // HACK: Have to check for *pending* hit here and below.
                 && (game.getBoard().getHex(te.getPosition()).terrainLevel(Terrains.WATER) > 0)
                 && !game.getBoard().getHex(te.getPosition()).containsTerrain(Terrains.ICE)) {
-            vDesc.addAll(destroyEntity(te, "a watery grave", false));
+            vDesc.addAll(entityManager.destroyEntity(te, "a watery grave", false));
         }
         // ...while immobile WiGEs crash.
         if (((te.getMovementMode() == EntityMovementMode.WIGE) && (te.isAirborneVTOLorWIGE()))
@@ -29645,8 +29250,8 @@ public class Server implements Runnable {
 
             // if you fail by more than 7, you automatically fail
             if (fallHeight > 7) {
-                reportmanager.addReport(destroyEntity(entity, "failed assault drop", false, false));
-                entityUpdate(entity.getId());
+                reportmanager.addReport(entityManager.destroyEntity(entity, "failed assault drop", false, false));
+                entityManager.entityUpdate(entity.getId());
                 return;
             }
 
@@ -29710,12 +29315,12 @@ public class Server implements Runnable {
                         violated.getPosition(), Compute.d6() - 1);
                 if (null != targetDest) {
                     doEntityDisplacement(violated, violated.getPosition(), targetDest, null);
-                    entityUpdate(violated.getId());
+                    entityManager.entityUpdate(violated.getId());
                 } else {
                     // ack! automatic death! Tanks
                     // suffer an ammo/power plant hit.
                     // TODO : a Mech suffers a Head Blown Off crit.
-                    reportmanager.addReport(destroyEntity(entity, "impossible displacement",
+                    reportmanager.addReport(entityManager.destroyEntity(entity, "impossible displacement",
                             entity instanceof Mech, entity instanceof Mech));
                 }
             }
@@ -29767,7 +29372,7 @@ public class Server implements Runnable {
                 }
             }
         } else {
-            reportmanager.addReport(destroyEntity(en, "fell into magma", false, false));
+            reportmanager.addReport(entityManager.destroyEntity(en, "fell into magma", false, false));
         }
         reportmanager.addNewLines();
     }
@@ -29783,7 +29388,7 @@ public class Server implements Runnable {
         en.setElevation(en.getElevation() - 1);
         // if this means the entity is below the ground, then bye-bye!
         if (Math.abs(en.getElevation()) > en.getHeight()) {
-            reportmanager.addReport(destroyEntity(en, "quicksand"));
+            reportmanager.addReport(entityManager.destroyEntity(en, "quicksand"));
         }
     }
 
@@ -30624,8 +30229,8 @@ public class Server implements Runnable {
             entity.setGrappled(Entity.NONE, false);
             te.setGrappled(Entity.NONE, false);
 
-            entityUpdate(entity.getId());
-            entityUpdate(te.getId());
+            entityManager.entityUpdate(entity.getId());
+            entityManager.entityUpdate(te.getId());
         }
 
         // check the LOS of any telemissiles owned by this entity
@@ -30634,7 +30239,7 @@ public class Server implements Runnable {
             if ((null != tm) && !tm.isDestroyed()
                     && (tm instanceof TeleMissile)) {
                 ((TeleMissile) tm).setOutContact(!LosEffects.calculateLos(game, entity.getId(), tm).canSee());
-                entityUpdate(tm.getId());
+                entityManager.entityUpdate(tm.getId());
             }
         }
 
@@ -30763,7 +30368,7 @@ public class Server implements Runnable {
         unloadUnit(loader, loaded, null, 0, 0, false, true);
 
         // Need to update the loader
-        entityUpdate(loader.getId());
+        entityManager.entityUpdate(loader.getId());
 
         // Now need to add a turn for the unloaded unit, to be taken immediately
         // Turn forced to be immediate to avoid messy turn ordering issues
@@ -31083,7 +30688,7 @@ public class Server implements Runnable {
                 if (game.getPhase() == Phase.PHASE_LOUNGE) {
                     ((IBomber)fighter).setBombChoices(fs.getBombChoices());
                 }
-                entityUpdate(fighter.getId());
+                entityManager.entityUpdate(fighter.getId());
             }
         }
         send(PacketFactory.createAddEntityPacket(game, fs.getId()));
@@ -31100,7 +30705,7 @@ public class Server implements Runnable {
         Entity oldEntity = game.getEntity(entity.getId());
         if ((oldEntity != null) && ((oldEntity.getOwner() == game.getPlayer(connIndex)) || (oldEntity.getOwner().getTeam() == game.getPlayer(connIndex).getTeam()))) {
             game.setEntity(entity.getId(), entity);
-            entityUpdate(entity.getId());
+            entityManager.entityUpdate(entity.getId());
             // In the chat lounge, notify players of customizing of unit
             if (game.getPhase() == IGame.Phase.PHASE_LOUNGE) {
                 StringBuilder message = new StringBuilder();
@@ -31269,7 +30874,7 @@ public class Server implements Runnable {
             return;
         }
         e.setHiddeActivationPhase(phase);
-        entityUpdate(entityId);
+        entityManager.entityUpdate(entityId);
     }
 
     /**
@@ -31468,7 +31073,7 @@ public class Server implements Runnable {
                                 });
                         Entity lastUnitMember = lastUnit.next();
                         lastUnitMember.setUnitNumber(deletedUnitNum);
-                        entityUpdate(lastUnitMember.getId());
+                        entityManager.entityUpdate(lastUnitMember.getId());
                     } // End update-unit-number
                 } // End added-ProtoMech
 
@@ -31566,7 +31171,7 @@ public class Server implements Runnable {
             for (Entity en : game.getEntitiesVector()) {
                 en.setGameOptions();
             }
-            entityAllUpdate();
+            entityManager.entityAllUpdate();
             return true;
         }
         return false;
