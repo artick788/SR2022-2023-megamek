@@ -150,6 +150,11 @@ public class Server implements Runnable {
     private GameManager gamemanager;
     private PacketFactory packetFactory;
     private EntityManager entityManager;
+
+    public CommandHash getCommandhash() {
+        return commandhash;
+    }
+
     private CommandHash commandhash;
 
     private static class ReceivedPacket {
@@ -7035,7 +7040,7 @@ public class Server implements Runnable {
                         fellDuringMovement = true;
                     }
                     // reset mines if anything detonated
-                    resetMines();
+                    gamemanager.resetMines(game);
                 }
             }
 
@@ -8861,6 +8866,13 @@ public class Server implements Runnable {
         game.addFlare(flare);
     }
 
+    public void addSmokeToTerrain(Coords coords, int smokeType, int duration) {
+        createSmoke(coords, smokeType, duration);
+        IHex hex = game.getBoard().getHex(coords);
+        hex.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.SMOKE, smokeType));
+        gamemanager.sendChangedHex(game, coords);
+    }
+
     /**
      * deliver missile smoke
      *
@@ -8873,10 +8885,7 @@ public class Server implements Runnable {
         r.choose(smokeType == SmokeCloud.SMOKE_LIGHT);
         r.add(coords.getBoardNum());
         vPhaseReport.add(r);
-        createSmoke(coords, smokeType, 3);
-        IHex hex = game.getBoard().getHex(coords);
-        hex.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.SMOKE, smokeType));
-        gamemanager.sendChangedHex(game, coords);
+        addSmokeToTerrain(coords, smokeType, 3);
     }
 
     public void deliverSmokeGrenade(Coords coords, Vector<Report> vPhaseReport) {
@@ -8884,10 +8893,7 @@ public class Server implements Runnable {
         r.indent(2);
         r.add(coords.getBoardNum());
         vPhaseReport.add(r);
-        createSmoke(coords, SmokeCloud.SMOKE_LIGHT, 3);
-        IHex hex = game.getBoard().getHex(coords);
-        hex.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.SMOKE, SmokeCloud.SMOKE_LIGHT));
-        gamemanager.sendChangedHex(game, coords);
+        addSmokeToTerrain(coords, SmokeCloud.SMOKE_LIGHT, 3);
     }
 
     public void deliverSmokeMortar(Coords coords, Vector<Report> vPhaseReport, int duration) {
@@ -8895,10 +8901,7 @@ public class Server implements Runnable {
         r.indent(2);
         r.add(coords.getBoardNum());
         vPhaseReport.add(r);
-        createSmoke(coords, SmokeCloud.SMOKE_HEAVY, duration);
-        IHex hex = game.getBoard().getHex(coords);
-        hex.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.SMOKE, SmokeCloud.SMOKE_HEAVY));
-        gamemanager.sendChangedHex(game, coords);
+        addSmokeToTerrain(coords, SmokeCloud.SMOKE_HEAVY, duration);
     }
 
     public void deliverChaffGrenade(Coords coords, Vector<Report> vPhaseReport) {
@@ -8906,11 +8909,7 @@ public class Server implements Runnable {
         r.indent(2);
         r.add(coords.getBoardNum());
         vPhaseReport.add(r);
-        createSmoke(coords, SmokeCloud.SMOKE_CHAFF_LIGHT, 1);
-        IHex hex = game.getBoard().getHex(coords);
-        hex.addTerrain(Terrains.getTerrainFactory().createTerrain(
-                Terrains.SMOKE, SmokeCloud.SMOKE_CHAFF_LIGHT));
-        gamemanager.sendChangedHex(game, coords);
+        addSmokeToTerrain(coords, SmokeCloud.SMOKE_CHAFF_LIGHT, 1);
     }
 
     /**
@@ -8923,11 +8922,7 @@ public class Server implements Runnable {
         r.indent(2);
         r.add(coords.getBoardNum());
         vPhaseReport.add(r);
-        createSmoke(coords, SmokeCloud.SMOKE_HEAVY, 3);
-        IHex hex = game.getBoard().getHex(coords);
-        hex.addTerrain(Terrains.getTerrainFactory().createTerrain(
-                Terrains.SMOKE, SmokeCloud.SMOKE_HEAVY));
-        gamemanager.sendChangedHex(game, coords);
+        addSmokeToTerrain(coords, SmokeCloud.SMOKE_HEAVY, 3);
         for (int dir = 0; dir <= 5; dir++) {
             Coords tempcoords = coords.translated(dir);
             if (!game.getBoard().contains(tempcoords)) {
@@ -8940,11 +8935,7 @@ public class Server implements Runnable {
             r.indent(2);
             r.add(tempcoords.getBoardNum());
             vPhaseReport.add(r);
-            createSmoke(tempcoords, SmokeCloud.SMOKE_HEAVY, 3);
-            hex = game.getBoard().getHex(tempcoords);
-            hex.addTerrain(Terrains.getTerrainFactory().createTerrain(
-                    Terrains.SMOKE, SmokeCloud.SMOKE_HEAVY));
-            gamemanager.sendChangedHex(game, tempcoords);
+            addSmokeToTerrain(tempcoords, SmokeCloud.SMOKE_HEAVY, 3);
         }
     }
 
@@ -8958,10 +8949,7 @@ public class Server implements Runnable {
         r.indent(2);
         r.add(coords.getBoardNum());
         vPhaseReport.add(r);
-        createSmoke(coords, SmokeCloud.SMOKE_LI_HEAVY, 2);
-        IHex hex = game.getBoard().getHex(coords);
-        hex.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.SMOKE, SmokeCloud.SMOKE_LI_HEAVY));
-        gamemanager.sendChangedHex(game, coords);
+        addSmokeToTerrain(coords, SmokeCloud.SMOKE_LI_HEAVY, 2);
         for (int dir = 0; dir <= 5; dir++) {
             Coords tempcoords = coords.translated(dir);
             if (!game.getBoard().contains(tempcoords)) {
@@ -8974,11 +8962,7 @@ public class Server implements Runnable {
             r.indent(2);
             r.add(tempcoords.getBoardNum());
             vPhaseReport.add(r);
-            createSmoke(tempcoords, SmokeCloud.SMOKE_LI_HEAVY, 2);
-            hex = game.getBoard().getHex(tempcoords);
-            hex.addTerrain(Terrains.getTerrainFactory().createTerrain(
-                    Terrains.SMOKE, SmokeCloud.SMOKE_LI_HEAVY));
-            gamemanager.sendChangedHex(game, tempcoords);
+            addSmokeToTerrain(tempcoords, SmokeCloud.SMOKE_LI_HEAVY, 2);
         }
     }
 
@@ -9776,64 +9760,14 @@ public class Server implements Runnable {
 
             // check the direct reduction
             mf.checkReduction(0, true);
-            revealMinefield(mf);
+            gamemanager.revealMinefield(game, mf);
         }
 
         for (Minefield mf : fieldsToRemove) {
-            removeMinefield(mf);
+            gamemanager.removeMinefield(game, mf);
         }
 
         return trippedMine;
-    }
-
-    /**
-     * cycle through all mines on the board, check to see whether they should do
-     * collateral damage to other mines due to detonation, resets detonation to
-     * false, and removes any mines whose density has been reduced to zero.
-     */
-    private void resetMines() {
-        Enumeration<Coords> mineLoc = game.getMinedCoords();
-        while (mineLoc.hasMoreElements()) {
-            Coords c = mineLoc.nextElement();
-            Enumeration<Minefield> minefields = game.getMinefields(c).elements();
-            while (minefields.hasMoreElements()) {
-                Minefield minefield = minefields.nextElement();
-                if (minefield.hasDetonated()) {
-                    minefield.setDetonated(false);
-                    Enumeration<Minefield> otherMines = game.getMinefields(c).elements();
-                    while (otherMines.hasMoreElements()) {
-                        Minefield otherMine = otherMines.nextElement();
-                        if (otherMine.equals(minefield)) {
-                            continue;
-                        }
-                        int bonus = 0;
-                        if (otherMine.getDensity() > minefield.getDensity()) {
-                            bonus = 1;
-                        }
-                        if (otherMine.getDensity() < minefield.getDensity()) {
-                            bonus = -1;
-                        }
-                        otherMine.checkReduction(bonus, false);
-                    }
-                }
-            }
-            // cycle through a second time to see if any mines at these coords
-            // need to be removed
-            List<Minefield> mfRemoved = new ArrayList<>();
-            Enumeration<Minefield> mines = game.getMinefields(c).elements();
-            while (mines.hasMoreElements()) {
-                Minefield mine = mines.nextElement();
-                if (mine.getDensity() < 5) {
-                    mfRemoved.add(mine);
-                }
-            }
-            // we have to do it this way to avoid a concurrent error problem
-            for (Minefield mf : mfRemoved) {
-                removeMinefield(mf);
-            }
-            // update the mines at these coords
-            gamemanager.sendChangedMines(game, c);
-        }
     }
 
     /**
@@ -9935,24 +9869,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * Clear any detonated mines at these coords
-     */
-    private void clearDetonatedMines(Coords c, int target) {
-        Enumeration<Minefield> minefields = game.getMinefields(c).elements();
-        List<Minefield> mfRemoved = new ArrayList<>();
-        while (minefields.hasMoreElements()) {
-            Minefield minefield = minefields.nextElement();
-            if (minefield.hasDetonated() && (Compute.d6(2) >= target)) {
-                mfRemoved.add(minefield);
-            }
-        }
-        // we have to do it this way to avoid a concurrent error problem
-        for (Minefield mf : mfRemoved) {
-            removeMinefield(mf);
-        }
-    }
-
-    /**
      * Checks to see if an entity sets off any vibrabombs.
      */
     private boolean checkVibrabombs(Entity entity, Coords coords, boolean displaced,
@@ -10029,10 +9945,9 @@ public class Server implements Runnable {
                 }
             }
             for (Minefield mf : fieldsToRemove) {
-                removeMinefield(mf);
+                gamemanager.removeMinefield(game, mf);
             }
         }
-
 
         boolean boom = false;
         // Only mechs can set off vibrabombs. QuadVees should only be able to set off a
@@ -10071,14 +9986,14 @@ public class Server implements Runnable {
                 r.add(entity.getShortName(), true);
                 r.add(mf.getCoords().getBoardNum(), true);
                 vMineReport.add(r);
-                
+
                 // if the moving entity is not actually moving into the vibrabomb
                 // hex, it won't get damaged
                 Integer excludeEntityID = null;
                 if (!coords.equals(mf.getCoords())) {
                     excludeEntityID = entity.getId();
                 }
-                    
+
                 explodeVibrabomb(mf, vMineReport, false, excludeEntityID);
             }
 
@@ -10114,93 +10029,6 @@ public class Server implements Runnable {
 
         }
         return boom;
-    }
-
-    /**
-     * Removes the minefield from the game.
-     *
-     * @param mf The <code>Minefield</code> to remove
-     */
-    public void removeMinefield(Minefield mf) {
-        if (game.containsVibrabomb(mf)) {
-            game.removeVibrabomb(mf);
-        }
-        game.removeMinefield(mf);
-
-        Enumeration<IPlayer> players = game.getPlayers();
-        while (players.hasMoreElements()) {
-            IPlayer player = players.nextElement();
-            gamemanager.removeMinefield(player, mf);
-        }
-    }
-
-    /**
-     * Reveals a minefield for all players.
-     *
-     * @param mf The <code>Minefield</code> to be revealed
-     */
-    private void revealMinefield(Minefield mf) {
-        Enumeration<Team> teams = game.getTeams();
-        while (teams.hasMoreElements()) {
-            Team team = teams.nextElement();
-            gamemanager.revealMinefield(team, mf);
-        }
-    }
-
-    /**
-     * checks whether a newly set mine should be revealed to players based on
-     * LOS. If so, then it reveals the mine
-     */
-    private void checkForRevealMinefield(Minefield mf, Entity layer) {
-        Enumeration<Team> teams = game.getTeams();
-        // loop through each team and determine if they can see the mine, then
-        // loop through players on team
-        // and reveal the mine
-        while (teams.hasMoreElements()) {
-            Team team = teams.nextElement();
-            boolean canSee = false;
-
-            // the players own team can always see the mine
-            if (team.equals(game.getTeamForPlayer(game.getPlayer(mf.getPlayerId())))) {
-                canSee = true;
-            } else {
-                // need to loop through all entities on this team and find the
-                // one with the best shot of seeing
-                // the mine placement
-                int target = Integer.MAX_VALUE;
-                Iterator<Entity> entities = game.getEntities();
-                while (entities.hasNext()) {
-                    Entity en = entities.next();
-                    // are we on the right team?
-                    if (!team.equals(game.getTeamForPlayer(en.getOwner()))) {
-                        continue;
-                    }
-                    if (LosEffects.calculateLos(game, en.getId(),
-                            new HexTarget(mf.getCoords(), game.getBoard(), Targetable.TYPE_HEX_CLEAR)).canSee()) {
-                        target = 0;
-                        break;
-                    }
-                    LosEffects los = LosEffects.calculateLos(game, en.getId(), layer);
-                    if (los.canSee()) {
-                        // TODO : need to add mods
-                        ToHitData current = new ToHitData(4, "base");
-                        current.append(Compute.getAttackerMovementModifier(game, en.getId()));
-                        current.append(Compute.getTargetMovementModifier(game, layer.getId()));
-                        current.append(los.losModifiers(game));
-                        if (current.getValue() < target) {
-                            target = current.getValue();
-                        }
-                    }
-                }
-
-                if (Compute.d6(2) >= target) {
-                    canSee = true;
-                }
-            }
-            if (canSee) {
-                gamemanager.revealMinefield(team, mf);
-            }
-        }
     }
 
     /**
@@ -11328,7 +11156,7 @@ public class Server implements Runnable {
             boom = enterMinefield(entity, dest, elev, true, vPhaseReport) || boom;
         }
         if (boom) {
-            resetMines();
+            gamemanager.resetMines(game);
         }
 
         return vPhaseReport;
@@ -11506,50 +11334,6 @@ public class Server implements Runnable {
         entity.setDeployed(true);
         entityManager.entityUpdate(entity.getId());
         reportmanager.addReport(doSetLocationsExposure(entity, hex, false, entity.getElevation()));
-    }
-
-    /**
-     * process deployment of minefields
-     *
-     * @param minefields
-     */
-    private void processDeployMinefields(Vector<Minefield> minefields) {
-        int playerId = IPlayer.PLAYER_NONE;
-        for (int i = 0; i < minefields.size(); i++) {
-            Minefield mf = minefields.elementAt(i);
-            playerId = mf.getPlayerId();
-
-            game.addMinefield(mf);
-            if (mf.getType() == Minefield.TYPE_VIBRABOMB) {
-                game.addVibrabomb(mf);
-            }
-        }
-
-        IPlayer player = game.getPlayer(playerId);
-        if (null != player) {
-            int teamId = player.getTeam();
-
-            if (teamId != IPlayer.TEAM_NONE) {
-                Enumeration<Team> teams = game.getTeams();
-                while (teams.hasMoreElements()) {
-                    Team team = teams.nextElement();
-                    if (team.getId() == teamId) {
-                        Enumeration<IPlayer> players = team.getPlayers();
-                        while (players.hasMoreElements()) {
-                            IPlayer teamPlayer = players.nextElement();
-                            if (teamPlayer.getId() != player.getId()) {
-                                send(teamPlayer.getId(), new Packet(Packet.COMMAND_DEPLOY_MINEFIELDS,
-                                        minefields));
-                            }
-                            teamPlayer.addMinefields(minefields);
-                        }
-                        break;
-                    }
-                }
-            } else {
-                player.addMinefields(minefields);
-            }
-        }
     }
 
     /**
@@ -12391,10 +12175,10 @@ public class Server implements Runnable {
         reportmanager.addReport(r);
 
         if (clearMinefield(mf, ent, clear, boom, reportmanager.getvPhaseReport())) {
-            removeMinefield(mf);
+            gamemanager.removeMinefield(game, mf);
         }
         // some mines might have blown up
-        resetMines();
+        gamemanager.resetMines(game);
 
         reportmanager.addNewLines();
     }
@@ -23882,8 +23666,8 @@ public class Server implements Runnable {
             // may set off any minefields in the hex
             enterMinefield(en, crashPos, 0, true, vDesc, 7);
             // it may also clear any minefields that it detonated
-            clearDetonatedMines(crashPos, 5);
-            resetMines();
+            gamemanager.clearDetonatedMines(game, crashPos, 5);
+            gamemanager.resetMines(game);
         }
 
         return vDesc;
@@ -25441,7 +25225,7 @@ public class Server implements Runnable {
         if (game.containsMinefield(fallPos)
             && enterMinefield(entity, fallPos, newElevation, true,
                               vPhaseReport, 12)) {
-            resetMines();
+            gamemanager.resetMines(game);
         }
         // if we have to, check if the building/bridge we fell on collapses -
         // unless it's a fall into a basement,
@@ -29567,19 +29351,19 @@ public class Server implements Runnable {
             int reportId = 0;
             switch (mine.getMineType()) {
                 case Mounted.MINE_CONVENTIONAL:
-                    deliverMinefield(coords, entity.getOwnerId(), 10, entity.getId(), Minefield.TYPE_CONVENTIONAL);
+                    gamemanager.deliverMinefield(game, coords, entity.getOwnerId(), 10, entity.getId(), Minefield.TYPE_CONVENTIONAL);
                     reportId = 3500;
                     break;
                 case Mounted.MINE_VIBRABOMB:
-                    deliverMinefield(coords, entity.getOwnerId(), 10, entity.getId(), Minefield.TYPE_VIBRABOMB);
+                    gamemanager.deliverMinefield(game, coords, entity.getOwnerId(), 10, entity.getId(), Minefield.TYPE_VIBRABOMB);
                     reportId = 3505;
                     break;
                 case Mounted.MINE_ACTIVE:
-                    deliverMinefield(coords, entity.getOwnerId(), 10, entity.getId(), Minefield.TYPE_ACTIVE);
+                    gamemanager.deliverMinefield(game, coords, entity.getOwnerId(), 10, entity.getId(), Minefield.TYPE_ACTIVE);
                     reportId = 3510;
                     break;
                 case Mounted.MINE_INFERNO:
-                    deliverMinefield(coords, entity.getOwnerId(), 10, entity.getId(), Minefield.TYPE_INFERNO);
+                    gamemanager.deliverMinefield(game, coords, entity.getOwnerId(), 10, entity.getId(), Minefield.TYPE_INFERNO);
                     reportId = 3515;
                     break;
                 // TODO : command-detonated mines
@@ -30118,7 +29902,7 @@ public class Server implements Runnable {
         }
 
         // looks like mostly everything's okay
-        processDeployMinefields(minefields);
+        gamemanager.processDeployMinefields(game, minefields);
         endCurrentTurn(null);
     }
 
@@ -30696,149 +30480,5 @@ public class Server implements Runnable {
         // Clear the list of pending units and move to the next turn.
         game.resetActions();
         changeToNextTurn(connId);
-    }
-
-    public void createThunderMinefield(Minefield minefield, Coords coords, int playerId, int damage, int entityId, int type) {
-        // Create a new Thunder minefield
-        if (minefield == null) {
-            minefield = Minefield.createMinefield(coords, playerId, type, damage);
-            game.addMinefield(minefield);
-            checkForRevealMinefield(minefield, game.getEntity(entityId));
-        } else if (minefield.getDensity() < Minefield.MAX_DAMAGE) {
-            // Add to the old one
-            removeMinefield(minefield);
-            int oldDamage = minefield.getDensity();
-            damage += oldDamage;
-            damage = Math.min(damage, Minefield.MAX_DAMAGE);
-            minefield.setDensity(damage);
-            game.addMinefield(minefield);
-            checkForRevealMinefield(minefield, game.getEntity(entityId));
-        }
-    }
-
-    /**
-     * Delivers a thunder-aug shot to the targeted hex area. Thunder-Augs are 7
-     * hexes, though, so...
-     *
-     * @param damage
-     *            The per-hex density of the incoming minefield; that is, the
-     *            final value with any modifiers (such as halving and rounding
-     *            just for <em>being</em> T-Aug) already applied.
-     */
-    public void deliverThunderAugMinefield(Coords coords, int playerId, int damage, int entityId) {
-        Coords mfCoord;
-        for (int dir = 0; dir < 7; dir++) {
-            // May need to reset here for each new hex.
-            int hexDamage = damage;
-            if (dir == 6) {// The targeted hex.
-                mfCoord = coords;
-            } else {// The hex in the dir direction from the targeted hex.
-                mfCoord = coords.translated(dir);
-            }
-
-            // Only if this is on the board...
-            if (game.getBoard().contains(mfCoord)) {
-                Minefield minefield = null;
-                // Check if there already are Thunder minefields in the hex.
-                for (Minefield mf : game.getMinefields(mfCoord)) {
-                    if (mf.getType() == Minefield.TYPE_CONVENTIONAL) {
-                        minefield = mf;
-                        break;
-                    }
-                }
-
-                // Did we find a Thunder minefield in the hex?
-                // N.B. damage Thunder minefields equals the number of
-                // missiles, divided by two, rounded up.
-                if (minefield == null) {
-                    // Nope. Create a new Thunder minefield
-                    minefield = Minefield.createMinefield(mfCoord, playerId, Minefield.TYPE_CONVENTIONAL, hexDamage);
-                    game.addMinefield(minefield);
-                    checkForRevealMinefield(minefield, game.getEntity(entityId));
-                } else if (minefield.getDensity() < Minefield.MAX_DAMAGE) {
-                    // Yup. Replace the old one.
-                    removeMinefield(minefield);
-                    hexDamage += minefield.getDensity();
-
-                    // Damage from Thunder minefields are capped.
-                    hexDamage = Math.min(hexDamage, Minefield.MAX_DAMAGE);
-                    minefield.setDensity(hexDamage);
-                    game.addMinefield(minefield);
-                    checkForRevealMinefield(minefield, game.getEntity(entityId));
-                }
-            } // End coords-on-board
-        } // Handle the next coords
-    }
-
-    /**
-     * Delivers an artillery FASCAM shot to the targeted hex area.
-     */
-    public void deliverFASCAMMinefield(Coords coords, int playerId, int damage, int entityId) {
-        // Only if this is on the board...
-        if (game.getBoard().contains(coords)) {
-            Minefield minefield = null;
-            Enumeration<Minefield> minefields = game.getMinefields(coords).elements();
-            // Check if there already are Thunder minefields in the hex.
-            while (minefields.hasMoreElements()) {
-                Minefield mf = minefields.nextElement();
-                if (mf.getType() == Minefield.TYPE_CONVENTIONAL) {
-                    minefield = mf;
-                    break;
-                }
-            }
-            // Did we find a Thunder minefield in the hex?
-            createThunderMinefield(minefield, coords, playerId, damage, entityId, Minefield.TYPE_CONVENTIONAL);
-        } // End coords-on-board
-    }
-
-    public void deliverMinefield(Coords coords, int playerId, int damage, int entityId, int type) {
-        if (type == Minefield.TYPE_VIBRABOMB) {
-            throw new RuntimeException("This function call should not be used for type VIBRABOMB");
-        }
-        deliverMinefield(coords, playerId, damage, entityId, 0, type);
-    }
-    /**
-     * Adds a minefield of a certain type to the hex.
-     * @param coords   the minefield's coordinates
-     * @param playerId the deploying player's id
-     * @param damage   the amount of damage the minefield does
-     * @param entityId an entity that might spot the minefield
-     * @param type the type of the minefield:
-     *             - TYPE_CONVENTIONAL: Thunder minefield
-     *             - TYPE_INFERNO: Thunder-inferno minefield
-     *             - TYPE_ACTIVE: Thunder-active minefield
-     *             - TYPE_VIBRABOMB: Thunder-vibra minefield
-     */
-    public void deliverMinefield(Coords coords, int playerId, int damage, int entityId, int sensitivity, int type) {
-        Minefield minefield = null;
-        // Check if there already are minefields of that type in the hex.
-        for (Minefield mf : game.getMinefields(coords)) {
-            if (mf.getType() == type) {
-                minefield = mf;
-                break;
-            }
-        }
-
-        // Create a new thunder minefield
-        if (type == Minefield.TYPE_CONVENTIONAL || type == Minefield.TYPE_ACTIVE || type == Minefield.TYPE_INFERNO) {
-            createThunderMinefield(minefield, coords, playerId, damage, entityId, type);
-        } else if (type == Minefield.TYPE_VIBRABOMB) {
-            if (minefield == null) {
-                minefield = Minefield.createMinefield(coords, playerId, Minefield.TYPE_VIBRABOMB, damage, sensitivity);
-                game.addMinefield(minefield);
-                game.addVibrabomb(minefield);
-                checkForRevealMinefield(minefield, game.getEntity(entityId));
-            } else if (minefield.getDensity() < Minefield.MAX_DAMAGE) {
-                // Add to the old one
-                removeMinefield(minefield);
-                int oldDamage = minefield.getDensity();
-                damage += oldDamage;
-                damage = Math.min(damage, Minefield.MAX_DAMAGE);
-                minefield.setDensity(damage);
-                game.addMinefield(minefield);
-                game.addVibrabomb(minefield);
-                checkForRevealMinefield(minefield, game.getEntity(entityId));
-            }
-        }
     }
 }

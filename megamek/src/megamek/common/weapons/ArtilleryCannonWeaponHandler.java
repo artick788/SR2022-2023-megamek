@@ -194,7 +194,7 @@ public class ArtilleryCannonWeaponHandler extends AmmoWeaponHandler {
             return false;
         }
         if (atype.getMunitionType() == AmmoType.M_FASCAM) {
-            server.deliverFASCAMMinefield(targetPos, ae.getOwner().getId(),
+            server.getGamemanager().deliverFASCAMMinefield(game, targetPos, ae.getOwner().getId(),
                     atype.getRackSize(), ae.getId());
             return false;
         }

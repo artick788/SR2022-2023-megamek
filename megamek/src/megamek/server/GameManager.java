@@ -192,38 +192,6 @@ public class GameManager {
         sendChangedHex(game, c);
     }
 
-
-
-    /**
-     * Reveals a minefield for all players on a team.
-     *
-     * @param team The <code>team</code> whose minefield should be revealed
-     * @param mf   The <code>Minefield</code> to be revealed
-     */
-    public void revealMinefield(Team team, Minefield mf) {
-        Enumeration<IPlayer> players = team.getPlayers();
-        while (players.hasMoreElements()) {
-            IPlayer player = players.nextElement();
-            if (!player.containsMinefield(mf)) {
-                player.addMinefield(mf);
-                send(player.getId(), new Packet(Packet.COMMAND_REVEAL_MINEFIELD, mf));
-            }
-        }
-    }
-
-    /**
-     * Removes the minefield from a player.
-     *
-     * @param player The <code>Player</code> whose minefield should be removed
-     * @param mf     The <code>Minefield</code> to be removed
-     */
-    public void removeMinefield(IPlayer player, Minefield mf) {
-        if (player.containsMinefield(mf)) {
-            player.removeMinefield(mf);
-            send(player.getId(), new Packet(Packet.COMMAND_REMOVE_MINEFIELD, mf));
-        }
-    }
-
     /**
      * @return true if the unit succeeds a shelter roll
      */
@@ -415,4 +383,338 @@ public class GameManager {
                 new Object[] { Packet.COMMAND_CFR_TAG_TARGET, targetIds, targetTypes}));
     }
 
+    /**
+     * cycle through all mines on the board, check to see whether they should do
+     * collateral damage to other mines due to detonation, resets detonation to
+     * false, and removes any mines whose density has been reduced to zero.
+     */
+    public void resetMines(IGame game) {
+        Enumeration<Coords> mineLoc = game.getMinedCoords();
+        while (mineLoc.hasMoreElements()) {
+            Coords c = mineLoc.nextElement();
+            Enumeration<Minefield> minefields = game.getMinefields(c).elements();
+            while (minefields.hasMoreElements()) {
+                Minefield minefield = minefields.nextElement();
+                if (minefield.hasDetonated()) {
+                    minefield.setDetonated(false);
+                    Enumeration<Minefield> otherMines = game.getMinefields(c).elements();
+                    while (otherMines.hasMoreElements()) {
+                        Minefield otherMine = otherMines.nextElement();
+                        if (otherMine.equals(minefield)) {
+                            continue;
+                        }
+                        int bonus = 0;
+                        if (otherMine.getDensity() > minefield.getDensity()) {
+                            bonus = 1;
+                        }
+                        if (otherMine.getDensity() < minefield.getDensity()) {
+                            bonus = -1;
+                        }
+                        otherMine.checkReduction(bonus, false);
+                    }
+                }
+            }
+            // cycle through a second time to see if any mines at these coords
+            // need to be removed
+            List<Minefield> mfRemoved = new ArrayList<>();
+            Enumeration<Minefield> mines = game.getMinefields(c).elements();
+            while (mines.hasMoreElements()) {
+                Minefield mine = mines.nextElement();
+                if (mine.getDensity() < 5) {
+                    mfRemoved.add(mine);
+                }
+            }
+            // we have to do it this way to avoid a concurrent error problem
+            for (Minefield mf : mfRemoved) {
+                removeMinefield(game, mf);
+            }
+            // update the mines at these coords
+            sendChangedMines(game, c);
+        }
+    }
+
+    /**
+     * Removes the minefield from the game.
+     *
+     * @param mf The <code>Minefield</code> to remove
+     */
+    public void removeMinefield(IGame game, Minefield mf) {
+        if (game.containsVibrabomb(mf)) {
+            game.removeVibrabomb(mf);
+        }
+        game.removeMinefield(mf);
+
+        Enumeration<IPlayer> players = game.getPlayers();
+        while (players.hasMoreElements()) {
+            IPlayer player = players.nextElement();
+            removeMinefield(player, mf);
+        }
+    }
+
+    /**
+     * Removes the minefield from a player.
+     *
+     * @param player The <code>Player</code> whose minefield should be removed
+     * @param mf     The <code>Minefield</code> to be removed
+     */
+    public void removeMinefield(IPlayer player, Minefield mf) {
+        if (player.containsMinefield(mf)) {
+            player.removeMinefield(mf);
+            send(player.getId(), new Packet(Packet.COMMAND_REMOVE_MINEFIELD, mf));
+        }
+    }
+
+    /**
+     * Reveals a minefield for all players.
+     *
+     * @param mf The <code>Minefield</code> to be revealed
+     */
+    public void revealMinefield(IGame game, Minefield mf) {
+        Enumeration<Team> teams = game.getTeams();
+        while (teams.hasMoreElements()) {
+            Team team = teams.nextElement();
+            revealMinefield(team, mf);
+        }
+    }
+
+    /**
+     * Reveals a minefield for all players on a team.
+     *
+     * @param team The <code>team</code> whose minefield should be revealed
+     * @param mf   The <code>Minefield</code> to be revealed
+     */
+    public void revealMinefield(Team team, Minefield mf) {
+        Enumeration<IPlayer> players = team.getPlayers();
+        while (players.hasMoreElements()) {
+            IPlayer player = players.nextElement();
+            if (!player.containsMinefield(mf)) {
+                player.addMinefield(mf);
+                send(player.getId(), new Packet(Packet.COMMAND_REVEAL_MINEFIELD, mf));
+            }
+        }
+    }
+
+    /**
+     * checks whether a newly set mine should be revealed to players based on
+     * LOS. If so, then it reveals the mine
+     */
+    public void checkForRevealMinefield(IGame game, Minefield mf, Entity layer) {
+        Enumeration<Team> teams = game.getTeams();
+        // loop through each team and determine if they can see the mine, then
+        // loop through players on team
+        // and reveal the mine
+        while (teams.hasMoreElements()) {
+            Team team = teams.nextElement();
+            boolean canSee = false;
+
+            // the players own team can always see the mine
+            if (team.equals(game.getTeamForPlayer(game.getPlayer(mf.getPlayerId())))) {
+                canSee = true;
+            } else {
+                // need to loop through all entities on this team and find the
+                // one with the best shot of seeing
+                // the mine placement
+                int target = Integer.MAX_VALUE;
+                Iterator<Entity> entities = game.getEntities();
+                while (entities.hasNext()) {
+                    Entity en = entities.next();
+                    // are we on the right team?
+                    if (!team.equals(game.getTeamForPlayer(en.getOwner()))) {
+                        continue;
+                    }
+                    if (LosEffects.calculateLos(game, en.getId(),
+                            new HexTarget(mf.getCoords(), game.getBoard(), Targetable.TYPE_HEX_CLEAR)).canSee()) {
+                        target = 0;
+                        break;
+                    }
+                    LosEffects los = LosEffects.calculateLos(game, en.getId(), layer);
+                    if (los.canSee()) {
+                        // TODO : need to add mods
+                        ToHitData current = new ToHitData(4, "base");
+                        current.append(Compute.getAttackerMovementModifier(game, en.getId()));
+                        current.append(Compute.getTargetMovementModifier(game, layer.getId()));
+                        current.append(los.losModifiers(game));
+                        if (current.getValue() < target) {
+                            target = current.getValue();
+                        }
+                    }
+                }
+
+                if (Compute.d6(2) >= target) {
+                    canSee = true;
+                }
+            }
+            if (canSee) {
+                revealMinefield(team, mf);
+            }
+        }
+    }
+
+    /**
+     * Clear any detonated mines at these coords
+     */
+    public void clearDetonatedMines(IGame game, Coords c, int target) {
+        Enumeration<Minefield> minefields = game.getMinefields(c).elements();
+        List<Minefield> mfRemoved = new ArrayList<>();
+        while (minefields.hasMoreElements()) {
+            Minefield minefield = minefields.nextElement();
+            if (minefield.hasDetonated() && (Compute.d6(2) >= target)) {
+                mfRemoved.add(minefield);
+            }
+        }
+        // we have to do it this way to avoid a concurrent error problem
+        for (Minefield mf : mfRemoved) {
+            removeMinefield(game, mf);
+        }
+    }
+
+    /**
+     * process deployment of minefields
+     *
+     * @param minefields
+     */
+    public void processDeployMinefields(IGame game, Vector<Minefield> minefields) {
+        int playerId = IPlayer.PLAYER_NONE;
+        for (int i = 0; i < minefields.size(); i++) {
+            Minefield mf = minefields.elementAt(i);
+            playerId = mf.getPlayerId();
+
+            game.addMinefield(mf);
+            if (mf.getType() == Minefield.TYPE_VIBRABOMB) {
+                game.addVibrabomb(mf);
+            }
+        }
+
+        IPlayer player = game.getPlayer(playerId);
+        if (null != player) {
+            int teamId = player.getTeam();
+
+            if (teamId != IPlayer.TEAM_NONE) {
+                Enumeration<Team> teams = game.getTeams();
+                while (teams.hasMoreElements()) {
+                    Team team = teams.nextElement();
+                    if (team.getId() == teamId) {
+                        Enumeration<IPlayer> players = team.getPlayers();
+                        while (players.hasMoreElements()) {
+                            IPlayer teamPlayer = players.nextElement();
+                            if (teamPlayer.getId() != player.getId()) {
+                                send(teamPlayer.getId(), new Packet(Packet.COMMAND_DEPLOY_MINEFIELDS, minefields));
+                            }
+                            teamPlayer.addMinefields(minefields);
+                        }
+                        break;
+                    }
+                }
+            } else {
+                player.addMinefields(minefields);
+            }
+        }
+    }
+
+    public void createThunderMinefield(IGame game, Minefield minefield, Coords coords, int playerId, int damage, int entityId, int type) {
+        // TODO (Sam): Nog enkel chekcen of dit een vibrabomb is
+        createThunderMinefield(game, minefield, coords, playerId, damage, entityId, type, 0);
+    }
+
+    public void createThunderMinefield(IGame game, Minefield minefield, Coords coords, int playerId, int damage, int entityId, int type, int sensitivity) {
+        // Create a new Thunder minefield
+        if (minefield == null) {
+            if (type == Minefield.TYPE_VIBRABOMB) {
+                minefield = Minefield.createMinefield(coords, playerId, type, damage, sensitivity);
+            } else {
+                minefield = Minefield.createMinefield(coords, playerId, type, damage);
+            }
+            game.addMinefield(minefield);
+            if (type == Minefield.TYPE_VIBRABOMB) {
+                game.addVibrabomb(minefield);
+            }
+            checkForRevealMinefield(game, minefield, game.getEntity(entityId));
+        } else if (minefield.getDensity() < Minefield.MAX_DAMAGE) {
+            // Add to the old one
+            removeMinefield(game, minefield);
+            int oldDamage = minefield.getDensity();
+            damage += oldDamage;
+            damage = Math.min(damage, Minefield.MAX_DAMAGE);
+            minefield.setDensity(damage);
+            game.addMinefield(minefield);
+            if (type == Minefield.TYPE_VIBRABOMB) {
+                game.addVibrabomb(minefield);
+            }
+            checkForRevealMinefield(game, minefield, game.getEntity(entityId));
+        }
+    }
+
+    public void deliverMinefield(IGame game, Coords coords, int playerId, int damage, int entityId, int type) {
+        if (type == Minefield.TYPE_VIBRABOMB) {
+            throw new RuntimeException("This function call should not be used for type VIBRABOMB");
+        }
+        deliverMinefield(game, coords, playerId, damage, entityId, 0, type);
+    }
+
+    /**
+     * Adds a minefield of a certain type to the hex.
+     * @param coords   the minefield's coordinates
+     * @param playerId the deploying player's id
+     * @param damage   the amount of damage the minefield does
+     * @param entityId an entity that might spot the minefield
+     * @param type the type of the minefield:
+     *             - TYPE_CONVENTIONAL: Thunder minefield
+     *             - TYPE_INFERNO: Thunder-inferno minefield
+     *             - TYPE_ACTIVE: Thunder-active minefield
+     *             - TYPE_VIBRABOMB: Thunder-vibra minefield
+     */
+    public void deliverMinefield(IGame game, Coords coords, int playerId, int damage, int entityId, int sensitivity, int type) {
+        Minefield minefield = null;
+        // Check if there already are minefields of that type in the hex.
+        for (Minefield mf : game.getMinefields(coords)) {
+            if (mf.getType() == type) {
+                minefield = mf;
+                break;
+            }
+        }
+
+        // Create a new thunder minefield
+        if (type == Minefield.TYPE_CONVENTIONAL || type == Minefield.TYPE_ACTIVE || type == Minefield.TYPE_INFERNO) {
+            createThunderMinefield(game, minefield, coords, playerId, damage, entityId, type);
+        } else if (type == Minefield.TYPE_VIBRABOMB) {
+            createThunderMinefield(game, minefield, coords, playerId, damage, entityId, type, sensitivity);
+        }
+    }
+
+    /**
+     * Delivers a thunder-aug shot to the targeted hex area. Thunder-Augs are 7
+     * hexes, though, so...
+     *
+     * @param damage
+     *            The per-hex density of the incoming minefield; that is, the
+     *            final value with any modifiers (such as halving and rounding
+     *            just for <em>being</em> T-Aug) already applied.
+     */
+    public void deliverThunderAugMinefield(IGame game, Coords coords, int playerId, int damage, int entityId) {
+        Coords mfCoord;
+        for (int dir = 0; dir < 7; dir++) {
+            // May need to reset here for each new hex.
+            int hexDamage = damage;
+            if (dir == 6) {// The targeted hex.
+                mfCoord = coords;
+            } else {// The hex in the dir direction from the targeted hex.
+                mfCoord = coords.translated(dir);
+            }
+
+            // Only if this is on the board...
+            if (game.getBoard().contains(mfCoord)) {
+                deliverMinefield(game, mfCoord, playerId, hexDamage, entityId, Minefield.TYPE_CONVENTIONAL);
+            } // End coords-on-board
+        } // Handle the next coords
+    }
+
+    /**
+     * Delivers an artillery FASCAM shot to the targeted hex area.
+     */
+    public void deliverFASCAMMinefield(IGame game, Coords coords, int playerId, int damage, int entityId) {
+        // Only if this is on the board...
+        if (game.getBoard().contains(coords)) {
+            deliverMinefield(game, coords, playerId, damage, entityId, Minefield.TYPE_CONVENTIONAL);
+        } // End coords-on-board
+    }
 }

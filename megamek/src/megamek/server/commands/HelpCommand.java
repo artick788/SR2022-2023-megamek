@@ -53,7 +53,7 @@ public class HelpCommand extends ServerCommand {
                             + commandList());
         } else {
             // argument
-            ServerCommand command = server.getCommand(args[1]);
+            ServerCommand command = server.getCommandhash().getCommand(args[1]);
             if (command == null) {
                 server.sendServerChat(connId, "Command \"" + args[1]
                         + "\" not recognized.  Commands available: "
@@ -69,9 +69,8 @@ public class HelpCommand extends ServerCommand {
         StringBuffer commandList = new StringBuffer();
 
         ArrayList<String> cmdNames = new ArrayList<>();
-        for (Enumeration<String> i = server.getAllCommandNames(); i
-                .hasMoreElements();) {           
-            ServerCommand command = server.getCommand(i.nextElement());
+        for (Enumeration<String> i = server.getCommandhash().getAllCommandNames(); i.hasMoreElements();) {
+            ServerCommand command = server.getCommandhash().getCommand(i.nextElement());
             cmdNames.add(command.getName());
         }
         

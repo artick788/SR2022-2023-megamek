@@ -168,7 +168,7 @@ public class MissileMineClearanceHandler extends AmmoWeaponHandler {
             }
         }
         for (Minefield mf : mfRemoved) {
-            server.removeMinefield(mf);
+            server.getGamemanager().removeMinefield(server.getGame(), mf);
         }
         if (updateMinefields) {
             server.sendChangedMines(targetPos);

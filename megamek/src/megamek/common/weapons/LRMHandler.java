@@ -95,7 +95,7 @@ public class LRMHandler extends MissileWeaponHandler {
             }
             // we have to do it this way to avoid a concurrent error problem
             for (Minefield mf : mfRemoved) {
-                server.removeMinefield(mf);
+                server.getGamemanager().removeMinefield(server.getGame(), mf);
             }
             return true;
         }

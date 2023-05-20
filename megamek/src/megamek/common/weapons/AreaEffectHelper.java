@@ -321,7 +321,7 @@ public class AreaEffectHelper {
         }
         // we have to do it this way to avoid a concurrent error problem
         for (Minefield mf : mfRemoved) {
-            server.removeMinefield(mf);
+            server.getGamemanager().removeMinefield(server.getGame(), mf);
         }
     }
 
@@ -340,7 +340,6 @@ public class AreaEffectHelper {
      * @param ammo The ammo type used
      * @param coords The coordinates where the shell actually landed
      * @param isFuelAirBomb Whether we are making a fuel-air attack
-     * @param alreadyHit Whether the entity was already hit
      * @param killer The entity that initiated the attack
      * @param hex The hex, if any, where the shell landed
      * @param subjectId The ID of the entity carrying out the attack, for reporting in double blind games
