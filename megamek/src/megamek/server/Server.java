@@ -49,6 +49,7 @@ import java.util.zip.GZIPInputStream;
 import com.thoughtworks.xstream.XStream;
 
 import megamek.MegaMek;
+import megamek.client.ui.swing.DeployMinefieldDisplay;
 import megamek.common.*;
 import megamek.common.Building.BasementType;
 import megamek.common.Building.DemolitionCharge;
@@ -127,37 +128,6 @@ import megamek.common.weapons.Weapon;
 import megamek.common.weapons.WeaponHandler;
 import megamek.common.weapons.infantry.InfantryWeapon;
 import megamek.common.weapons.other.TSEMPWeapon;
-import megamek.server.commands.AddBotCommand;
-import megamek.server.commands.AllowTeamChangeCommand;
-import megamek.server.commands.AssignNovaNetServerCommand;
-import megamek.server.commands.CheckBVCommand;
-import megamek.server.commands.CheckBVTeamCommand;
-import megamek.server.commands.DefeatCommand;
-import megamek.server.commands.ExportListCommand;
-import megamek.server.commands.FixElevationCommand;
-import megamek.server.commands.HelpCommand;
-import megamek.server.commands.JoinTeamCommand;
-import megamek.server.commands.KickCommand;
-import megamek.server.commands.ListEntitiesCommand;
-import megamek.server.commands.ListSavesCommand;
-import megamek.server.commands.LoadGameCommand;
-import megamek.server.commands.LocalLoadGameCommand;
-import megamek.server.commands.LocalSaveGameCommand;
-import megamek.server.commands.NukeCommand;
-import megamek.server.commands.ResetCommand;
-import megamek.server.commands.RollCommand;
-import megamek.server.commands.RulerCommand;
-import megamek.server.commands.SaveGameCommand;
-import megamek.server.commands.SeeAllCommand;
-import megamek.server.commands.ServerCommand;
-import megamek.server.commands.ShowEntityCommand;
-import megamek.server.commands.ShowTileCommand;
-import megamek.server.commands.ShowValidTargetsCommand;
-import megamek.server.commands.SkipCommand;
-import megamek.server.commands.TeamCommand;
-import megamek.server.commands.TraitorCommand;
-import megamek.server.commands.VictoryCommand;
-import megamek.server.commands.WhoCommand;
 import megamek.server.victory.VictoryResult;
 
 /**
@@ -180,6 +150,7 @@ public class Server implements Runnable {
     private GameManager gamemanager;
     private PacketFactory packetFactory;
     private EntityManager entityManager;
+    private CommandHash commandhash;
 
     private static class ReceivedPacket {
         public int connId;
@@ -242,9 +213,6 @@ public class Server implements Runnable {
     private Hashtable<Integer, IConnection> connectionIds = new Hashtable<>();
 
     private int connectionCounter;
-
-    // commands
-    private Hashtable<String, ServerCommand> commandsHash = new Hashtable<>();
 
     // listens for and connects players
     private Thread connector;
@@ -322,7 +290,6 @@ public class Server implements Runnable {
                 }
             }
         }
-
     };
 
     public Server(String password, int port) throws IOException {
@@ -343,6 +310,7 @@ public class Server implements Runnable {
         gamemanager = new GameManager();
         reportmanager = new ReportManager();
         entityManager = new EntityManager(game, gamemanager, this);
+        commandhash = new CommandHash();
 
 
         this.metaServerUrl = metaServerUrl;
@@ -376,36 +344,7 @@ public class Server implements Runnable {
         MegaMek.getLogger().info("s: password = " + this.password);
 
         // register commands
-        registerCommand(new DefeatCommand(this));
-        registerCommand(new ExportListCommand(this));
-        registerCommand(new FixElevationCommand(this));
-        registerCommand(new HelpCommand(this));
-        registerCommand(new KickCommand(this));
-        registerCommand(new ListSavesCommand(this));
-        registerCommand(new LocalSaveGameCommand(this));
-        registerCommand(new LocalLoadGameCommand(this));
-        registerCommand(new ResetCommand(this));
-        registerCommand(new RollCommand(this));
-        registerCommand(new SaveGameCommand(this));
-        registerCommand(new LoadGameCommand(this));
-        registerCommand(new SeeAllCommand(this));
-        registerCommand(new SkipCommand(this));
-        registerCommand(new VictoryCommand(this));
-        registerCommand(new WhoCommand(this));
-        registerCommand(new TeamCommand(this));
-        registerCommand(new ShowTileCommand(this));
-        registerCommand(new ShowEntityCommand(this));
-        registerCommand(new RulerCommand(this));
-        registerCommand(new ShowValidTargetsCommand(this));
-        registerCommand(new AddBotCommand(this));
-        registerCommand(new CheckBVCommand(this));
-        registerCommand(new CheckBVTeamCommand(this));
-        registerCommand(new NukeCommand(this));
-        registerCommand(new TraitorCommand(this));
-        registerCommand(new ListEntitiesCommand(this));
-        registerCommand(new AssignNovaNetServerCommand(this));
-        registerCommand(new AllowTeamChangeCommand(this));
-        registerCommand(new JoinTeamCommand(this));
+        commandhash.registerCommands(this);
 
         // register terrain processors
         terrainProcessors.add(new FireProcessor(this));
@@ -473,20 +412,6 @@ public class Server implements Runnable {
     }
 
     /**
-     * Registers a new command in the server command table
-     */
-    private void registerCommand(ServerCommand command) {
-        commandsHash.put(command.getName(), command);
-    }
-
-    /**
-     * Returns the command associated with the specified name
-     */
-    public ServerCommand getCommand(String name) {
-        return commandsHash.get(name);
-    }
-
-    /**
      * Shuts down the server.
      */
     public void die() {
@@ -535,13 +460,6 @@ public class Server implements Runnable {
 
         // TODO : Not sure that this still needs to be here after updating to the new logging methods.
         System.out.flush();
-    }
-
-    /**
-     * Returns an enumeration of all the command names
-     */
-    public Enumeration<String> getAllCommandNames() {
-        return commandsHash.keys();
     }
 
     /**
@@ -722,7 +640,7 @@ public class Server implements Runnable {
             case Packet.COMMAND_CHAT:
                 String chat = (String) packet.getObject(0);
                 if (chat.startsWith("/")) {
-                    processCommand(connId, chat);
+                    commandhash.processCommand(connId, chat);
                 } else if (packet.getData().length > 1) {
                     connId = (int) packet.getObject(1);
                     if (connId == IPlayer.PLAYER_NONE) {
@@ -907,28 +825,6 @@ public class Server implements Runnable {
                         (SpecialHexDisplay) packet.getObject(1));
                 sendSpecialHexDisplayPackets();
                 break;
-        }
-    }
-
-    /**
-     * Process an in-game command
-     */
-    private void processCommand(int connId, String commandString) {
-        String[] args;
-        String commandName;
-        // all tokens are read as strings; if they're numbers, string-ize 'em.
-        // replaced the tokenizer with the split function.
-        args = commandString.split("\\s+");
-
-        // figure out which command this is
-        commandName = args[0].substring(1);
-
-        // process it
-        ServerCommand command = getCommand(commandName);
-        if (command != null) {
-            command.run(connId, args);
-        } else {
-            sendServerChat(connId, "Command not recognized.  Type /help for a list of commands.");
         }
     }
 
@@ -26244,12 +26140,6 @@ public class Server implements Runnable {
     }
 
     // WOR
-    public void send_Nova_Change(int Id, String net) {
-        Object[] data = {Id, net};
-        Packet packet = new Packet(Packet.COMMAND_ENTITY_NOVA_NETWORK_CHANGE, data);
-        send(packet);
-    }
-
     private void sendReport() {
         sendReport(false);
     }

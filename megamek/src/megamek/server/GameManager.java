@@ -301,6 +301,12 @@ public class GameManager {
         Server.getServerInstance().sendChat(connId, origin, message);
     }
 
+    public void send_Nova_Change(int Id, String net) {
+        Object[] data = {Id, net};
+        Packet packet = new Packet(Packet.COMMAND_ENTITY_NOVA_NETWORK_CHANGE, data);
+        send(packet);
+    }
+
     /**
      * Sends notification to clients that the specified hex has changed.
      */
