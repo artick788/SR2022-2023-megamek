@@ -437,6 +437,27 @@ public class ReportManager {
         }
     }
 
+    public Report createAndAddReport(int reportId, int subjectId, Object... contents) {
+        return createAndAddReport(reportId, subjectId, 0, 1, contents);
+    }
+
+    public Report createAndAddReport(int reportId, int subjectId, int indent, int newlines, Object... contents) {
+        Report report = new Report(reportId);
+        report.subject = subjectId;
+        report.newlines = newlines;
+        report.indent(indent);
+        for (Object content : contents) {
+            if (content instanceof Entity) {
+                report.addDesc((Entity) content);
+            } else if (content instanceof String) {
+                report.add((String) content);
+            } else {
+                report.add((int) content);
+            }
+        }
+        return report;
+    }
+
 
 
 

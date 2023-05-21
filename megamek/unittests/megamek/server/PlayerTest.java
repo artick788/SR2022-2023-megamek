@@ -12,6 +12,40 @@ import java.util.List;
 import java.util.Vector;
 
 public class PlayerTest {
+    public void createAndAddReport(int reportId, int subjectId, int indent, int newlines, Object... contents) {
+        Report report = new Report(reportId);
+        report.subject = subjectId;
+        report.newlines = newlines;
+        report.indent(indent);
+        for (Object content : contents) {
+            if (content instanceof Entity) {
+                report.addDesc((Entity) content);
+            } else if (content instanceof String) {
+                report.add((String) content);
+            } else {
+                report.add((int) content);
+            }
+        }
+        //reportmanager.addReport(report);
+    }
+
+    @Test
+    public void reportTest() {
+        Report r = new Report(4055);
+        r.subject = 40;
+        r.indent();
+        r.add("Sam");
+        r.add(20);
+
+        Player p = new Player(1, "Arthur");
+        Aero s = new Aero();
+        s.setOwner(p);
+
+        r.newlines = 0;
+
+        createAndAddReport(4055, 40, 0, 0, s);
+    }
+
     public void funct(IPlayer player) {
         player.setColour(PlayerColour.RED);
     }

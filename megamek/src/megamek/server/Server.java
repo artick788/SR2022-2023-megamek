@@ -49,7 +49,6 @@ import java.util.zip.GZIPInputStream;
 import com.thoughtworks.xstream.XStream;
 
 import megamek.MegaMek;
-import megamek.client.ui.swing.DeployMinefieldDisplay;
 import megamek.common.*;
 import megamek.common.Building.BasementType;
 import megamek.common.Building.DemolitionCharge;
@@ -147,8 +146,10 @@ public class Server implements Runnable {
         return gamemanager;
     }
 
+    // TODO (Sam): MAybe packet handler and packet factory can become one
     private GameManager gamemanager;
     private PacketFactory packetFactory;
+    private PacketHandler packetHandler;
     private EntityManager entityManager;
 
     public CommandHash getCommandhash() {
@@ -315,6 +316,7 @@ public class Server implements Runnable {
         gamemanager = new GameManager();
         reportmanager = new ReportManager();
         entityManager = new EntityManager(game, gamemanager, this);
+        packetHandler = new PacketHandler(game);
         commandhash = new CommandHash();
 
 
@@ -612,7 +614,7 @@ public class Server implements Runnable {
         // act on it
         switch (packet.getCommand()) {
             case Packet.COMMAND_CLIENT_VERSIONS:
-                receivePlayerVersion(packet, connId);
+                packetHandler.receivePlayerVersion(packet, connId);
                 break;
             case Packet.COMMAND_CLOSE_CONNECTION:
                 // We have a client going down!
@@ -640,7 +642,7 @@ public class Server implements Runnable {
                 // send(createPlayerDonePacket(connId));
                 break;
             case Packet.COMMAND_FORWARD_INITIATIVE:
-                receiveForwardIni(connId);
+                packetHandler.receiveForwardIni(connId);
                 break;
             case Packet.COMMAND_CHAT:
                 String chat = (String) packet.getObject(0);
@@ -797,7 +799,7 @@ public class Server implements Runnable {
                 receiveArtyAutoHitHexes(packet, connId);
                 break;
             case Packet.COMMAND_CUSTOM_INITIATIVE:
-                receiveCustomInit(packet, connId);
+                packetHandler.receiveCustomInit(packet, connId);
                 resetPlayersDone();
                 transmitAllPlayerDones();
                 break;
@@ -2402,7 +2404,7 @@ public class Server implements Runnable {
                 reportmanager.addReport(new Report(3000, Report.PUBLIC));
                 resolveWhatPlayersCanSeeWhatUnits();
                 resolveAllButWeaponAttacks();
-                resolveSelfDestructions();
+                reportmanager.addReport(resolveSelfDestructions());
                 reportGhostTargetRolls();
                 reportLargeCraftECCMRolls();
                 resolveOnlyWeaponAttacks();
@@ -2624,7 +2626,7 @@ public class Server implements Runnable {
     private void changeToNextTurn(int prevPlayerId) {
         boolean minefieldPhase = game.getPhase() == IGame.Phase.PHASE_DEPLOY_MINEFIELDS;
         boolean artyPhase = game.getPhase() == IGame.Phase.PHASE_SET_ARTYAUTOHITHEXES;
-        
+
         GameTurn nextTurn = null;
         Entity nextEntity = null;
         while (game.hasMoreTurns() && (null == nextEntity)) {
@@ -2634,7 +2636,7 @@ public class Server implements Runnable {
                 break;
             }
         }
-   
+
         // if there aren't any more valid turns, end the phase
         // note that some phases don't use entities
         if (((null == nextEntity) && !minefieldPhase) || ((null == nextTurn) && minefieldPhase)) {
@@ -7552,8 +7554,7 @@ public class Server implements Runnable {
             if (mechAffectedByCliff && !quadveeVehMode && isDownCliff && !isPavementStep) {
                 rollTarget = entity.getBasePilotingRoll(moveType);
                 rollTarget.append(new PilotingRollData(entity.getId(), -stepHeight - 1, "moving down a sheer cliff"));
-                if (doSkillCheckWhileMoving(entity, lastElevation,
-                        lastPos, curPos, rollTarget, true) > 0) {
+                if (doSkillCheckWhileMoving(entity, lastElevation, lastPos, curPos, rollTarget, true) > 0) {
                     reportmanager.addNewLines();
                     turnOver = true;
                     break;
@@ -8241,8 +8242,7 @@ public class Server implements Runnable {
                     if (hex.containsTerrain(Terrains.BLDG_ELEV)) {
                         Building bldg = game.getBoard().getBuildingAt(entity.getPosition());
                         entity.setElevation(hex.terrainLevel(Terrains.BLDG_ELEV));
-                        addAffectedBldg(bldg, checkBuildingCollapseWhileMoving(bldg,
-                                entity, entity.getPosition()));
+                        addAffectedBldg(bldg, checkBuildingCollapseWhileMoving(bldg, entity, entity.getPosition()));
                     } else if (entity.isLocationProhibited(entity.getPosition(), 0)
                             && !hex.hasPavement()){
                         // crash
@@ -8289,8 +8289,7 @@ public class Server implements Runnable {
                     // it can spend to stay higher during movement, but should
                     // end up at one
 
-                    entity.setElevation(Math.min(entity.getElevation(),
-                            1 + hex.maxTerrainFeatureElevation(
+                    entity.setElevation(Math.min(entity.getElevation(), 1 + hex.maxTerrainFeatureElevation(
                             game.getBoard().inAtmosphere())));
                 }
             }
@@ -12034,7 +12033,7 @@ public class Server implements Runnable {
     /*
      * Called during the weapons firing phase to initiate self destruction.
      */
-    private void resolveSelfDestructions() {
+    private Vector<Report> resolveSelfDestructions() {
         Vector<Report> vDesc = new Vector<>();
         Report r;
         for (Entity e : game.getEntitiesVector()) {
@@ -12082,7 +12081,7 @@ public class Server implements Runnable {
                 e.setSelfDestructInitiated(false);
             }
         }
-        reportmanager.addReport(vDesc);
+        return vDesc;
     }
 
     private void reportGhostTargetRolls() {
@@ -12274,8 +12273,7 @@ public class Server implements Runnable {
             return;
         }
         EquipmentType equip = mount.getType();
-        if (!(equip instanceof WeaponType)
-            || !equip.hasFlag(WeaponType.F_B_POD)) {
+        if (!(equip instanceof WeaponType) || !equip.hasFlag(WeaponType.F_B_POD)) {
             MegaMek.getLogger().error("Expecting to find an B Pod at " + podId + " on the unit, "
                     + entity.getDisplayName() + " but found " + equip.getName() + " instead!!!");
             return;
@@ -12677,19 +12675,16 @@ public class Server implements Runnable {
             if (tf <= 0) {
                 h.removeTerrain(Terrains.WOODS);
                 h.removeTerrain(Terrains.FOLIAGE_ELEV);
-                h.addTerrain(Terrains.getTerrainFactory().createTerrain(
-                        Terrains.ROUGH, 1));
+                h.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.ROUGH, 1));
                 // light converted to rough
                 r = new Report(3090, reportType);
                 r.subject = entityId;
                 vPhaseReport.add(r);
             } else if ((tf <= 50) && (level > 1)) {
                 h.removeTerrain(Terrains.WOODS);
-                h.addTerrain(Terrains.getTerrainFactory().createTerrain(
-                        Terrains.WOODS, 1));
+                h.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.WOODS, 1));
                 if (folEl != 1) {
-                    h.addTerrain(Terrains.getTerrainFactory().createTerrain(
-                            Terrains.FOLIAGE_ELEV, 2));
+                    h.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.FOLIAGE_ELEV, 2));
                 }
                 woods = h.getTerrain(Terrains.WOODS);
                 // heavy converted to light
@@ -12698,11 +12693,9 @@ public class Server implements Runnable {
                 vPhaseReport.add(r);
             } else if ((tf <= 90) && (level > 2)) {
                 h.removeTerrain(Terrains.WOODS);
-                h.addTerrain(Terrains.getTerrainFactory().createTerrain(
-                        Terrains.WOODS, 2));
+                h.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.WOODS, 2));
                 if (folEl != 1) {
-                    h.addTerrain(Terrains.getTerrainFactory().createTerrain(
-                            Terrains.FOLIAGE_ELEV, 2));
+                    h.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.FOLIAGE_ELEV, 2));
                 }
                 woods = h.getTerrain(Terrains.WOODS);
                 // ultra heavy converted to heavy
@@ -12719,19 +12712,16 @@ public class Server implements Runnable {
             if (tf < 0) {
                 h.removeTerrain(Terrains.JUNGLE);
                 h.removeTerrain(Terrains.FOLIAGE_ELEV);
-                h.addTerrain(Terrains.getTerrainFactory().createTerrain(
-                        Terrains.ROUGH, 1));
+                h.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.ROUGH, 1));
                 // light converted to rough
                 r = new Report(3091, reportType);
                 r.subject = entityId;
                 vPhaseReport.add(r);
             } else if ((tf <= 50) && (level > 1)) {
                 h.removeTerrain(Terrains.JUNGLE);
-                h.addTerrain(Terrains.getTerrainFactory().createTerrain(
-                        Terrains.JUNGLE, 1));
+                h.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.JUNGLE, 1));
                 if (folEl != 1) {
-                    h.addTerrain(Terrains.getTerrainFactory().createTerrain(
-                            Terrains.FOLIAGE_ELEV, 2));
+                    h.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.FOLIAGE_ELEV, 2));
                 }
                 jungle = h.getTerrain(Terrains.JUNGLE);
                 // heavy converted to light
@@ -12740,8 +12730,7 @@ public class Server implements Runnable {
                 vPhaseReport.add(r);
             } else if ((tf <= 90) && (level > 2)) {
                 h.removeTerrain(Terrains.JUNGLE);
-                h.addTerrain(Terrains.getTerrainFactory().createTerrain(
-                        Terrains.JUNGLE, 2));
+                h.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.JUNGLE, 2));
                 if (folEl != 1) {
                     h.addTerrain(Terrains.getTerrainFactory().createTerrain(
                             Terrains.FOLIAGE_ELEV, 2));
@@ -12799,8 +12788,7 @@ public class Server implements Runnable {
         reportmanager.addReport(new Report(4000, Report.PUBLIC));
 
         // add any pending charges
-        for (Enumeration<AttackAction> i = game.getCharges(); i
-                .hasMoreElements(); ) {
+        for (Enumeration<AttackAction> i = game.getCharges(); i.hasMoreElements(); ) {
             game.addAction(i.nextElement());
         }
         game.resetCharges();
@@ -12923,7 +12911,6 @@ public class Server implements Runnable {
         }
         return damage;
     }
-
 
     /**
      * Handle a punch attack
@@ -13478,8 +13465,7 @@ public class Server implements Runnable {
         }
 
         // Targeting a building.
-        if ((target.getTargetType() == Targetable.TYPE_BUILDING)
-            || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
+        if ((target.getTargetType() == Targetable.TYPE_BUILDING) || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
             damage += pr.damageRight;
             // The building takes the full brunt of the attack.
             r = new Report(4040);
@@ -18984,8 +18970,7 @@ public class Server implements Runnable {
 
         // Battle Armor takes full damage to each trooper from area-effect.
         if (areaSatArty && (te instanceof BattleArmor)) {
-            return damageBattleArmor(te, hit, damage, ammoExplosion, bFrag,
-                    damageIS, throughFront, underWater, nukeS2S);
+            return damageBattleArmor(te, hit, damage, ammoExplosion, bFrag, damageIS, throughFront, underWater, nukeS2S);
         }
 
         // This is good for shields if a shield absorps the hit it shouldn't
@@ -21645,8 +21630,7 @@ public class Server implements Runnable {
      * @param damageCaused     the amount of damage causing this critical.
      * @param isCapital        whether it was capital scale damage that caused critical
      */
-    public Vector<Report> applyCriticalHit(Entity en, int loc, CriticalSlot cs,
-                                           boolean secondaryEffects, int damageCaused,
+    public Vector<Report> applyCriticalHit(Entity en, int loc, CriticalSlot cs, boolean secondaryEffects, int damageCaused,
                                            boolean isCapital) {
         Vector<Report> vDesc = new Vector<>();
         Report r;
@@ -29421,58 +29405,6 @@ public class Server implements Runnable {
         gamemanager.sendChangedMines(game, coords);
     }
 
-    private void receivePlayerVersion(Packet packet, int connId) {
-        String version = (String) packet.getObject(0);
-        String clientChecksum = (String) packet.getObject(1);
-        String serverChecksum = MegaMek.getMegaMekSHA256();
-        StringBuilder buf = new StringBuilder();
-        boolean needs = false;
-        if (!version.equals(MegaMek.VERSION)) {
-            buf.append("Client/Server version mismatch. Server reports: ").append(MegaMek.VERSION)
-                    .append(", Client reports: ").append(version);
-            MegaMek.getLogger().error("Client/Server Version Mismatch -- Client: "
-                    + version + " Server: " + MegaMek.VERSION);
-            needs = true;
-        }
-        // print a message indicating client doesn't have jar file
-        if (clientChecksum == null) {
-            if (!version.equals(MegaMek.VERSION)) {
-                buf.append(System.lineSeparator()).append(System.lineSeparator());
-            }
-            buf.append("Client Checksum is null. Client may not have a jar file");
-            MegaMek.getLogger().info("Client does not have a jar file");
-            needs = true;
-            // print message indicating server doesn't have jar file
-        } else if (serverChecksum == null) {
-            if (!version.equals(MegaMek.VERSION)) {
-                buf.append(System.lineSeparator()).append(System.lineSeparator());
-            }
-            buf.append("Server Checksum is null. Server may not have a jar file");
-            MegaMek.getLogger().info("Server does not have a jar file");
-            needs = true;
-            // print message indicating a client/server checksum mismatch
-        } else if (!clientChecksum.equals(serverChecksum)) {
-            if (!version.equals(MegaMek.VERSION)) {
-                buf.append(System.lineSeparator()).append(System.lineSeparator());
-            }
-            buf.append("Client/Server checksum mismatch. Server reports: ").append(serverChecksum)
-                    .append(", Client reports: ").append(clientChecksum);
-            MegaMek.getLogger().error("Client/Server Checksum Mismatch -- Client: " + clientChecksum + " Server: " + serverChecksum);
-            needs = true;
-        }
-
-        // Now, if we need to, send message!
-        if (needs) {
-            IPlayer player = game.getPlayer(connId);
-            if (null != player) {
-                sendServerChat("For " + player.getName() + " Server reports:" + System.lineSeparator() + buf.toString());
-            }
-        } else {
-            MegaMek.getLogger().info("SUCCESS: Client/Server Version (" + version + ") and Checksum ("
-                    + clientChecksum + ") matched");
-        }
-    }
-
     /**
      * Receives a player name, sent from a pending connection, and connects that
      * connection.
@@ -29556,99 +29488,6 @@ public class Server implements Runnable {
             MegaMek.getLogger().info("s: player #" + connId + ", " + who);
             sendServerChat(who);
         } // Found the player
-    }
-
-    /**
-     * Hand over a turn to the next player. This is only possible if you haven't
-     * yet started your turn (i.e. not yet moved anything like infantry where
-     * you have to move multiple units)
-     *
-     * @param connectionId - connection id of the player sending the packet
-     */
-    private void receiveForwardIni(int connectionId) {
-        // this is the player sending the packet
-        IPlayer current = game.getPlayer(connectionId);
-
-        if (game.getTurn().getPlayerNum() != current.getId()) {
-            // this player is not the current player, so just ignore this
-            // command!
-            return;
-        }
-        // if individual initiative is active we cannot forward our initiative
-        // ever!
-        if (game.getOptions().booleanOption(OptionsConstants.RPG_INDIVIDUAL_INITIATIVE)) {
-            return;
-        }
-
-        // if the player isn't on a team, there is no next team by definition. Skip the rest.
-        Team currentPlayerTeam = game.getTeamForPlayer(current);
-        if (currentPlayerTeam == null) {
-            return;
-        }
-
-        // get the next player from the team this player is on.
-        IPlayer next = currentPlayerTeam.getNextValidPlayer(current, game);
-
-        while (!next.equals(current)) {
-            // if the chosen player is a valid player, we change the turn order and
-            // inform the clients.
-            if (game.getEntitiesOwnedBy(next) != 0 && game.getTurnForPlayer(next.getId()) != null) {
-                int currentTurnIndex = game.getTurnIndex();
-                // now look for the next occurrence of player next in the turn order
-                List<GameTurn> turns = game.getTurnVector();
-                GameTurn turn = game.getTurn();
-                // not entirely necessary. As we will also check this for the
-                // activity of the button but to be sure do it on the server too.
-                boolean isGeneralMoveTurn = !(turn instanceof GameTurn.SpecificEntityTurn)
-                        && !(turn instanceof GameTurn.UnitNumberTurn)
-                        && !(turn instanceof GameTurn.UnloadStrandedTurn);
-                if (!isGeneralMoveTurn) {
-                    // if this is not a general turn the player cannot forward his turn.
-                    return;
-                }
-
-                // if it is an EntityClassTurn we have to check make sure, that the
-                // turn it is exchanged with is the same kind of turn!
-                // in fact this requires an access function to the mask of an
-                // EntityClassTurn.
-                boolean isEntityClassTurn = (turn instanceof GameTurn.EntityClassTurn);
-                int classMask = 0;
-                if (isEntityClassTurn) {
-                    classMask = ((GameTurn.EntityClassTurn) turn).getTurnCode();
-                }
-
-                boolean switched = false;
-                int nextTurnId = 0;
-                for (int i = currentTurnIndex; i < turns.size(); i++) {
-                    // if we find a turn for the specific player, swap the current
-                    // player with the player noted there
-                    // and stop
-                    if (turns.get(i).isValid(next.getId(), game)) {
-                        nextTurnId = i;
-                        if (isEntityClassTurn && !(turns.get(i) instanceof GameTurn.EntityClassTurn)) {
-                            continue;
-                        }
-                        if (isEntityClassTurn && ((GameTurn.EntityClassTurn) turns.get(i)).getTurnCode() != classMask) {
-                            continue;
-                        }
-                        switched = true;
-                        break;
-                    }
-                }
-
-                // update turn order
-                if (switched) {
-                    game.swapTurnOrder(currentTurnIndex, nextTurnId);
-                    // update the turn packages for all players.
-                    send(PacketFactory.createTurnVectorPacket(game));
-                    send(PacketFactory.createTurnIndexPacket(game, connectionId));
-                    return;
-                }
-                // if nothing changed return without doing anything
-            }
-
-            next = currentPlayerTeam.getNextValidPlayer(next, game);
-        }
     }
 
     /**
@@ -30239,19 +30078,6 @@ public class Server implements Runnable {
         }
     }
 
-    /**
-     *
-     * @param c the packet to be processed
-     * @param connIndex the id for connection that received the packet.
-     */
-    private void receiveCustomInit(Packet c, int connIndex) {
-        // In the chat lounge, notify players of customizing of unit
-        if (game.getPhase() == IGame.Phase.PHASE_LOUNGE) {
-            IPlayer p = (IPlayer) c.getObject(0);
-            sendServerChat("" + p.getName() + " has customized initiative.");
-        }
-    }
-
     private void receiveInitiativeRerollRequest(Packet pkt, int connIndex) {
         IPlayer player = game.getPlayer(connIndex);
         if (IGame.Phase.PHASE_INITIATIVE_REPORT != game.getPhase()) {
@@ -30481,4 +30307,67 @@ public class Server implements Runnable {
         game.resetActions();
         changeToNextTurn(connId);
     }
+
+
+    // TODO (sam): Nog testen
+    HashMap<IPlayer, Integer> elo;
+    private void updateELO() {
+        Vector<IPlayer> winningPlayers = new Vector<>();
+        Vector<IPlayer> losingPlayers = new Vector<>();
+        if (game.getVictoryTeam() == IPlayer.TEAM_NONE) {
+            // Individual victory
+            IPlayer winning = game.getPlayer(game.getVictoryPlayerId());
+            if (winning != null) {
+                winningPlayers.add(winning);
+                for (IPlayer player : game.getPlayersVector()) {
+                    if (player != winning) {
+                        losingPlayers.add(player);
+                    }
+                }
+            } else {
+                //Draw
+            }
+        } else {
+            // Team victory
+            int winningTeam = game.getVictoryTeam();
+            Vector<IPlayer> players = game.getPlayersVector();
+            for (IPlayer player : players) {
+                if (game.getTeamForPlayer(player).getId() == winningTeam) {
+                    winningPlayers.add(player);
+                } else {
+                    losingPlayers.add(player);
+                }
+            }
+        }
+        updateRatings(winningPlayers, losingPlayers);
+    }
+
+    private int getPlayerRating(IPlayer player) {
+        // Retrieve player's rating from storage
+        Integer rating = elo.get(player);
+        if (rating == null) {
+            elo.put(player, 0);
+            return 0;
+        }
+        return rating;
+    }
+
+    public void updateRatings(Vector<IPlayer> winningPlayers, Vector<IPlayer> losingPlayers) {
+        for (IPlayer player : winningPlayers) {
+            int rating = getPlayerRating(player);
+            elo.put(player, rating + 1);
+        }
+
+        for (IPlayer player : losingPlayers) {
+            int rating = getPlayerRating(player);
+            elo.put(player, rating - 1);
+        }
+    }
+
+
+
+
+
+
+
 }

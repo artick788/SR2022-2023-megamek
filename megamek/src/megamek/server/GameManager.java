@@ -7,6 +7,7 @@ import megamek.common.actions.ArtilleryAttackAction;
 import megamek.common.actions.EntityAction;
 import megamek.common.actions.WeaponAttackAction;
 import megamek.common.net.Packet;
+import megamek.common.options.GameOptions;
 import megamek.common.options.OptionsConstants;
 import megamek.common.util.BoardUtilities;
 import megamek.common.util.StringUtil;
@@ -717,4 +718,6 @@ public class GameManager {
             deliverMinefield(game, coords, playerId, damage, entityId, Minefield.TYPE_CONVENTIONAL);
         } // End coords-on-board
     }
+
+
 }
