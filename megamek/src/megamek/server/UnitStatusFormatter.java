@@ -37,8 +37,7 @@ public abstract class UnitStatusFormatter {
      */
     public static String format(Entity e) {
         StringBuffer sb = new StringBuffer(2048);
-        sb.append(
-                "=============================================================")
+        sb.append("=============================================================")
                 .append(CommonConstants.NL);
         sb.append(formatHeader(e));
         sb.append("--- Armor: ").append(e.getTotalArmor()).append("/")
@@ -51,17 +50,14 @@ public abstract class UnitStatusFormatter {
                 .append(CommonConstants.NL);
         sb.append(formatArmor(e));
         if ((e instanceof Mech) || (e instanceof Protomech)) {
-            sb.append(
-                    "-------------------------------------------------------------")
+            sb.append("-------------------------------------------------------------")
                     .append(CommonConstants.NL);
             sb.append(formatCrits(e));
         }
-        sb.append(
-                "-------------------------------------------------------------")
+        sb.append("-------------------------------------------------------------")
                 .append(CommonConstants.NL);
         sb.append(formatAmmo(e));
-        sb.append(
-                "=============================================================")
+        sb.append("=============================================================")
                 .append(CommonConstants.NL);
         return sb.toString();
     }
@@ -101,8 +97,7 @@ public abstract class UnitStatusFormatter {
     private static String formatCrits(Entity e) {
         StringBuffer sb = new StringBuffer();
         for (int x = 0; x < e.locations(); x++) {
-            sb.append(StringUtil.makeLength(e.getLocationName(x), 12)).append(
-                    ": ");
+            sb.append(StringUtil.makeLength(e.getLocationName(x), 12)).append(": ");
             int nCount = 0;
             for (int y = 0; y < e.getNumberOfCriticals(x); y++) {
                 CriticalSlot cs = e.getCritical(x, y);

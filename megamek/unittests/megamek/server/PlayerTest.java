@@ -4,6 +4,7 @@ import megamek.client.ui.swing.util.PlayerColour;
 import megamek.common.*;
 import org.junit.Assert;
 import org.junit.Test;
+import sun.security.util.Debug;
 
 import java.net.InetAddress;
 import java.util.ArrayList;
@@ -12,21 +13,34 @@ import java.util.List;
 import java.util.Vector;
 
 public class PlayerTest {
-    public void createAndAddReport(int reportId, int subjectId, int indent, int newlines, Object... contents) {
+    public Report createAndAddReport(int reportId, int subjectId, int indent, int newlines, Object... contents) {
         Report report = new Report(reportId);
         report.subject = subjectId;
         report.newlines = newlines;
         report.indent(indent);
         for (Object content : contents) {
-            if (content instanceof Entity) {
-                report.addDesc((Entity) content);
-            } else if (content instanceof String) {
-                report.add((String) content);
-            } else {
-                report.add((int) content);
-            }
+            addContentToReport(report, content);
         }
-        //reportmanager.addReport(report);
+        return report;
+    }
+
+    private void addContentToReport(Report report, Object content) {
+        System.out.println("NOOOO");
+    }
+
+    private void addContentToReport(Report report, Entity entity) {
+        System.out.println("YEEES");
+        report.addDesc(entity);
+    }
+
+    private void addContentToReport(Report report, String text) {
+        System.out.println("YEEES");
+        report.add(text);
+    }
+
+    private void addContentToReport(Report report, int number) {
+        System.out.println("YEEES");
+        report.add(number);
     }
 
     @Test
@@ -43,7 +57,7 @@ public class PlayerTest {
 
         r.newlines = 0;
 
-        createAndAddReport(4055, 40, 0, 0, s);
+        createAndAddReport(4055, 40, 0, 0, 1);
     }
 
     public void funct(IPlayer player) {

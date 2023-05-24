@@ -3165,8 +3165,7 @@ public class Game implements Serializable, IGame {
         if (gameListeners == null) {
             gameListeners = new Vector<GameListener>();
         }
-        for (Enumeration<GameListener> e = gameListeners.elements(); e
-                .hasMoreElements(); ) {
+        for (Enumeration<GameListener> e = gameListeners.elements(); e.hasMoreElements(); ) {
             event.fireEvent(e.nextElement());
         }
     }

@@ -6125,11 +6125,7 @@ public abstract class Mech extends Entity {
      * @return Returns the autoEject.
      */
     public boolean isAutoEject() {
-        boolean hasEjectSeat = true;
-        if (getCockpitType() == COCKPIT_TORSO_MOUNTED
-                || hasQuirk(OptionsConstants.QUIRK_NEG_NO_EJECT)) {
-            hasEjectSeat = false;
-        }
+        boolean hasEjectSeat = getCockpitType() != COCKPIT_TORSO_MOUNTED && !hasQuirk(OptionsConstants.QUIRK_NEG_NO_EJECT);
         if (isIndustrial()) {
             // industrials can only eject when they have an ejection seat
             for (Mounted misc : miscList) {

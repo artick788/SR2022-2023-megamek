@@ -1023,7 +1023,7 @@ public class ScenarioLoader {
      * This class is used to store the ammo Adjustments it is loaded from the
      * scenario file. It contains a vector of SetAmmoTo.
      */
-    private class SetAmmoPlan {
+    private static class SetAmmoPlan {
         public final Entity entity;
         public final List<SetAmmoTo> ammoSetTo = new ArrayList<>();
         public final List<SetAmmoType> ammoSetType = new ArrayList<>();
@@ -1082,7 +1082,7 @@ public class ScenarioLoader {
      * This class is used to store the damage plan for a entity it is loaded
      * from the scenario file. It contains a vector of SpecDam.
      */
-    private class DamagePlan {
+    private static class DamagePlan {
         public final Entity entity;
         public final int nBlocks;
         public final List<SpecDam> specificDammage = new ArrayList<>();
