@@ -437,8 +437,13 @@ public class ReportManager {
         }
     }
 
-
-
-
-
+    public void addEntitiesToReport(Enumeration<Entity> entities, int reportId) {
+        if (entities.hasMoreElements()) {
+            addReport(new Report(reportId, Report.PUBLIC));
+            while (entities.hasMoreElements()) {
+                Entity entity = entities.nextElement();
+                addReport(entity.victoryReport());
+            }
+        }
+    }
 }

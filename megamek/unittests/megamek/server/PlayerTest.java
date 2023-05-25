@@ -13,6 +13,46 @@ import java.util.List;
 import java.util.Vector;
 
 public class PlayerTest {
+    // TODO (Sam): nog test schrijven
+    /*
+    @Test
+    public void idk() {
+        if (!m.isUsedThisRound()) {
+            capHeat += m.hasChargedOrChargingCapacitor() * 5;
+        }
+
+        if ((m.hasChargedOrChargingCapacitor() == 1) && !m.isUsedThisRound()) {
+            capHeat += 5;
+        }
+        if ((m.hasChargedOrChargingCapacitor() == 2) && !m.isUsedThisRound()) {
+            capHeat += 10;
+        }
+    }
+    */
+
+    @Test
+    public void changeCheck() {
+        Vector<Integer> toSort = new Vector<>();
+        toSort.add(5);
+        toSort.add(1);
+        toSort.add(10);
+        toSort.add(2);
+        toSort.add(3);
+        toSort.add(5);
+
+        toSort.sort((a, b) -> {
+            if (a > b) {
+                return -1;
+            } else if (a > b) {
+                return 1;
+            }
+            return 0;
+        });
+    }
+
+
+
+
     public Report createAndAddReport(int reportId, int subjectId, int indent, int newlines, Object... contents) {
         Report report = new Report(reportId);
         report.subject = subjectId;
