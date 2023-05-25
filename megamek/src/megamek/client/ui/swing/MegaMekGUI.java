@@ -583,7 +583,7 @@ public class MegaMekGUI  implements IPreferenceChangeListener, IMegaMekGUI {
             return;
         }
 
-        if (!server.loadGame(fc.getSelectedFile())) {
+        if (!server.getGameSaveLoader().loadGame(fc.getSelectedFile())) {
             JOptionPane.showMessageDialog(frame, Messages.getString("MegaMek.LoadGameAlert.message"),
                     Messages.getString("MegaMek.LoadGameAlert.title"), JOptionPane.ERROR_MESSAGE);
             server.die();

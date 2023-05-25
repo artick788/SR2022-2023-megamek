@@ -152,6 +152,12 @@ public class Server implements Runnable {
     private PacketHandler packetHandler;
     private EntityManager entityManager;
 
+    public GameSaveLoader getGameSaveLoader() {
+        return gameSaveLoader;
+    }
+
+    private GameSaveLoader gameSaveLoader;
+
     public CommandHash getCommandhash() {
         return commandhash;
     }
@@ -318,6 +324,7 @@ public class Server implements Runnable {
         entityManager = new EntityManager(game, gamemanager, this);
         packetHandler = new PacketHandler(game);
         commandhash = new CommandHash();
+        gameSaveLoader = new GameSaveLoader(game);
 
 
         this.metaServerUrl = metaServerUrl;
@@ -999,119 +1006,6 @@ public class Server implements Runnable {
 
         // Ensure all clients are up-to-date on player info
         transmitAllPlayerUpdates();
-    }
-
-    /**
-     * automatically save the game
-     */
-    public void autoSave() {
-        String fileName = "autosave";
-        if (PreferenceManager.getClientPreferences().stampFilenames()) {
-            fileName = StringUtil.addDateTimeStamp(fileName);
-        }
-        saveGame(fileName, game.getOptions().booleanOption(OptionsConstants.BASE_AUTOSAVE_MSG));
-    }
-
-    /**
-     * save the game and send it to the specified connection
-     *
-     * @param connId     The <code>int</code> connection id to send to
-     * @param sFile      The <code>String</code> filename to use
-     * @param sLocalPath The <code>String</code> path to the file to be used on the
-     *                   client
-     */
-    public void sendSaveGame(int connId, String sFile, String sLocalPath) {
-        saveGame(sFile, false);
-        String sFinalFile = sFile;
-        if (!sFinalFile.endsWith(".sav.gz")) {
-            if (sFinalFile.endsWith(".sav")) {
-                sFinalFile = sFile + ".gz";
-            } else {
-                sFinalFile = sFile + ".sav.gz";
-            }
-        }
-        sLocalPath = sLocalPath.replaceAll("\\|", " ");
-        String localFile = "savegames" + File.separator + sFinalFile;
-        try (InputStream in = new FileInputStream(localFile); InputStream bin = new BufferedInputStream(in)) {
-            List<Integer> data = new ArrayList<>();
-            int input;
-            while ((input = bin.read()) != -1) {
-                data.add(input);
-            }
-            send(connId, new Packet(Packet.COMMAND_SEND_SAVEGAME, new Object[]{sFinalFile, data, sLocalPath}));
-            sendChat(connId, ORIGIN, "Save game has been sent to you.");
-        } catch (Exception e) {
-            MegaMek.getLogger().error("Unable to load file: " + localFile, e);
-        }
-    }
-
-    /**
-     * save the game
-     *
-     * @param sFile    The <code>String</code> filename to use
-     * @param sendChat A <code>boolean</code> value whether or not to announce the
-     *                 saving to the server chat.
-     */
-    public void saveGame(String sFile, boolean sendChat) {
-        String sFinalFile = game.saveGame(sFile);
-        if (sendChat) {
-            sendChat("MegaMek", "Game saved to " + sFinalFile);
-        }
-    }
-
-    /**
-     * save the game
-     *
-     * @param sFile The <code>String</code> filename to use
-     */
-    public void saveGame(String sFile) {
-        saveGame(sFile, true);
-    }
-
-    /**
-     * load the game
-     *
-     * @param f
-     *            The <code>File</code> to load
-     * @param sendInfo
-     *            Determines whether the connections should be updated with
-     *            current info. This may be false if some reconnection remapping
-     *            needs to be done first.
-     * @return A <code>boolean</code> value whether or not the loading was successful
-     */
-    public boolean loadGame(File f, boolean sendInfo) {
-        MegaMek.getLogger().info("s: loading saved game file '" + f + "'");
-
-        IGame newGame;
-        try (InputStream is = new FileInputStream(f); InputStream gzi = new GZIPInputStream(is)) {
-            XStream xstream = SerializationHelper.getXStream();
-            newGame = (IGame) xstream.fromXML(gzi);
-        } catch (Exception e) {
-            MegaMek.getLogger().error("Unable to load file: " + f, e);
-            return false;
-        }
-
-        setGame(newGame);
-
-        if (!sendInfo) {
-            return true;
-        }
-
-        // update all the clients with the new game info
-        for (IConnection conn : connections) {
-            sendCurrentInfo(conn.getId());
-        }
-        return true;
-    }
-
-    /**
-     * load the game
-     *
-     * @param f The <code>File</code> to load
-     * @return A <code>boolean</code> value whether or not the loading was successful
-     */
-    public boolean loadGame(File f) {
-        return loadGame(f, true);
     }
 
     /**
@@ -2126,7 +2020,7 @@ public class Server implements Runnable {
                 entityManager.entityAllUpdate();
                 break;
             case PHASE_INITIATIVE_REPORT:
-                autoSave();
+                gameSaveLoader.autoSave();
                 // Show player BVs
                 Enumeration<IPlayer> players2 = game.getPlayers();
                 while (players2.hasMoreElements()) {
@@ -2156,7 +2050,7 @@ public class Server implements Runnable {
                 resetActivePlayersDone();
                 sendReport();
                 if (game.getOptions().booleanOption(OptionsConstants.BASE_PARANOID_AUTOSAVE)) {
-                    autoSave();
+                    gameSaveLoader.autoSave();
                 }
                 break;
             case PHASE_VICTORY:
@@ -2253,7 +2147,7 @@ public class Server implements Runnable {
             case PHASE_OFFBOARD:
                 changeToNextTurn(-1);
                 if (game.getOptions().booleanOption(OptionsConstants.BASE_PARANOID_AUTOSAVE)) {
-                    autoSave();
+                    gameSaveLoader.autoSave();
                 }
                 break;
             default:
@@ -16043,8 +15937,7 @@ public class Server implements Runnable {
                 // same effect as successful DFA
                 ae.setElevation(ae.calcElevation(aeHex, teHex, 0, false, false));
                 reportmanager.addReport(doEntityDisplacement(ae, ae.getPosition(),
-                        daa.getTargetPos(), new PilotingRollData(ae.getId(), 4,
-                                "executed death from above")));
+                        daa.getTargetPos(), new PilotingRollData(ae.getId(), 4, "executed death from above")));
             }
             return;
         }
@@ -22806,8 +22699,7 @@ public class Server implements Runnable {
                         r.subject = tank.getId();
                         reports.add(r);
                         tank.setCommanderHitPS(true);
-                    } else if (tank.hasWorkingMisc(MiscType.F_COMMAND_CONSOLE)
-                            && !tank.isUsingConsoleCommander()) {
+                    } else if (tank.hasWorkingMisc(MiscType.F_COMMAND_CONSOLE) && !tank.isUsingConsoleCommander()) {
                         r = new Report(6607);
                         r.subject = tank.getId();
                         reports.add(r);
@@ -25449,8 +25341,7 @@ public class Server implements Runnable {
      * @param useSensors A flag that determines whether sensors are allowed
      * @return A vector of the players who can see the entity
      */
-    public Vector<IPlayer> whoCanSee(Entity entity, boolean useSensors,
-            Map<EntityTargetPair, LosEffects> losCache) {
+    public Vector<IPlayer> whoCanSee(Entity entity, boolean useSensors, Map<EntityTargetPair, LosEffects> losCache) {
         if (losCache == null) {
             losCache = new HashMap<>();
         }
@@ -25631,6 +25522,19 @@ public class Server implements Runnable {
         }
     }
 
+    private boolean checkAndSetC3Network(Entity entity, Entity e) {
+        entity.setC3NetIdSelf();
+        int pos = 0;
+        while (pos < Entity.MAX_C3i_NODES) {
+            if (entity.getC3iNextUUIDAsString(pos) != null && e.getC3UUIDAsString() != null && entity.getC3iNextUUIDAsString(pos).equals(e.getC3UUIDAsString())) {
+                entity.setC3NetId(e);
+                return true;
+            }
+            pos++;
+        }
+        return false;
+    }
+
     private void relinkC3(List<Entity> entities, Entity entity) {
         // Now we relink C3/NC3/C3i to our guys! Yes, this is hackish... but, we
         // do what we must. Its just too bad we have to loop over the entire entities array..
@@ -25657,38 +25561,13 @@ public class Server implements Runnable {
                 }
 
                 // C3i Checks
-                if (entity.hasC3i() && !C3iSet) {
-                    entity.setC3NetIdSelf();
-                    int pos = 0;
-                    while (pos < Entity.MAX_C3i_NODES) {
-                        // We've found a network, join it.
-                        if ((entity.getC3iNextUUIDAsString(pos) != null)
-                                && (e.getC3UUIDAsString() != null)
-                                && entity.getC3iNextUUIDAsString(pos).equals(e.getC3UUIDAsString())) {
-                            entity.setC3NetId(e);
-                            C3iSet = true;
-                            break;
-                        }
-                        pos++;
-                    }
+                if (entity.hasC3i() && !C3iSet && checkAndSetC3Network(entity, e)) {
+                    C3iSet = true;
                 }
 
                 // NC3 Checks
-                if (entity.hasNavalC3() && !C3iSet) {
-                    entity.setC3NetIdSelf();
-                    int pos = 0;
-                    while (pos < Entity.MAX_C3i_NODES) {
-                        // We've found a network, join it.
-                        if ((entity.getNC3NextUUIDAsString(pos) != null)
-                                && (e.getC3UUIDAsString() != null)
-                                && entity.getNC3NextUUIDAsString(pos)
-                                .equals(e.getC3UUIDAsString())) {
-                            entity.setC3NetId(e);
-                            C3iSet = true;
-                            break;
-                        }
-                        pos++;
-                    }
+                if (entity.hasNavalC3() && !C3iSet && checkAndSetC3Network(entity, e)) {
+                    C3iSet = true;
                 }
             }
         }

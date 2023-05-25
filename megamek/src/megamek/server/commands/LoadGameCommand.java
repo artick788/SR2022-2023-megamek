@@ -78,7 +78,7 @@ public class LoadGameCommand extends ServerCommand {
             nameToIdMap.put(p.getName(), p.getId());
             idToNameMap.put(p.getId(), p.getName());
         }
-        if(!server.loadGame(f, false)) {
+        if(!server.getGameSaveLoader().loadGame(f, false)) {
             server.sendServerChat(f.getName() + " could not be loaded");
         } else {
             server.remapConnIds(nameToIdMap, idToNameMap);

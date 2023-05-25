@@ -54,7 +54,7 @@ public class DedicatedServer {
                 return;
             }
             if (null != saveGameFileName) {
-                dedicated.loadGame(new File(saveGameFileName));
+                dedicated.getGameSaveLoader().loadGame(new File(saveGameFileName));
             }
         } catch (AbstractCommandLineParser.ParseException e) {
             MegaMek.getLogger().error(INCORRECT_ARGUMENTS_MESSAGE + e.getMessage() + '\n'
