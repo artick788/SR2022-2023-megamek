@@ -960,7 +960,7 @@ public class HandleAttack {
             reportmanager.addReport(server.damageEntity(te, hit, damage, false, Server.DamageType.NONE,
                     false, false, throughFront));
             if (((Protomech) ae).isEDPCharged()) {
-                Report r = new Report(3701);
+                Report r = ReportFactory.createReport(3701);
                 int taserRoll = Compute.d6(2) - 2;
                 r.add(taserRoll);
                 r.newlines = 0;
@@ -1100,13 +1100,7 @@ public class HandleAttack {
         final Entity te = game.getEntity(taa.getTargetId());
 
         reportWhoAttacks(lastEntityId, pr.aaa, ae);
-
-        Report r = new Report(4110);
-        r.subject = ae.getId();
-        r.indent();
-        r.addDesc(te);
-        r.newlines = 0;
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createAttackingEntityReport(4110, ae, te));
 
         if (toHit.getValue() == TargetRoll.IMPOSSIBLE) {
             reportmanager.addReport(ReportFactory.createReport(4115, ae, toHit.getDesc()));
@@ -1164,7 +1158,7 @@ public class HandleAttack {
         rollData.addModifier(0, "thrashing at infantry");
         reportmanager.addReport(ReportFactory.createReport(4140, ae));
         final int diceRoll = Compute.d6(2);
-        r = ReportFactory.createReport(2190, ae, rollData.getValueAsString(), rollData.getDesc());
+        Report r = ReportFactory.createReport(2190, ae, rollData.getValueAsString(), rollData.getDesc());
         r.add(diceRoll);
         if (diceRoll < rollData.getValue()) {
             r.choose(false);
@@ -1203,13 +1197,7 @@ public class HandleAttack {
             // who is making the attacks
             reportmanager.addReport(ReportFactory.createReport(4005, ae));
         }
-
-        Report r = new Report(4146);
-        r.subject = ae.getId();
-        r.indent();
-        r.addDesc(te);
-        r.newlines = 0;
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createAttackingEntityReport(4146, ae, te));
 
         if (toHit.getValue() == TargetRoll.IMPOSSIBLE) {
             reportmanager.addReport(ReportFactory.createReport(4147, ae, toHit.getDesc()));
@@ -1239,28 +1227,15 @@ public class HandleAttack {
             hits += toHit.getMoS() / 3;
         }
         if ((te instanceof Infantry) && !(te instanceof BattleArmor)) {
-            r = new Report(4149);
-            r.subject = ae.getId();
-            r.add(hits);
+            reportmanager.addReport(ReportFactory.createReport(4149, ae, hits));
         } else {
-            r = new Report(4148);
-            r.subject = ae.getId();
-            r.add(hits);
-            r.add(ae.getVibroClaws());
+            reportmanager.addReport(ReportFactory.createReport(4148, ae, hits, ae.getVibroClaws()));
         }
-        r.newlines = 0;
-        reportmanager.addReport(r);
         if (glancing) {
-            r = new Report(3186);
-            r.subject = ae.getId();
-            r.newlines = 0;
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(3186, ae));
         }
         if (directBlow) {
-            r = new Report(3189);
-            r.subject = ae.getId();
-            r.newlines = 0;
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(3189, ae));
         }
         while (hits > 0) {
             // BA get hit separately by each attacking BA trooper
@@ -1625,13 +1600,7 @@ public class HandleAttack {
         // don't try this one again
         pr.pushBackResolved = true;
         reportWhoAttacks(lastEntityId, pr.aaa, ae);
-
-        Report r = new Report(4155);
-        r.subject = ae.getId();
-        r.indent();
-        r.addDesc(te);
-        r.newlines = 0;
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createAttackingEntityReport(4155, ae, te));
 
         if (toHit.getValue() == TargetRoll.IMPOSSIBLE) {
             reportmanager.addReport(ReportFactory.createReport(4160, ae, toHit.getDesc()));
@@ -1655,13 +1624,11 @@ public class HandleAttack {
             targetPushResult.pushBackResolved = true;
             // do they hit?
             if (targetPushResult.roll >= targetPushResult.toHit.getValue()) {
-                r = new Report(4165);
-                r.subject = ae.getId();
-                r.addDesc(te);
+                // TODO: are you guys sure that you have to add these descriptions multiple times?
+                Report r = ReportFactory.createAttackingEntityReport(4165, ae, te);
                 r.addDesc(te);
                 r.addDesc(ae);
-                r.add(targetPushResult.toHit.getValue());
-                r.add(targetPushResult.roll);
+                r.add(targetPushResult.toHit.getValue(), targetPushResult.roll);
                 r.addDesc(ae);
                 reportmanager.addReport(r);
                 if (ae.canFall()) {
@@ -1679,12 +1646,9 @@ public class HandleAttack {
                 return;
             }
             // report the miss
-            r = new Report(4166);
-            r.subject = ae.getId();
-            r.addDesc(te);
+            Report r = ReportFactory.createAttackingEntityReport(4166, ae, te);
             r.addDesc(ae);
-            r.add(targetPushResult.toHit.getValue());
-            r.add(targetPushResult.roll);
+            r.add(targetPushResult.toHit.getValue(), targetPushResult.roll);
             reportmanager.addReport(r);
         }
 
@@ -1706,13 +1670,11 @@ public class HandleAttack {
         if (Compute.isValidDisplacement(game, te.getId(), te.getPosition(), direction)) {
             reportmanager.addReport(ReportFactory.createReport(4170, ae));
             if (game.getBoard().contains(dest)) {
-                r = ReportFactory.createReport(4175, ae, dest.getBoardNum());
+                reportmanager.addReport(ReportFactory.createReport(4175, ae, dest.getBoardNum()));
             } else {
                 // uh-oh, pushed off board
-                r = ReportFactory.createReport(4180, ae);
+                reportmanager.addReport(ReportFactory.createReport(4180, ae));
             }
-            reportmanager.addReport(r);
-
             reportmanager.addReport(server.doEntityDisplacement(te, src, dest, pushPRD));
 
             // if push actually moved the target, attacker follows through
@@ -1752,13 +1714,7 @@ public class HandleAttack {
         final ToHitData toHit = pr.toHit;
 
         reportWhoAttacks(lastEntityId, pr.aaa, ae);
-
-        Report r = new Report(4280);
-        r.subject = ae.getId();
-        r.indent();
-        r.addDesc(te);
-        r.newlines = 0;
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createAttackingEntityReport(4280, ae, te));
 
         if (toHit.getValue() == TargetRoll.IMPOSSIBLE) {
             reportmanager.addReport(ReportFactory.createReport(4285, ae, toHit.getDesc()));
@@ -1828,13 +1784,7 @@ public class HandleAttack {
             toHit.addModifier(TargetRoll.IMPOSSIBLE, "Already Grappled");
         }
         reportWhoAttacks(lastEntityId, pr.aaa, ae);
-
-        Report r = new Report(4295);
-        r.subject = ae.getId();
-        r.indent();
-        r.addDesc(te);
-        r.newlines = 0;
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createAttackingEntityReport(4280, ae, te));
 
         if (toHit.getValue() == TargetRoll.IMPOSSIBLE) {
             reportmanager.addReport(ReportFactory.createReport(4285, ae, toHit.getDesc()));
@@ -1890,13 +1840,7 @@ public class HandleAttack {
         int roll = pr.roll;
         final ToHitData toHit = pr.toHit;
         reportWhoAttacks(lastEntityId, pr.aaa, ae);
-
-        Report r = new Report(4305);
-        r.subject = ae.getId();
-        r.indent();
-        r.addDesc(te);
-        r.newlines = 0;
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createAttackingEntityReport(4305, ae, te));
 
         if (toHit.getValue() == TargetRoll.IMPOSSIBLE) {
             reportmanager.addReport(ReportFactory.createReport(4310, ae, toHit.getDesc()));
@@ -1961,56 +1905,7 @@ public class HandleAttack {
             }
         }
 
-        // score the adjacent hexes
-        Coords[] hexes = new Coords[6];
-        int[] scores = new int[6];
-
-        IHex curHex = game.getBoard().getHex(ae.getPosition());
-        for (int i = 0; i < 6; i++) {
-            hexes[i] = ae.getPosition().translated(i);
-            scores[i] = 0;
-            IHex hex = game.getBoard().getHex(hexes[i]);
-            if (hex.containsTerrain(Terrains.MAGMA)) {
-                scores[i] += 10;
-            }
-            if (hex.containsTerrain(Terrains.WATER)) {
-                scores[i] += hex.terrainLevel(Terrains.WATER);
-            }
-            if ((curHex.surface() - hex.surface()) >= 2) {
-                scores[i] += 2 * (curHex.surface() - hex.surface());
-            }
-        }
-
-        int bestScore = 99999;
-        int best = 0;
-        int worstScore = -99999;
-        int worst = 0;
-
-        for (int i = 0; i < 6; i++) {
-            if (bestScore > scores[i]) {
-                best = i;
-                bestScore = scores[i];
-            }
-            if (worstScore < scores[i]) {
-                worst = i;
-                worstScore = scores[i];
-            }
-        }
-
-        // attacker doesn't fall, unless off a cliff
-        if (ae.isGrappleAttacker()) {
-            // move self to least dangerous hex
-            PilotingRollData psr = ae.getBasePilotingRoll();
-            psr.addModifier(TargetRoll.AUTOMATIC_SUCCESS, "break grapple");
-            reportmanager.addReport(server.doEntityDisplacement(ae, ae.getPosition(), hexes[best], psr));
-            ae.setFacing(hexes[best].direction(te.getPosition()));
-        } else {
-            // move enemy to most dangerous hex
-            PilotingRollData psr = te.getBasePilotingRoll();
-            psr.addModifier(TargetRoll.AUTOMATIC_SUCCESS, "break grapple");
-            reportmanager.addReport(server.doEntityDisplacement(te, te.getPosition(), hexes[worst], psr));
-            te.setFacing(hexes[worst].direction(ae.getPosition()));
-        }
+        scoreAdjacentHexes(ae, te);
 
         // grapple is broken
         ae.setGrappled(Entity.NONE, false);
@@ -2537,6 +2432,17 @@ public class HandleAttack {
         return false;
     }
 
+    /**
+     * checks if the given roll is a hit or not
+     * @param roll - the roll
+     * @param toHit - the toHitData
+     * @param ae - the attacking entity
+     * @param target - the target
+     * @param bldg - the building
+     * @param damage - the damage
+     * @param targetInBuilding - is the target in a building
+     * @return - true if the roll is a hit, false otherwise
+     */
     private boolean isHit(int roll, ToHitData toHit, Entity ae, Targetable target, Building bldg, int damage, boolean targetInBuilding){
         if (roll < toHit.getValue()) {
             // nope
@@ -2557,5 +2463,64 @@ public class HandleAttack {
             return false;
         }
         return false;
+    }
+
+    /**
+     * I'm going to be honest with you, I have no idea what this method does
+     * @param ae - the attacking entity
+     * @param te - the target entity
+     */
+    private void scoreAdjacentHexes(Entity ae, Entity te){
+        // score the adjacent hexes
+        Coords[] hexes = new Coords[6];
+        int[] scores = new int[6];
+
+        IHex curHex = game.getBoard().getHex(ae.getPosition());
+        for (int i = 0; i < 6; i++) {
+            hexes[i] = ae.getPosition().translated(i);
+            scores[i] = 0;
+            IHex hex = game.getBoard().getHex(hexes[i]);
+            if (hex.containsTerrain(Terrains.MAGMA)) {
+                scores[i] += 10;
+            }
+            if (hex.containsTerrain(Terrains.WATER)) {
+                scores[i] += hex.terrainLevel(Terrains.WATER);
+            }
+            if ((curHex.surface() - hex.surface()) >= 2) {
+                scores[i] += 2 * (curHex.surface() - hex.surface());
+            }
+        }
+
+        int bestScore = 99999;
+        int best = 0;
+        int worstScore = -99999;
+        int worst = 0;
+
+        for (int i = 0; i < 6; i++) {
+            if (bestScore > scores[i]) {
+                best = i;
+                bestScore = scores[i];
+            }
+            if (worstScore < scores[i]) {
+                worst = i;
+                worstScore = scores[i];
+            }
+        }
+
+        // attacker doesn't fall, unless off a cliff
+        if (ae.isGrappleAttacker()) {
+            // move self to least dangerous hex
+            PilotingRollData psr = ae.getBasePilotingRoll();
+            psr.addModifier(TargetRoll.AUTOMATIC_SUCCESS, "break grapple");
+            reportmanager.addReport(server.doEntityDisplacement(ae, ae.getPosition(), hexes[best], psr));
+            ae.setFacing(hexes[best].direction(te.getPosition()));
+        } else {
+            // move enemy to most dangerous hex
+            PilotingRollData psr = te.getBasePilotingRoll();
+            psr.addModifier(TargetRoll.AUTOMATIC_SUCCESS, "break grapple");
+            reportmanager.addReport(server.doEntityDisplacement(te, te.getPosition(), hexes[worst], psr));
+            te.setFacing(hexes[worst].direction(ae.getPosition()));
+        }
+
     }
 }

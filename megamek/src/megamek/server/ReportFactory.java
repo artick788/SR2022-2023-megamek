@@ -130,4 +130,13 @@ class ReportFactory {
         }
         return r;
     }
+
+    public static Report createAttackingEntityReport(int ID, Entity ae, Entity te){
+        Report r = new Report(ID);
+        r.subject = ae.getId();
+        r.indent();
+        r.addDesc(te);
+        r.newlines = 0;
+        return r;
+    }
 }
