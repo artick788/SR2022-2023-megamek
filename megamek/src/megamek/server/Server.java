@@ -1382,10 +1382,7 @@ public class Server implements Runnable {
                     final Entity swarmed = game.getEntity(swarmedId);
                     swarmed.setSwarmAttackerId(Entity.NONE);
                     entity.setSwarmTargetId(Entity.NONE);
-                    Report r = new Report(5165);
-                    r.subject = swarmedId;
-                    r.addDesc(swarmed);
-                    reportmanager.addReport(r);
+                    reportmanager.addReport(ReportFactory.createReport(5165, 0, swarmed));
                     entityManager.entityUpdate(swarmedId);
                 }
             }
@@ -3332,37 +3329,21 @@ public class Server implements Runnable {
                 int roll = Compute.d6(2);
 
                 // Report ziplining
-                Report r = new Report(9920);
-                r.subject = unit.getId();
-                r.addDesc(unit);
-                r.newlines = 0;
-                reportmanager.addReport(r);
+                reportmanager.addReport(ReportFactory.createReport(9920, 0, unit));
 
                 // Report TN
-                r = new Report(9921);
-                r.subject = unit.getId();
-                r.add(psr.getValue());
+                Report r = ReportFactory.createReport(9921, 0, unit, psr.getValue(), roll);
                 r.add(psr.getDesc());
-                r.add(roll);
-                r.newlines = 0;
                 reportmanager.addReport(r);
 
                 if (roll < psr.getValue()) { // Failure!
-                    r = new Report(9923);
-                    r.subject = unit.getId();
-                    r.add(psr.getValue());
-                    r.add(roll);
-                    reportmanager.addReport(r);
+                    reportmanager.addReport(ReportFactory.createReport(9923, 0, unit, psr.getValue(), roll));
 
                     HitData hit = unit.rollHitLocation(ToHitData.HIT_NORMAL, ToHitData.SIDE_FRONT);
                     hit.setIgnoreInfantryDoubleDamage(true);
                     reportmanager.addReport(damageEntity(unit, hit, 5));
                 } else { //  Report success
-                    r = new Report(9922);
-                    r.subject = unit.getId();
-                    r.add(psr.getValue());
-                    r.add(roll);
-                    reportmanager.addReport(r);
+                    reportmanager.addReport(ReportFactory.createReport(9922, unit, psr.getValue(), roll));
                 }
                 reportmanager.addNewLines();
             } else {
@@ -3416,18 +3397,11 @@ public class Server implements Runnable {
         }
 
         // okay, print the info
-        Report r = new Report(9605);
-        r.subject = entity.getId();
-        r.addDesc(entity);
-        r.add(roll.getLastPlainDesc(), true);
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(9605, entity, roll.getLastPlainDesc()));
 
         // roll
         final int diceRoll = Compute.d6(2);
-        r = new Report(9606);
-        r.subject = entity.getId();
-        r.add(roll.getValueAsString());
-        r.add(roll.getDesc());
+        Report r = ReportFactory.createReport(9606, entity, roll.getValueAsString(), roll.getDesc());
         r.add(diceRoll);
         // boolean suc;
         if (diceRoll < roll.getValue()) {
@@ -3436,12 +3410,7 @@ public class Server implements Runnable {
             int mof = roll.getValue() - diceRoll;
             int damage = 10 * (mof);
             // Report damage taken
-            r = new Report(9609);
-            r.indent();
-            r.addDesc(entity);
-            r.add(damage);
-            r.add(mof);
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(9609, 1, entity, damage, mof));
 
             int side = ToHitData.SIDE_FRONT;
             if ((entity instanceof Aero) && ((Aero) entity).isSpheroid()) {
