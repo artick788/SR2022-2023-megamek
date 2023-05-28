@@ -755,20 +755,7 @@ public class HandleAttack {
         }
 
         // Targeting a building.
-        if ((target.getTargetType() == Targetable.TYPE_BUILDING)
-                || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
-            // The building takes the full brunt of the attack.
-            reportmanager.addReport(ReportFactory.createReport(4040, ae));
-            Vector<Report> buildingReport = server.damageBuilding(bldg, damage, target.getPosition());
-            for (Report report : buildingReport) {
-                report.subject = ae.getId();
-            }
-            reportmanager.addReport(buildingReport);
-
-            // Damage any infantry in the hex.
-            reportmanager.addReport(server.damageInfantryIn(bldg, damage, target.getPosition()));
-
-            // And we're done!
+        if (isTargetBuilding(target, ae, bldg, damage)) {
             return;
         }
 
@@ -915,18 +902,7 @@ public class HandleAttack {
         // Targeting a building.
         if ((target.getTargetType() == Targetable.TYPE_BUILDING) || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
             damage += pr.damageRight;
-            // The building takes the full brunt of the attack.
-            reportmanager.addReport(ReportFactory.createReport(4040, ae));
-            Vector<Report> buildingReport = server.damageBuilding(bldg, damage, target.getPosition());
-            for (Report report : buildingReport) {
-                report.subject = ae.getId();
-            }
-            reportmanager.addReport(buildingReport);
-
-            // Damage any infantry in the hex.
-            reportmanager.addReport(server.damageInfantryIn(bldg, damage, target.getPosition()));
-
-            // And we're done!
+            targetBuilding(target, ae, bldg, damage);
             return;
         }
 
@@ -1034,20 +1010,7 @@ public class HandleAttack {
         }
 
         // Targeting a building.
-        if ((target.getTargetType() == Targetable.TYPE_BUILDING)
-                || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
-            // The building takes the full brunt of the attack.
-            reportmanager.addReport(ReportFactory.createReport(4040, ae));
-            Vector<Report> buildingReport = server.damageBuilding(bldg, damage, target.getPosition());
-            for (Report report : buildingReport) {
-                report.subject = ae.getId();
-            }
-            reportmanager.addReport(buildingReport);
-
-            // Damage any infantry in the hex.
-            reportmanager.addReport(server.damageInfantryIn(bldg, damage, target.getPosition()));
-
-            // And we're done!
+        if (isTargetBuilding(target, ae, bldg, damage)) {
             return;
         }
 
@@ -1560,19 +1523,7 @@ public class HandleAttack {
         }
 
         // Targeting a building.
-        if ((target.getTargetType() == Targetable.TYPE_BUILDING)
-                || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
-            // The building takes the full brunt of the attack.
-            reportmanager.addReport(ReportFactory.createReport(4040));
-            Vector<Report> buildingReport = server.damageBuilding(bldg, damage, target.getPosition());
-            for (Report report : buildingReport) {
-                report.subject = ae.getId();
-            }
-            reportmanager.addReport(buildingReport);
-
-            // Damage any infantry in the hex.
-            reportmanager.addReport(server.damageInfantryIn(bldg, damage, target.getPosition()));
-
+        if (isTargetBuilding(target, ae, bldg, damage)){
             if(caa.isZweihandering()) {
                 ArrayList<Integer> criticalLocs = new ArrayList<>();
                 criticalLocs.add(caa.getClub().getLocation());
@@ -2252,18 +2203,8 @@ public class HandleAttack {
             // move attacker to side hex
             reportmanager.addReport(server.doEntityDisplacement(ae, src, dest, null));
         } else if ((target.getTargetType() == Targetable.TYPE_BUILDING)
-                || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) { // Targeting
-            // a building.
-            // The building takes the full brunt of the attack.
-            reportmanager.addReport(ReportFactory.createReport(4040, ae));
-            Vector<Report> buildingReport = server.damageBuilding(bldg, damage, target.getPosition());
-            for (Report report : buildingReport) {
-                report.subject = ae.getId();
-            }
-            reportmanager.addReport(buildingReport);
-
-            // Damage any infantry in the hex.
-            reportmanager.addReport(server.damageInfantryIn(bldg, damage, target.getPosition()));
+                || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) { // Targeting a building.
+            targetBuilding(target, ae, bldg, damage);
 
             // Apply damage to the attacker.
             int toAttacker = ChargeAttackAction.getDamageTakenBy(ae, bldg, target.getPosition());
@@ -2362,18 +2303,8 @@ public class HandleAttack {
             // attacker must make a control roll
             game.addControlRoll(new PilotingRollData(ae.getId(), 0, "missed ramming attack"));
         } else if ((target.getTargetType() == Targetable.TYPE_BUILDING)
-                || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) { // Targeting
-            // a building.
-            // The building takes the full brunt of the attack.
-            reportmanager.addReport(ReportFactory.createReport(4040, ae));
-            Vector<Report> buildingReport = server.damageBuilding(bldg, damage, target.getPosition());
-            for (Report report : buildingReport) {
-                report.subject = ae.getId();
-            }
-            reportmanager.addReport(buildingReport);
-
-            // Damage any infantry in the hex.
-            reportmanager.addReport(server.damageInfantryIn(bldg, damage, target.getPosition()));
+                || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) { // Targeting a building.
+            targetBuilding(target, ae, bldg, damage);
 
             // Apply damage to the attacker.
             int toAttacker = AirmechRamAttackAction.getDamageTakenBy(ae, target, ae.delta_distance);
@@ -2624,10 +2555,27 @@ public class HandleAttack {
         }
     }
 
+    /**
+     * checks if the target is null or if the target is an entity and if the entity is destroyed, doomed or dead
+     * if so, add a report to the reportmanager and return false
+     * @param target - the target
+     * @param te - the target entity
+     * @param ae - the attacking entity
+     * @return - true if the target is not null and if the target is an entity and if the entity is not destroyed, doomed or dead
+     */
     private boolean doBother(Targetable target, Entity te, Entity ae){
         return doBother(target, te, ae, 4190);
     }
 
+    /**
+     * checks if the target is null or if the target is an entity and if the entity is destroyed, doomed or dead
+     * if so, add a report to the reportmanager and return false
+     * @param target - the target
+     * @param te - the target entity
+     * @param ae - the attacking entity
+     * @param reportID - the reportID to add to the reportmanager
+     * @return - true if the target is not null and if the target is an entity and if the entity is not destroyed, doomed or dead
+     */
     private boolean doBother(Targetable target, Entity te, Entity ae, int reportID){
         if ((target == null)
                 || ((target.getTargetType() == Targetable.TYPE_ENTITY) && (te.isDestroyed()
@@ -2638,5 +2586,25 @@ public class HandleAttack {
         return true;
     }
 
+    private void targetBuilding(Targetable target, Entity ae, Building bldg, int damage){
+        // The building takes the full brunt of the attack.
+        reportmanager.addReport(ReportFactory.createReport(4040, ae));
+        Vector<Report> buildingReport = server.damageBuilding(bldg, damage, target.getPosition());
+        for (Report report : buildingReport) {
+            report.subject = ae.getId();
+        }
+        reportmanager.addReport(buildingReport);
 
+        // Damage any infantry in the hex.
+        reportmanager.addReport(server.damageInfantryIn(bldg, damage, target.getPosition()));
+    }
+
+    private boolean isTargetBuilding(Targetable target, Entity ae, Building bldg, int damage){
+        if ((target.getTargetType() == Targetable.TYPE_BUILDING)
+                || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
+            targetBuilding(target, ae, bldg, damage);
+            return true;
+        }
+        return false;
+    }
 }
