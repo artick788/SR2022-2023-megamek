@@ -8674,7 +8674,7 @@ public class Server implements Runnable {
                     r = new Report(1242);
                     r.subject = te.getId();
                     r.indent(2);
-                    vPhaseReport.add(r);
+                    vPhaseReport.add(ReportFactory.createReport(1242, 2, te));
                 } else if (te instanceof Protomech) {
                     te.heatFromExternal += missiles;
                     while (te.heatFromExternal >= 3) {
@@ -8682,20 +8682,14 @@ public class Server implements Runnable {
                         HitData hit = te.rollHitLocation(ToHitData.HIT_NORMAL, ToHitData.SIDE_FRONT);
                         if (hit.getLocation() == Protomech.LOC_NMISS) {
                             Protomech proto = (Protomech) te;
-                            r = new Report(6035);
-                            r.subject = te.getId();
-                            r.indent(2);
+                            r = ReportFactory.createReport(6035, 2, te);
                             if (proto.isGlider()) {
                                 r.messageId = 6036;
                                 proto.setWingHits(proto.getWingHits() + 1);
                             }
                             vPhaseReport.add(r);
                         } else {
-                            r = new Report(6690);
-                            r.subject = te.getId();
-                            r.indent(2);
-                            r.add(te.getLocationName(hit));
-                            vPhaseReport.add(r);
+                            vPhaseReport.add(ReportFactory.createReport(6690, 2, te, te.getLocationName(hit)));
                             te.destroyLocation(hit.getLocation());
                             // Handle ProtoMech pilot damage
                             // due to location destruction
@@ -8715,11 +8709,7 @@ public class Server implements Runnable {
                     }
                 } else if (te instanceof BattleArmor) {
                     if (((BattleArmor) te).isFireResistant()) {
-                        r = new Report(3395);
-                        r.indent(2);
-                        r.subject = te.getId();
-                        r.addDesc(te);
-                        vPhaseReport.add(r);
+                        vPhaseReport.add(ReportFactory.createReport(3395, 2, te));
                         return vPhaseReport;
                     }
                     te.heatFromExternal += missiles;
@@ -8735,20 +8725,11 @@ public class Server implements Runnable {
                     if (te.getInternal(hit) > (3 * missiles)) {
                         // internal structure absorbs all damage
                         te.setInternal(te.getInternal(hit) - (3 * missiles), hit);
-                        r = new Report(6065);
-                        r.addDesc(te);
-                        r.add(3 * missiles);
-                        r.indent(2);
+                        r = ReportFactory.createReport(6065, 2, te, 3 * missiles);
                         r.add(te.getLocationAbbr(hit));
-                        r.newlines = 0;
-                        r.subject = te.getId();
                         vPhaseReport.add(r);
                         Report.addNewline(vPhaseReport);
-                        r = new Report(6095);
-                        r.add(te.getInternal(hit));
-                        r.subject = te.getId();
-                        r.indent(3);
-                        vPhaseReport.add(r);
+                        vPhaseReport.add(ReportFactory.createReport(6095, 3, te, te.getInternal(hit)));
                     } else {
                         vPhaseReport.addAll(entityManager.destroyEntity(te, "damage", false));
                         game.creditKill(te, ae);
@@ -8854,12 +8835,8 @@ public class Server implements Runnable {
                     }
 
                     // Clear the minefield
-                    r = new Report(2158);
-                    r.subject = entity.getId();
-                    r.add(entity.getShortName(), true);
-                    r.add(Minefield.getDisplayableName(mf.getType()), true);
+                    r = ReportFactory.createReport(2158, 1, entity, entity.getShortName(), Minefield.getDisplayableName(mf.getType()));
                     r.add(mf.getCoords().getBoardNum(), true);
-                    r.indent();
                     vMineReport.add(r);
                     fieldsToRemove.add(mf);
 
@@ -8867,12 +8844,8 @@ public class Server implements Runnable {
                     int remainingAV = minesweeper.getArmorValue() - 6;
                     minesweeper.setArmorValue(Math.max(remainingAV, 0));
 
-                    r = new Report(2161);
-                    r.indent(2);
-                    r.subject = entity.getId();
-                    r.add(entity.getShortName(), true);
-                    r.add(6);
-                    r.add(Math.max(remainingAV, 0));
+                    r = ReportFactory.createReport(2161, 2, entity, entity.getShortName());
+                    r.add(6, Math.max(remainingAV, 0));
                     vMineReport.add(r);
 
                     if (remainingAV <= 0) {
@@ -8881,11 +8854,7 @@ public class Server implements Runnable {
                     // Check for damage transfer
                     if (remainingAV < 0) {
                         int damage = Math.abs(remainingAV);
-                        r = new Report(2162);
-                        r.indent(2);
-                        r.subject = entity.getId();
-                        r.add(damage, true);
-                        vMineReport.add(r);
+                        vMineReport.add(ReportFactory.createReport(2162, 2, entity, damage));
 
                         // Damage is dealt to the location of minesweeper
                         HitData hit = new HitData(minesweeper.getLocation());
@@ -8901,9 +8870,7 @@ public class Server implements Runnable {
                 } else {
                     // Report miss
                     if (game.doBlind()) {
-                        r = new Report(5542);
-                        r.player = mf.getPlayerId();
-                        vMineReport.add(r);
+                        vMineReport.add(ReportFactory.createPlayerReport(5542, mf.getPlayerId()));
                     }
                 }
             }
@@ -8934,31 +8901,22 @@ public class Server implements Runnable {
 
             // Report minefield roll
             if (game.doBlind()) { // Only do if DB, otherwise all players will see
-                r = new Report(2151);
-                r.player = mf.getPlayerId();
-                r.add(Minefield.getDisplayableName(mf.getType()));
-                r.add(mf.getCoords().getBoardNum());
-                r.add(target);
-                r.add(roll);
-                r.newlines = 0;
+                r = ReportFactory.createPlayerReport(2151, mf.getPlayerId(), Minefield.getDisplayableName(mf.getType()), mf.getCoords().getBoardNum());
+                r.add(target, roll);
                 vMineReport.add(r);
             }
 
             if (roll < target) {
                 // Report miss
                 if (game.doBlind()) {
-                    r = new Report(2217);
-                    r.player = mf.getPlayerId();
-                    vMineReport.add(r);
+                    vMineReport.add(ReportFactory.createPlayerReport(2217, mf.getPlayerId()));
                 }
                 continue;
             }
 
             // Report hit
             if (game.doBlind()) {
-                r = new Report(2270);
-                r.player = mf.getPlayerId();
-                vMineReport.add(r);
+                vMineReport.add(ReportFactory.createPlayerReport(2270, mf.getPlayerId()));
             }
 
             // apply damage
@@ -8967,20 +8925,10 @@ public class Server implements Runnable {
             mf.setDetonated(true);
             if (mf.getType() == Minefield.TYPE_INFERNO) {
                 // report hitting an inferno mine
-                r = new Report(2155);
-                r.subject = entity.getId();
-                r.add(entity.getShortName(), true);
-                r.add(mf.getCoords().getBoardNum(), true);
-                r.indent();
-                vMineReport.add(r);
+                vMineReport.add(ReportFactory.createReport(2155, entity, entity.getShortName(), mf.getCoords().getBoardNum()));
                 vMineReport.addAll(deliverInfernoMissiles(entity, entity, mf.getDensity() / 2));
             } else {
-                r = new Report(2150);
-                r.subject = entity.getId();
-                r.add(entity.getShortName(), true);
-                r.add(mf.getCoords().getBoardNum(), true);
-                r.indent();
-                vMineReport.add(r);
+                vMineReport.add(ReportFactory.createReport(2150, 1, entity, entity.getShortName(), mf.getCoords().getBoardNum()));
                 int damage = mf.getDensity();
                 while (damage > 0) {
                     int cur_damage = Math.min(5, damage);
@@ -9054,23 +9002,15 @@ public class Server implements Runnable {
         Report r;
         int roll = Compute.d6(2);
         if (roll >= target) {
-            r = new Report(2250);
-            r.subject = en.getId();
-            r.add(Minefield.getDisplayableName(mf.getType()));
-            r.add(target);
-            r.add(roll);
-            r.indent(indent);
+            r = ReportFactory.createReport(2250, indent, en, Minefield.getDisplayableName(mf.getType()));
+            r.add(target, roll);
             //vClearReport.add(r);
             reportmanager.addReport(r);
             return true;
         } else if (roll <= botch) {
             // TODO : detonate the minefield
-            r = new Report(2255);
-            r.subject = en.getId();
-            r.indent(indent);
-            r.add(Minefield.getDisplayableName(mf.getType()));
-            r.add(target);
-            r.add(roll);
+            r = ReportFactory.createReport(2255, indent, en, Minefield.getDisplayableName(mf.getType()));
+            r.add(target, roll);
             vClearReport.add(r);
             // The detonation damages any units that were also attempting to
             // clear mines in the same hex
@@ -9100,12 +9040,8 @@ public class Server implements Runnable {
             }
         } else {
             // failure
-            r = new Report(2260);
-            r.subject = en.getId();
-            r.indent(indent);
-            r.add(Minefield.getDisplayableName(mf.getType()));
-            r.add(target);
-            r.add(roll);
+            r = ReportFactory.createReport(2260, indent, en, Minefield.getDisplayableName(mf.getType()));
+            r.add(target, roll);
             vClearReport.add(r);
         }
         return false;
@@ -9141,25 +9077,15 @@ public class Server implements Runnable {
                 // automatically clear the minefield
                 if (Math.abs(mass - mf.getSetting()) < 10) {
                     // Clear the minefield
-                    Report r = new Report(2158);
-                    r.subject = entity.getId();
-                    r.add(entity.getShortName(), true);
-                    r.add(Minefield.getDisplayableName(mf.getType()), true);
-                    r.add(mf.getCoords().getBoardNum(), true);
-                    r.indent();
-                    vMineReport.add(r);
+                    vMineReport.add(ReportFactory.createReport(2158, 1, entity, entity.getShortName(), Minefield.getDisplayableName(mf.getType()), mf.getCoords().getBoardNum()));
                     fieldsToRemove.add(mf);
 
                     // Handle armor value damage
                     int remainingAV = minesweeper.getArmorValue() - 10;
                     minesweeper.setArmorValue(Math.max(remainingAV, 0));
 
-                    r = new Report(2161);
-                    r.indent(2);
-                    r.subject = entity.getId();
-                    r.add(entity.getShortName(), true);
-                    r.add(10);
-                    r.add(Math.max(remainingAV, 0));
+                    Report r = ReportFactory.createReport(2161, 2, entity, entity.getShortName());
+                    r.add(10, Math.max(remainingAV, 0));
                     vMineReport.add(r);
 
                     if (remainingAV <= 0) {
@@ -9168,11 +9094,7 @@ public class Server implements Runnable {
                     // Check for damage transfer
                     if (remainingAV < 0) {
                         int damage = Math.abs(remainingAV);
-                        r = new Report(2162);
-                        r.indent(2);
-                        r.subject = entity.getId();
-                        r.add(damage, true);
-                        vMineReport.add(r);
+                        vMineReport.add(ReportFactory.createReport(2162, 2, entity, damage));
 
                         // Damage is dealt to the location of minesweeper
                         HitData hit = new HitData(minesweeper.getLocation());
@@ -9223,11 +9145,7 @@ public class Server implements Runnable {
             int actualDistance = coords.distance(mf.getCoords());
 
             if (actualDistance <= effectiveDistance) {
-                Report r = new Report(2156);
-                r.subject = entity.getId();
-                r.add(entity.getShortName(), true);
-                r.add(mf.getCoords().getBoardNum(), true);
-                vMineReport.add(r);
+                vMineReport.add(ReportFactory.createReport(2156, entity, entity.getShortName(), mf.getCoords().getBoardNum()));
 
                 // if the moving entity is not actually moving into the vibrabomb
                 // hex, it won't get damaged
@@ -9243,10 +9161,7 @@ public class Server implements Runnable {
             // the movement.
             if (!displaced && (actualDistance == 0)) {
                 // report getting hit by vibrabomb
-                Report r = new Report(2160);
-                r.subject = entity.getId();
-                r.add(entity.getShortName(), true);
-                vMineReport.add(r);
+                vMineReport.add(ReportFactory.createReport(2160, entity, entity.getShortName()));
                 int damage = mf.getDensity();
                 while (damage > 0) {
                     int cur_damage = Math.min(5, damage);
@@ -9292,27 +9207,18 @@ public class Server implements Runnable {
             // If it's set, and the target has not yet moved,
             // it doesn't get damaged.
             if (!entity.isDone() && game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_NO_PREMOVE_VIBRA)) {
-                r = new Report(2157);
-                r.subject = entity.getId();
-                r.add(entity.getShortName(), true);
-                vBoomReport.add(r);
+                vBoomReport.add(ReportFactory.createReport(2157, entity, entity.getShortName()));
                 continue;
             }
             
             // the "currently moving entity" may not be in the same hex, so it needs to be excluded
             if ((entityToExclude != null) && (entity.getId() == entityToExclude)) {
                 // report not hitting vibrabomb
-                r = new Report(2157);
-                r.subject = entity.getId();
-                r.add(entity.getShortName(), true);
-                vBoomReport.add(r);
+                vBoomReport.add(ReportFactory.createReport(2157, entity, entity.getShortName()));
                 continue;
             } else {
                 // report hitting vibrabomb
-                r = new Report(2160);
-                r.subject = entity.getId();
-                r.add(entity.getShortName(), true);
-                vBoomReport.add(r);
+                vBoomReport.add(ReportFactory.createReport(2160, entity, entity.getShortName()));
             }
             
             int damage = mf.getDensity();
@@ -9360,11 +9266,7 @@ public class Server implements Runnable {
                 swarmer.setSwarmTargetId(Entity.NONE);
                 entity.setSwarmAttackerId(Entity.NONE);
                 swarmer.setPosition(pos);
-                Report r = new Report(2165);
-                r.subject = entity.getId();
-                r.indent();
-                r.add(entity.getShortName(), true);
-                reportmanager.addReport(r);
+                reportmanager.addReport(ReportFactory.createReport(2165, 1, entity, entity.getShortName()));
                 reportmanager.addReport(entityManager.destroyEntity(swarmer, "a watery grave", false));
                 entityManager.entityUpdate(swarmerId);
             }
@@ -9403,14 +9305,12 @@ public class Server implements Runnable {
 
         // Start a fire in the hex?
         IHex hex = game.getBoard().getHex(coords);
-        Report r = new Report(2170);
-        r.subject = entity.getId();
-        r.addDesc(entity);
+        int reportID = 2170;
         if (!hex.containsTerrain(Terrains.FIRE)) {
-            r.messageId = 2175;
+            reportID = 2175;
             ignite(coords, Terrains.FIRE_LVL_INFERNO, null);
         }
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(reportID, entity));
     }
 
     /**
@@ -9486,16 +9386,11 @@ public class Server implements Runnable {
      */
     private void resistGForce(Entity entity, int targetNumber) {
         // okay, print the info
-        Report r = new Report(9330);
-        r.subject = entity.getId();
-        r.addDesc(entity);
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(9330, entity));
 
         // roll
         final int diceRoll = Compute.d6(2);
-        r = new Report(9335);
-        r.subject = entity.getId();
-        r.add(Integer.toString(targetNumber));
+        Report r = ReportFactory.createReport(9335, entity, Integer.toString(targetNumber));
         r.add(diceRoll);
         if (diceRoll < targetNumber) {
             r.choose(false);
@@ -9520,18 +9415,11 @@ public class Server implements Runnable {
         }
 
         // okay, print the info
-        Report r = new Report(9320);
-        r.subject = entity.getId();
-        r.addDesc(entity);
-        r.add(roll.getLastPlainDesc(), true);
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(9320, entity, roll.getLastPlainDesc()));
 
         // roll
         final int diceRoll = Compute.d6(2);
-        r = new Report(9325);
-        r.subject = entity.getId();
-        r.add(roll.getValueAsString());
-        r.add(roll.getDesc());
+        Report r = ReportFactory.createReport(9325, entity, roll.getValueAsString(), roll.getDesc());
         r.add(diceRoll);
         boolean suc = diceRoll >= roll.getValue();
         r.choose(suc);
@@ -9558,18 +9446,11 @@ public class Server implements Runnable {
         }
 
         // okay, print the info
-        Report r = new Report(9320);
-        r.subject = entity.getId();
-        r.addDesc(entity);
-        r.add(roll.getLastPlainDesc(), true);
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(9320, entity, roll.getLastPlainDesc()));
 
         // roll
         final int diceRoll = Compute.d6(2);
-        r = new Report(9321);
-        r.subject = entity.getId();
-        r.add(roll.getValueAsString());
-        r.add(roll.getDesc());
+        Report r = ReportFactory.createReport(9321, entity, roll.getValueAsString(), roll.getDesc());
         r.add(diceRoll);
         r.newlines = 0;
         reportmanager.addReport(r);
@@ -9577,21 +9458,15 @@ public class Server implements Runnable {
         if (diceRoll < roll.getValue()) {
             int mof = roll.getValue() - diceRoll;
             if (mof < 3) {
-                r = new Report(9322);
-                r.subject = entity.getId();
-                reportmanager.addReport(r);
+                reportmanager.addReport(ReportFactory.createReport(6322, entity));
                 suc = true;
             } else if (mof < 5) {
                 PilotingRollData newRoll = entity.getBasePilotingRoll();
                 if (Compute.d6(2) >= newRoll.getValue()) {
-                    r = new Report(9322);
-                    r.subject = entity.getId();
-                    reportmanager.addReport(r);
+                    reportmanager.addReport(ReportFactory.createReport(9322, entity));
                     suc = true;
                 } else {
-                    r = new Report(9323);
-                    r.subject = entity.getId();
-                    reportmanager.addReport(r);
+                    reportmanager.addReport(ReportFactory.createReport(9323, entity));
                     int damage = 20;
                     while (damage > 0) {
                         reportmanager.addReport(damageEntity(entity, entity.rollHitLocation(ToHitData.HIT_NORMAL,
@@ -9600,9 +9475,7 @@ public class Server implements Runnable {
                     }
                 }
             } else {
-                r = new Report(9323);
-                r.subject = entity.getId();
-                reportmanager.addReport(r);
+                reportmanager.addReport(ReportFactory.createReport(9323, entity));
                 int damage = 100;
                 if (mof < 6) {
                     damage = 50;
@@ -9614,13 +9487,9 @@ public class Server implements Runnable {
                 }
             }
             a.setGearHit(true);
-            r = new Report(9125);
-            r.subject = entity.getId();
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(9125, entity));
         } else {
-            r = new Report(9322);
-            r.subject = entity.getId();
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(9322, entity));
             suc = true;
         }
         return suc;
@@ -9640,18 +9509,11 @@ public class Server implements Runnable {
         }
 
         // okay, print the info
-        Report r = new Report(9600);
-        r.subject = entity.getId();
-        r.addDesc(entity);
-        r.add(roll.getLastPlainDesc(), true);
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(9600, entity, roll.getLastPlainDesc()));
 
         // roll
         final int diceRoll = Compute.d6(2);
-        r = new Report(9601);
-        r.subject = entity.getId();
-        r.add(roll.getValueAsString());
-        r.add(roll.getDesc());
+        Report r = ReportFactory.createReport(9601, entity, roll.getValueAsString(), roll.getDesc());
         r.add(diceRoll);
         boolean suc = diceRoll >= roll.getValue();
         r.choose(suc);
@@ -9674,18 +9536,11 @@ public class Server implements Runnable {
         }
 
         // okay, print the info
-        Report r = new Report(2180);
-        r.subject = entity.getId();
-        r.addDesc(entity);
-        r.add(roll.getLastPlainDesc(), true);
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(2180, entity, roll.getLastPlainDesc()));
 
         // roll
         final int diceRoll = entity.getCrew().rollPilotingSkill();
-        r = new Report(2185);
-        r.subject = entity.getId();
-        r.add(roll.getValueAsString());
-        r.add(roll.getDesc());
+        Report r = ReportFactory.createReport(2185, entity, roll.getValueAsString(), roll.getDesc());
         r.add(diceRoll);
         boolean suc;
         if (diceRoll < roll.getValue()) {
@@ -9704,10 +9559,7 @@ public class Server implements Runnable {
                 reportmanager.addReport(doEntityFall(entity, roll));
             } else {
                 ServerHelper.sinkToBottom(entity);
-                r = new Report(2317);
-                r.subject = entity.getId();
-                r.add(entity.getDisplayName());
-                reportmanager.addReport(r);
+                reportmanager.addReport(ReportFactory.createReport(2317, entity, entity.getDisplayName()));
             }
 
             suc = false;
@@ -9731,18 +9583,11 @@ public class Server implements Runnable {
      */
     private boolean doDislodgeSwarmerSkillCheck(Entity entity, PilotingRollData roll, Coords curPos) {
         // okay, print the info
-        Report r = new Report(2180);
-        r.subject = entity.getId();
-        r.addDesc(entity);
-        r.add(roll.getLastPlainDesc(), true);
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(2180, entity, roll.getLastPlainDesc()));
 
         // roll
         final int diceRoll = Compute.d6(2);
-        r = new Report(2190);
-        r.subject = entity.getId();
-        r.add(roll.getValueAsString());
-        r.add(roll.getDesc());
+        Report r = ReportFactory.createReport(2190, entity, roll.getValueAsString(), roll.getDesc());
         r.add(diceRoll);
         if (diceRoll < roll.getValue()) {
             r.choose(false);
@@ -9791,10 +9636,7 @@ public class Server implements Runnable {
         boolean fallsInPlace;
 
         // Start the info for this roll.
-        Report r = new Report(1210);
-        r.subject = entity.getId();
-        r.addDesc(entity);
-
+        Report r = ReportFactory.createReport(1210, entity);
         // Will the entity fall in the source or destination hex?
         if (src.equals(dest)) {
             fallsInPlace = true;
@@ -9813,10 +9655,7 @@ public class Server implements Runnable {
 
         // roll
         final int diceRoll = entity.getCrew().rollPilotingSkill();
-        r = new Report(2185);
-        r.subject = entity.getId();
-        r.add(roll.getValueAsString());
-        r.add(roll.getDesc());
+        r = ReportFactory.createReport(2185, entity, roll.getValueAsString(), roll.getDesc());
         r.add(diceRoll);
         if (diceRoll < roll.getValue()) {
             // Does failing the PSR result in a fall.
@@ -9944,10 +9783,7 @@ public class Server implements Runnable {
         // check entity in target hex
         Entity affaTarget = game.getAffaTarget(dest, entity);
         // falling mech falls
-        Report r = new Report(2205);
-        r.subject = entity.getId();
-        r.addDesc(entity);
-        r.add(fallElevation);
+        Report r = ReportFactory.createReport(2205, entity, fallElevation);
         r.add(dest.getBoardNum(), true);
         r.newlines = 0;
 
@@ -10003,11 +9839,7 @@ public class Server implements Runnable {
                 if (diceRoll >= toHit.getValue()) {
                     // deal damage to target
                     int damage = Compute.getAffaDamageFor(entity);
-                    r = new Report(2220);
-                    r.subject = affaTarget.getId();
-                    r.addDesc(affaTarget);
-                    r.add(damage);
-                    vPhaseReport.add(r);
+                    vPhaseReport.add(ReportFactory.createReport(2220, affaTarget, damage));
                     while (damage > 0) {
                         int cluster = Math.min(5, damage);
                         HitData hit = affaTarget.rollHitLocation(ToHitData.HIT_PUNCH, ToHitData.SIDE_FRONT);
@@ -10116,10 +9948,7 @@ public class Server implements Runnable {
                 game.removeEntity(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED);
                 send(PacketFactory.createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
                 // entity forced from the field
-                r = new Report(2230);
-                r.subject = entity.getId();
-                r.addDesc(entity);
-                vPhaseReport.add(r);
+                vPhaseReport.add(ReportFactory.createReport(2230, entity));
                 // TODO : remove passengers and swarmers.
             }
             return vPhaseReport;
@@ -10169,18 +9998,10 @@ public class Server implements Runnable {
         Entity violation = Compute.stackingViolation(game, entity.getId(), dest);
         if (violation == null) {
             // move and roll normally
-            r = new Report(2235);
-            r.indent();
-            r.subject = entity.getId();
-            r.addDesc(entity);
-            r.add(dest.getBoardNum(), true);
+            r = ReportFactory.createReport(2235, 1, entity, dest.getBoardNum());
         } else {
             // domino effect: move & displace target
-            r = new Report(2240);
-            r.indent();
-            r.subject = entity.getId();
-            r.addDesc(entity);
-            r.add(dest.getBoardNum(), true);
+            r = ReportFactory.createReport(2240, 1, entity, dest.getBoardNum());
             r.addDesc(violation);
         }
         vPhaseReport.add(r);
@@ -10221,11 +10042,7 @@ public class Server implements Runnable {
         if (destHex.containsTerrain(Terrains.ICE) && destHex.containsTerrain(Terrains.WATER)) {
             if (!(entity instanceof Infantry)) {
                 int d6 = Compute.d6(1);
-                r = new Report(2118);
-                r.addDesc(entity);
-                r.add(d6);
-                r.subject = entity.getId();
-                vPhaseReport.add(r);
+                vPhaseReport.add(ReportFactory.createReport(2118, entity, d6));
 
                 if (d6 == 6) {
                     vPhaseReport.addAll(resolveIceBroken(dest));
@@ -10269,13 +10086,7 @@ public class Server implements Runnable {
                 int result = Compute.d6(2);
                 roll = entity.getBasePilotingRoll();
 
-                r = new Report(2351);
-                r.indent(2);
-                r.subject = violation.getId();
-                r.addDesc(violation);
-                r.add(roll.getValue());
-                r.add(result);
-                vPhaseReport.add(r);
+                vPhaseReport.add(ReportFactory.createReport(2351, 2, violation, roll.getValue(), result));
                 if (result < roll.getValue()) {
                     r.choose(false);
                     Vector<Report> newReports = doEntityDisplacement(violation, dest, dest.translated(direction),
@@ -10309,10 +10120,7 @@ public class Server implements Runnable {
                                 mp.setGame(getGame());
                                 mp.setEntity(violation);
                                 // Report
-                                r = new Report(2352);
-                                r.indent(3);
-                                r.subject = violation.getId();
-                                r.addDesc(violation);
+                                r = ReportFactory.createReport(2352, 3, violation);
                                 r.choose(mp.getLastStep().getType() != MoveStepType.FORWARDS);
                                 r.add(mp.getLastStep().getPosition().getBoardNum());
                                 vPhaseReport.add(r);
@@ -10321,11 +10129,7 @@ public class Server implements Runnable {
                                 violation.mpUsed += mp.getMpUsed();
                                 violation.moved = mp.getLastStepMovementType();
                             } else { // User decided to do nothing
-                                r = new Report(2358);
-                                r.indent(3);
-                                r.subject = violation.getId();
-                                r.addDesc(violation);
-                                vPhaseReport.add(r);
+                                vPhaseReport.add(ReportFactory.createReport(2358, 3, violation));
                                 vPhaseReport.addAll(doEntityDisplacement(violation, dest,
                                         dest.translated(direction), null));
                             }
@@ -10337,11 +10141,7 @@ public class Server implements Runnable {
                     }
                 }
             } else { // Nope
-                r = new Report(2359);
-                r.indent(2);
-                r.subject = violation.getId();
-                r.addDesc(violation);
-                vPhaseReport.add(r);
+                vPhaseReport.add(ReportFactory.createReport(2359, 2, violation));
                 vPhaseReport.addAll(doEntityDisplacement(violation, dest, dest.translated(direction),
                         new PilotingRollData(violation.getId(), 0, "domino effect")));
 
@@ -10384,10 +10184,7 @@ public class Server implements Runnable {
             // must be jumping, it will automatically be bogged down
             if (stuckroll < roll.getValue() || entity.isMakingDfa()) {
                 entity.setStuck(true);
-                Report r = new Report(2081);
-                r.subject = entity.getId();
-                r.add(entity.getDisplayName(), true);
-                vReport.add(r);
+                vReport.add(ReportFactory.createReport(2081, entity, entity.getDisplayName()));
                 // check for quicksand
                 vReport.addAll(checkQuickSand(c));
             }
@@ -10716,11 +10513,7 @@ public class Server implements Runnable {
         if (entity.isAero()) {
             IAero aero = (IAero) entity;
             if (aero.getAltLoss() > 0) {
-                Report r = new Report(9095);
-                r.subject = entity.getId();
-                r.addDesc(entity);
-                r.add(aero.getAltLoss());
-                reportmanager.addReport(r);
+                reportmanager.addReport(ReportFactory.createReport(9095, entity, aero.getAltLoss()));
                 entity.setAltitude(entity.getAltitude() - aero.getAltLoss());
                 aero.setAltLossThisRound(aero.getAltLoss());
                 aero.resetAltLoss();
@@ -11098,11 +10891,7 @@ public class Server implements Runnable {
                 if (los.canSee() || dist <= 1) {
                     detected.setHidden(false);
                     entityManager.entityUpdate(detected.getId());
-                    Report r = new Report(9960);
-                    r.addDesc(detector);
-                    r.subject = detector.getId();
-                    r.add(detected.getPosition().getBoardNum());
-                    reportmanager.addReport(r);
+                    reportmanager.addReport(ReportFactory.createReport(9960, detector, detected.getPosition().getBoardNum()));
                     Report.addNewline(reportmanager.getvPhaseReport());
                     reportPlayers.add(detector.getOwnerId());
                     reportPlayers.add(detected.getOwnerId());
@@ -11197,9 +10986,7 @@ public class Server implements Runnable {
                 if (entity instanceof Tank) {
                     ((Tank) entity).unjamTurret(((Tank) entity).getLocTurret());
                     ((Tank) entity).unjamTurret(((Tank) entity).getLocTurret2());
-                    Report r = new Report(3033);
-                    r.addDesc(entity);
-                    reportmanager.addReport(r);
+                    reportmanager.addReport(ReportFactory.createReport(3033, entity));
                 } else {
                     MegaMek.getLogger().error("Non-Tank tried to unjam turret");
                 }
@@ -11208,11 +10995,7 @@ public class Server implements Runnable {
                     Mounted m = entity.getEquipment(((RepairWeaponMalfunctionAction) ea).getWeaponId());
                     m.setJammed(false);
                     ((Tank) entity).getJammedWeapons().remove(m);
-                    Report r = new Report(3034);
-                    r.subject = entity.getId();
-                    r.addDesc(entity);
-                    r.add(m.getName());
-                    reportmanager.addReport(r);
+                    reportmanager.addReport(ReportFactory.createReport(3034, entity, m.getName()));
                 } else {
                     MegaMek.getLogger().error("Non-Tank tried to repair weapon malfunction");
                 }
@@ -11225,27 +11008,18 @@ public class Server implements Runnable {
      */
     private Vector<Report> resolveSelfDestructions() {
         Vector<Report> vDesc = new Vector<>();
-        Report r;
         for (Entity e : game.getEntitiesVector()) {
             if (e.getSelfDestructInitiated() && e.hasEngine()) {
-                r = new Report(6166, Report.PUBLIC);
                 int target = e.getCrew().getPiloting();
                 int roll = e.getCrew().rollPilotingSkill();
-                r.subject = e.getId();
-                r.addDesc(e);
-                r.indent();
-                r.add(target);
-                r.add(roll);
+                Report r = ReportFactory.createPublicReport(6166, 1, e, target, roll);
                 r.choose(roll >= target);
                 vDesc.add(r);
 
                 // Blow it up...
                 if (roll >= target) {
                     int engineRating = e.getEngine().getRating();
-                    r = new Report(5400, Report.PUBLIC);
-                    r.subject = e.getId();
-                    r.indent(2);
-                    vDesc.add(r);
+                    vDesc.add(ReportFactory.createPublicReport(5400, 2, e));
 
                     if (e instanceof Mech) {
                         Mech mech = (Mech) e;
@@ -11260,11 +11034,8 @@ public class Server implements Runnable {
                     e.setSelfDestructedThisTurn(true);
                     doFusionEngineExplosion(engineRating, e.getPosition(), vDesc, null);
                     Report.addNewline(vDesc);
-                    r = new Report(5410, Report.PUBLIC);
-                    r.subject = e.getId();
-                    r.indent(2);
                     Report.addNewline(vDesc);
-                    vDesc.add(r);
+                    vDesc.add(ReportFactory.createPublicReport(5410, 2, e));
                 }
                 e.setSelfDestructInitiated(false);
             }
@@ -11276,21 +11047,16 @@ public class Server implements Runnable {
         // run through an enumeration of deployed game entities. If they have
         // ghost targets, then check the roll
         // and report it
-        Report r;
         for (Iterator<Entity> e = game.getEntities(); e.hasNext(); ) {
             Entity ent = e.next();
             if (ent.isDeployed() && ent.hasGhostTargets(false)) {
-                r = new Report(3630);
-                r.subject = ent.getId();
-                r.addDesc(ent);
                 // Ghost target mod is +3 per errata
                 int target = ent.getCrew().getPiloting() + 3;
                 if (ent.hasETypeFlag(Entity.ETYPE_PROTOMECH)) {
                     target = ent.getCrew().getGunnery() + 3;
                 }
                 int roll = ent.getGhostTargetRoll();
-                r.add(target);
-                r.add(roll);
+                Report r = ReportFactory.createReport(3630, ent, target, roll);
                 r.choose(roll >= target);
                 reportmanager.addReport(r);
             }
@@ -11310,16 +11076,10 @@ public class Server implements Runnable {
         for (Iterator<Entity> e = game.getEntities(); e.hasNext(); ) {
             Entity ent = e.next();
             if (ent.isDeployed() && ent.isLargeCraft()) {
-                r = new Report(3635);
-                r.subject = ent.getId();
-                r.addDesc(ent);
                 int target = ((Aero) ent).getECCMTarget();
                 int roll = ((Aero) ent).getECCMRoll();
-                r.add(roll);
-                r.add(target);
                 int mod = ((Aero) ent).getECCMBonus();
-                r.add(mod);
-                reportmanager.addReport(r);
+                reportmanager.addReport(ReportFactory.createReport(3635, ent, roll, target, mod));
             }
         }
     }
@@ -11335,7 +11095,7 @@ public class Server implements Runnable {
         int clear = Minefield.CLEAR_NUMBER_INFANTRY;
         int boom = Minefield.CLEAR_NUMBER_INFANTRY_ACCIDENT;
 
-        Report r = new Report(2245);
+        int reportID = 2245;
         // Does the entity has a minesweeper?
         if ((ent instanceof BattleArmor)) {
             BattleArmor ba = (BattleArmor)ent;
@@ -11343,22 +11103,18 @@ public class Server implements Runnable {
             if (ba.getLeftManipulatorName().equals(mcmName)) {
                 clear = Minefield.CLEAR_NUMBER_BA_SWEEPER;
                 boom = Minefield.CLEAR_NUMBER_BA_SWEEPER_ACCIDENT;
-                r = new Report(2246);
+                reportID = 2246;
             }
         } else if (ent instanceof Infantry) { // Check Minesweeping Engineers
             Infantry inf = (Infantry) ent;
             if (inf.hasSpecialization(Infantry.MINE_ENGINEERS)) {
                 clear = Minefield.CLEAR_NUMBER_INF_ENG;
                 boom = Minefield.CLEAR_NUMBER_INF_ENG_ACCIDENT;
-                r = new Report(2247);
+                reportID = 2247;
             }
         }
         // mine clearing roll
-        r.subject = ent.getId();
-        r.add(ent.getShortName(), true);
-        r.add(Minefield.getDisplayableName(mf.getType()));
-        r.add(pos.getBoardNum(), true);
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(reportID, ent, ent.getShortName(), Minefield.getDisplayableName(mf.getType()), pos.getBoardNum()));
 
         if (clearMinefield(mf, ent, clear, boom, reportmanager.getvPhaseReport())) {
             gamemanager.removeMinefield(game, mf);
@@ -11406,11 +11162,7 @@ public class Server implements Runnable {
 
         // Mark the pod as fired and log the action.
         mount.setFired(true);
-        Report r = new Report(3010);
-        r.newlines = 0;
-        r.subject = entity.getId();
-        r.addDesc(entity);
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(3010, entity));
 
         // Walk through ALL entities in the triggering entity's hex.
         for (Entity target : game.getEntitiesVector(entity.getPosition())) {
@@ -11433,11 +11185,7 @@ public class Server implements Runnable {
             // Nope, the target is immune.
             // Don't make a log entry for the triggering entity.
             else if (!entity.equals(target)) {
-                r = new Report(3020);
-                r.indent(2);
-                r.subject = target.getId();
-                r.addDesc(target);
-                reportmanager.addReport(r);
+                reportmanager.addReport(ReportFactory.createReport(3020, 2, target));
             }
 
         } // Check the next entity in the triggering entity's hex.
@@ -11480,11 +11228,7 @@ public class Server implements Runnable {
 
         // Mark the pod as fired and log the action.
         mount.setFired(true);
-        Report r = new Report(3011);
-        r.newlines = 0;
-        r.subject = entity.getId();
-        r.addDesc(entity);
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(3011, entity));
 
         // Is this an unarmored infantry platoon?
         if ((target instanceof Infantry) && !(target instanceof BattleArmor)) {
@@ -11516,11 +11260,7 @@ public class Server implements Runnable {
         // Nope, the target is immune.
         // Don't make a log entry for the triggering entity.
         else if (!entity.equals(target)) {
-            r = new Report(3020);
-            r.indent(2);
-            r.subject = target.getId();
-            r.addDesc(target);
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(3020, 2, target));
         }
     }
 
@@ -11528,27 +11268,19 @@ public class Server implements Runnable {
      * Resolve an Unjam Action object
      */
     private void resolveUnjam(Entity entity) {
-        Report r;
         final int TN = entity.getCrew().getGunnery() + 3;
+        int reportID = 3025;
         if (game.getOptions().booleanOption(OptionsConstants.ADVCOMBAT_UNJAM_UAC)) {
-            r = new Report(3026);
-        } else {
-            r = new Report(3025);
+            reportID = 3026;
         }
-        r.subject = entity.getId();
-        r.addDesc(entity);
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(reportID, entity));
         for (Mounted mounted : entity.getTotalWeaponList()) {
             if (mounted.isJammed() && !mounted.isDestroyed()) {
                 WeaponType wtype = (WeaponType) mounted.getType();
                 if (wtype.getAmmoType() == AmmoType.T_AC_ROTARY) {
                     int roll = Compute.d6(2);
-                    r = new Report(3030);
-                    r.indent();
-                    r.subject = entity.getId();
-                    r.add(wtype.getName());
-                    r.add(TN);
-                    r.add(roll);
+                    Report r = ReportFactory.createReport(3030, 1, entity, wtype.getName());
+                    r.add(TN, roll);
                     if (roll >= TN) {
                         r.choose(true);
                         mounted.setJammed(false);
@@ -11567,12 +11299,8 @@ public class Server implements Runnable {
                         || (wtype.getAmmoType() == AmmoType.T_LAC))
                         && game.getOptions().booleanOption(OptionsConstants.ADVCOMBAT_UNJAM_UAC)) {
                     int roll = Compute.d6(2);
-                    r = new Report(3030);
-                    r.indent();
-                    r.subject = entity.getId();
-                    r.add(wtype.getName());
-                    r.add(TN);
-                    r.add(roll);
+                    Report r = ReportFactory.createReport(3030, 1, entity, wtype.getName());
+                    r.add(TN, roll);
                     if (roll >= TN) {
                         r.choose(true);
                         mounted.setJammed(false);
@@ -11602,10 +11330,7 @@ public class Server implements Runnable {
             curHex.addTerrain(Terrains.getTerrainFactory().createTerrain(
                     Terrains.ARMS, curHex.terrainLevel(Terrains.ARMS) - 1));
             gamemanager.sendChangedHex(game, entity.getPosition());
-            r = new Report(3035);
-            r.subject = entity.getId();
-            r.addDesc(entity);
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(3035, entity));
         }
         // Is there a blown off leg in the hex?
         else if (curHex.terrainLevel(Terrains.LEGS) > 0) {
@@ -11613,10 +11338,7 @@ public class Server implements Runnable {
             curHex.addTerrain(Terrains.getTerrainFactory().createTerrain(
                     Terrains.LEGS, curHex.terrainLevel(Terrains.LEGS) - 1));
             gamemanager.sendChangedHex(game, entity.getPosition());
-            r = new Report(3040);
-            r.subject = entity.getId();
-            r.addDesc(entity);
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(3040, entity));
         }
 
         // Is there the rubble of a medium, heavy,
@@ -11657,25 +11379,19 @@ public class Server implements Runnable {
             }
 
             // Let the player know if they found a club.
+            int reportID = 3050;
             if (found) {
                 clubType = EquipmentType.get(EquipmentTypeLookup.GIRDER_CLUB);
-                r = new Report(3045);
-            } else {
-                // Sorry, no club for you.
-                r = new Report(3050);
+                reportID = 3045;
             }
-            r.subject = entity.getId();
-            r.addDesc(entity);
-            reportmanager.addReport(r);
+
+            reportmanager.addReport(ReportFactory.createReport(reportID, entity));
         }
 
         // Are there woods in the hex?
         else if (curHex.containsTerrain(Terrains.WOODS) || curHex.containsTerrain(Terrains.JUNGLE)) {
             clubType = EquipmentType.get(EquipmentTypeLookup.TREE_CLUB);
-            r = new Report(3055);
-            r.subject = entity.getId();
-            r.addDesc(entity);
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(3055, entity));
         }
 
         // add the club
@@ -11685,10 +11401,7 @@ public class Server implements Runnable {
             }
         } catch (LocationFullException ex) {
             // unlikely...
-            r = new Report(3060);
-            r.subject = entity.getId();
-            r.addDesc(entity);
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(3060, entity));
         }
     }
 
@@ -11745,10 +11458,9 @@ public class Server implements Runnable {
             }
             nTargetRoll.addModifier(2, "accidental");
             int accidentRoll = Compute.d6(2);
-            r = new Report(3066);
+            r = ReportFactory.createReport(3066);
             r.subject = entityId;
-            r.add(accidentTarget);
-            r.add(accidentRoll);
+            r.add(accidentTarget, accidentRoll);
             r.indent(2);
             if (accidentRoll > accidentTarget) {
                 r.choose(false);
@@ -12029,11 +11741,7 @@ public class Server implements Runnable {
      *                     arms) or a weapon attack (the arm with the weapon).
      */
     private void applyZweihanderSelfDamage(Entity ae, boolean missed, List<Integer> criticalLocs) {
-        Report r = new Report(4022);
-        r.subject = ae.getId();
-        r.indent();
-        r.addDesc(ae);
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(4022, 1, ae));
         for (Integer loc : criticalLocs) {
             reportmanager.addReport(criticalEntity(ae, loc, false, 0, 1));
         }
@@ -12064,23 +11772,12 @@ public class Server implements Runnable {
     }
 
     private void checkGlancingBlow(boolean glancing, boolean directBlow, Entity ae, ToHitData toHit, int roll) {
-        Report r = new Report(4025);
-        r.subject = ae.getId();
-        r.add(toHit.getValue());
-        r.add(roll);
-        r.newlines = 0;
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(4025, ae, toHit.getValue(), roll));
         if (glancing) {
-            r = new Report(3186);
-            r.subject = ae.getId();
-            r.newlines = 0;
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(3186, ae));
         }
         if (directBlow) {
-            r = new Report(3189);
-            r.subject = ae.getId();
-            r.newlines = 0;
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(3189, ae));
         }
     }
 
@@ -12115,8 +11812,6 @@ public class Server implements Runnable {
         final boolean glancing = game.getOptions().booleanOption(
                 OptionsConstants.ADVCOMBAT_TACOPS_GLANCING_BLOWS) && (roll == toHit.getValue());
 
-        Report r;
-
         // Set Margin of Success/Failure.
         toHit.setMoS(roll - Math.max(2, toHit.getValue()));
         final boolean directBlow = game.getOptions().booleanOption(
@@ -12127,52 +11822,29 @@ public class Server implements Runnable {
 
         if (lastEntityId != paa.getEntityId()) {
             // report who is making the attacks
-            r = new Report(4005);
-            r.subject = ae.getId();
-            r.addDesc(ae);
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(4005, ae));
         }
 
-        r = new Report(4010);
-        r.subject = ae.getId();
-        r.indent();
-        r.add(armName);
-        r.add(target.getDisplayName());
-        r.newlines = 0;
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(4010, 1, ae, armName, target.getDisplayName()));
 
         if (toHit.getValue() == TargetRoll.IMPOSSIBLE) {
-            r = new Report(4015);
-            r.subject = ae.getId();
-            r.add(toHit.getDesc());
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(4015, ae, toHit.getDesc()));
             if (ae instanceof LandAirMech && ae.isAirborneVTOLorWIGE()) {
                 game.addControlRoll(new PilotingRollData(ae.getId(), 0, "missed punch attack"));
             }
             return;
         } else if (toHit.getValue() == TargetRoll.AUTOMATIC_SUCCESS) {
-            r = new Report(4020);
-            r.subject = ae.getId();
-            r.add(toHit.getDesc());
-            r.newlines = 0;
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(4020, ae, toHit.getDesc()));
             roll = Integer.MAX_VALUE;
         } else {
-            r = new Report(4025);
-            r.subject = ae.getId();
-            r.add(toHit.getValue());
-            r.add(roll);
-            r.newlines = 0;
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(4025, ae, toHit.getValue(), roll));
             checkGlancingBlow(glancing, directBlow, ae, toHit, roll);
         }
 
         // do we hit?
         if (roll < toHit.getValue()) {
             // nope
-            r = new Report(4035);
-            r.subject = ae.getId();
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(4035, ae));
 
             if (ae instanceof LandAirMech && ae.isAirborneVTOLorWIGE()) {
                 game.addControlRoll(new PilotingRollData(ae.getId(), 0, "missed punch attack"));
@@ -12203,9 +11875,7 @@ public class Server implements Runnable {
         if ((target.getTargetType() == Targetable.TYPE_BUILDING)
                 || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
             // The building takes the full brunt of the attack.
-            r = new Report(4040);
-            r.subject = ae.getId();
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(4040, ae));
             Vector<Report> buildingReport = damageBuilding(bldg, damage, target.getPosition());
             for (Report report : buildingReport) {
                 report.subject = ae.getId();
@@ -12228,22 +11898,13 @@ public class Server implements Runnable {
 
         HitData hit = te.rollHitLocation(toHit.getHitTable(), toHit.getSideTable());
         hit.setGeneralDamageType(HitData.DAMAGE_PHYSICAL);
-        r = new Report(4045);
-        r.subject = ae.getId();
-        r.add(toHit.getTableDesc());
-        r.add(te.getLocationAbbr(hit));
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(4045, ae, toHit.getTableDesc(), te.getLocationAbbr(hit)));
 
         damage = ShieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
 
         // A building may absorb the entire shot.
         if (damage == 0) {
-            r = new Report(4050);
-            r.subject = ae.getId();
-            r.add(te.getShortName());
-            r.add(te.getOwner().getName());
-            r.indent();
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(4050, 1, ae, te.getShortName(), te.getOwner().getName()));
         } else {
             if (glancing) {
                 damage = gamemanager.applyInfrantryDamageReduction(te, damage);
@@ -12267,11 +11928,7 @@ public class Server implements Runnable {
             // check for extending retractable blades
             if (paa.isBladeExtended(paa.getArm())) {
                 reportmanager.addNewLines();
-                r = new Report(4455);
-                r.indent(2);
-                r.subject = ae.getId();
-                r.newlines = 0;
-                reportmanager.addReport(r);
+                reportmanager.addReport(ReportFactory.createReport(4455, 2, ae));
                 // conventional infantry don't take crits and battle armor need
                 // to be handled differently
                 if (!(target instanceof Infantry)) {
@@ -12294,11 +11951,7 @@ public class Server implements Runnable {
                 // check for breaking a nail
                 if (Compute.d6(2) > 9) {
                     reportmanager.addNewLines();
-                    r = new Report(4456);
-                    r.indent(2);
-                    r.subject = ae.getId();
-                    r.newlines = 0;
-                    reportmanager.addReport(r);
+                    reportmanager.addReport(ReportFactory.createReport(4456, 2, ae));
                     ae.destroyRetractableBlade(armLoc);
                 }
             }
@@ -12366,25 +12019,13 @@ public class Server implements Runnable {
 
         if (lastEntityId != ae.getId()) {
             // who is making the attacks
-            r = new Report(4005);
-            r.subject = ae.getId();
-            r.addDesc(ae);
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(4005, ae));
         }
 
-        r = new Report(4055);
-        r.subject = ae.getId();
-        r.indent();
-        r.add(legName);
-        r.add(target.getDisplayName());
-        r.newlines = 0;
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(4055, 1, ae, legName, target.getDisplayName()));
 
         if (toHit.getValue() == TargetRoll.IMPOSSIBLE) {
-            r = new Report(4060);
-            r.subject = ae.getId();
-            r.add(toHit.getDesc());
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(4060, ae, toHit.getDesc()));
             if (ae instanceof LandAirMech && ae.isAirborneVTOLorWIGE()) {
                 game.addControlRoll(new PilotingRollData(ae.getId(), 0, "missed a kick"));
             } else {
@@ -12392,28 +12033,17 @@ public class Server implements Runnable {
             }
             return;
         } else if (toHit.getValue() == TargetRoll.AUTOMATIC_SUCCESS) {
-            r = new Report(4065);
-            r.subject = ae.getId();
-            r.add(toHit.getDesc());
-            r.newlines = 0;
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(4065, ae, toHit.getDesc()));
             roll = Integer.MAX_VALUE;
         } else {
-            r = new Report(4025);
-            r.subject = ae.getId();
-            r.add(toHit.getValue());
-            r.add(roll);
-            r.newlines = 0;
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(4025, ae, toHit.getValue(), roll));
             checkGlancingBlow(glancing, directBlow, ae, toHit, roll);
         }
 
         // do we hit?
         if (roll < toHit.getValue()) {
             // miss
-            r = new Report(4035);
-            r.subject = ae.getId();
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(4035, ae));
             if (ae instanceof LandAirMech && ae.isAirborneVTOLorWIGE()) {
                 game.addControlRoll(new PilotingRollData(ae.getId(), 0, "missed a kick"));
             } else {
@@ -12439,9 +12069,7 @@ public class Server implements Runnable {
         if ((target.getTargetType() == Targetable.TYPE_BUILDING)
             || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
             // The building takes the full brunt of the attack.
-            r = new Report(4040);
-            r.subject = ae.getId();
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(4040, ae));
             Vector<Report> buildingReport = damageBuilding(bldg, damage, target.getPosition());
             for (Report report : buildingReport) {
                 report.subject = ae.getId();
@@ -12457,11 +12085,7 @@ public class Server implements Runnable {
 
         HitData hit = te.rollHitLocation(toHit.getHitTable(), toHit.getSideTable());
         hit.setGeneralDamageType(HitData.DAMAGE_PHYSICAL);
-        r = new Report(4045);
-        r.subject = ae.getId();
-        r.add(toHit.getTableDesc());
-        r.add(te.getLocationAbbr(hit));
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(4045, ae, toHit.getTableDesc(), te.getLocationAbbr(hit)));
 
         damage = ShieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
 
@@ -26457,12 +26081,7 @@ public class Server implements Runnable {
             int nEscaped = Math.min((entity.getCrew().getCurrentSize() + entity.getNPassenger()), (totalLaunched * 6));
             //Report how many pods launched and how many escaped
             if (totalLaunched > 0) {
-                r = new Report(6401);
-                r.subject = entity.getId();
-                r.indent();
-                r.add(totalLaunched);
-                r.add(nEscaped);
-                vDesc.addElement(r);
+                vDesc.addElement(ReportFactory.createReport(6401, 1, entity, totalLaunched, nEscaped));
             }
             EscapePods pods = new EscapePods(entity,totalLaunched,isPod);
             entity.addEscapeCraft(pods.getExternalIdAsString());
@@ -26517,11 +26136,7 @@ public class Server implements Runnable {
         else {
             if (airborne) {
                 // Can't abandon in atmosphere with no escape pods
-                r = new Report(6402);
-                r.subject = entity.getId();
-                r.addDesc(entity);
-                r.indent();
-                vDesc.addElement(r);
+                vDesc.addElement(ReportFactory.createReport(6402, 1, entity));
                 return vDesc;
             }
             
@@ -26532,12 +26147,7 @@ public class Server implements Runnable {
             entity.addEscapeCraft(crew.getExternalIdAsString());
             
             //Report the escape
-            r = new Report(6403);
-            r.subject = entity.getId();
-            r.addDesc(entity);
-            r.add(nEscaped);
-            r.indent();
-            vDesc.addElement(r);
+            vDesc.addElement(ReportFactory.createReport(6403, 1, entity, nEscaped));
 
             //If there are passengers aboard, get them out first
             if (entity.getNPassenger() > 0) {
@@ -26789,12 +26399,7 @@ public class Server implements Runnable {
 
         if (entity instanceof Mech || (entity.isAero() && !entity.isAirborne())) {
             // okay, print the info
-            Report r = new Report(2027);
-            r.subject = entity.getId();
-            r.add(entity.getCrew().getName());
-            r.addDesc(entity);
-            r.indent(3);
-            vDesc.addElement(r);
+            vDesc.addElement(ReportFactory.createReport(2027, 3, entity, entity.getCrew().getName()));
             // Don't make ill-equipped pilots abandon into vacuum
             if (game.getPlanetaryConditions().isVacuum() && !entity.isAero()) {
                 return vDesc;
@@ -27038,16 +26643,11 @@ public class Server implements Runnable {
             IHex hex = game.getBoard().getHex(entity.getPosition());
             hex.getUnstuckModifier(entity.getElevation(), rollTarget);
             // okay, print the info
-            r = new Report(2340);
-            r.addDesc(entity);
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(2340, entity));
 
             // roll
             final int diceRoll = entity.getCrew().rollPilotingSkill();
-            r = new Report(2190);
-            r.subject = entity.getId();
-            r.add(rollTarget.getValueAsString());
-            r.add(rollTarget.getDesc());
+            r = ReportFactory.createReport(2190, entity, rollTarget.getValueAsString(), rollTarget.getDesc());
             r.add(diceRoll);
             if (diceRoll < rollTarget.getValue()) {
                 r.choose(false);
@@ -27083,9 +26683,7 @@ public class Server implements Runnable {
             }
             if (canSwipePods && entity.hasINarcPodsAttached() && entity.getCrew().isActive()) {
                 entity.removeAllINarcPods();
-                Report r = new Report(2345);
-                r.addDesc(entity);
-                reportmanager.addReport(r);
+                reportmanager.addReport(ReportFactory.createReport(2345, entity));
             }
         }
     }
@@ -27201,11 +26799,7 @@ public class Server implements Runnable {
         if (inferno) {
             boomRoll = 12;
         }
-        Report r = new Report(5250);
-        r.subject = tank.getId();
-        r.addDesc(tank);
-        r.add(8 - penalty);
-        r.add(boomRoll);
+        Report r = ReportFactory.createReport(5250, tank, 8 - penalty, boomRoll);
         if ((boomRoll + penalty) < 8) {
             // phew!
             r.choose(true);
@@ -27221,10 +26815,7 @@ public class Server implements Runnable {
             } else {
                 vPhaseReport.addAll(resolveVehicleFire(tank, false));
                 if ((boomRoll + penalty) >= 12) {
-                    r = new Report(5255);
-                    r.subject = tank.getId();
-                    r.indent(3);
-                    vPhaseReport.add(r);
+                    vPhaseReport.add(ReportFactory.createReport(5255, 3, tank));
                     tank.setOnFire(inferno);
                 }
             }
@@ -27296,14 +26887,9 @@ public class Server implements Runnable {
                 if (!(te.isLocationBad(VTOL.LOC_ROTOR) || te.isLocationDoomed(VTOL.LOC_ROTOR))) {
                     te.setMotiveDamage(te.getMotiveDamage() + 1);
                     if (te.getOriginalWalkMP() > te.getMotiveDamage()) {
-                        r = new Report(6660);
-                        r.indent(3);
-                        r.subject = te.getId();
-                        vDesc.add(r);
+                        vDesc.add(ReportFactory.createReport(6660, 3, te));
                     } else {
-                        r = new Report(6670);
-                        r.subject = te.getId();
-                        vDesc.add(r);
+                        vDesc.add(ReportFactory.createReport(6670, te));
                         te.immobilize();
                         // Being reduced to 0 MP by rotor damage forces a
                         // landing
@@ -27331,55 +26917,29 @@ public class Server implements Runnable {
             modifier -= 2;
         }
         int roll = Compute.d6(2) + modifier;
-        r = new Report(6306);
-        r.subject = te.getId();
-        r.newlines = 0;
-        r.indent(3);
-        vDesc.add(r);
+        vDesc.add(ReportFactory.createReport(6306, 3, te));
         if (!noRoll) {
-            r = new Report(6310);
-            r.subject = te.getId();
-            r.add(roll);
-            r.newlines = 0;
-            vDesc.add(r);
-            r = new Report(3340);
-            r.add(modifier);
-            r.subject = te.getId();
-            vDesc.add(r);
+            vDesc.add(ReportFactory.createReport(6310, te, roll));
+            vDesc.add(ReportFactory.createReport(3340, te, modifier));
         }
 
         if ((noRoll && (damageType == 0)) || (!noRoll && (roll <= 5))) {
             // no effect
-            r = new Report(6005);
-            r.subject = te.getId();
-            r.indent(3);
-            vDesc.add(r);
+            vDesc.add(ReportFactory.createReport(6005, 3, te));
         } else if ((noRoll && (damageType == 1)) || (!noRoll && (roll <= 7))) {
             // minor damage
-            r = new Report(6470);
-            r.subject = te.getId();
-            r.indent(3);
-            vDesc.add(r);
+            vDesc.add(ReportFactory.createReport(6470, 3, te));
             te.addMovementDamage(1);
         } else if ((noRoll && (damageType == 2)) || (!noRoll && (roll <= 9))) {
             // moderate damage
-            r = new Report(6471);
-            r.subject = te.getId();
-            r.indent(3);
-            vDesc.add(r);
+            vDesc.add(ReportFactory.createReport(6471, 3, te));
             te.addMovementDamage(2);
         } else if ((noRoll && (damageType == 3)) || (!noRoll && (roll <= 11))) {
             // heavy damage
-            r = new Report(6472);
-            r.subject = te.getId();
-            r.indent(3);
-            vDesc.add(r);
+            vDesc.add(ReportFactory.createReport(6472, 3, te));
             te.addMovementDamage(3);
         } else {
-            r = new Report(6473);
-            r.subject = te.getId();
-            r.indent(3);
-            vDesc.add(r);
+            vDesc.add(ReportFactory.createReport(6473, 3, te));
             te.addMovementDamage(4);
         }
         // These checks should perhaps be moved to Tank.applyDamage(), but I'm
