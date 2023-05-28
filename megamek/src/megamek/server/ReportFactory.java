@@ -19,14 +19,6 @@ class ReportFactory {
         return r;
     }
 
-    public static Report createPublicReport(int ID, String... str){
-        Report r = new Report(ID, Report.PUBLIC);
-        for (String s : str) {
-            r.add(s);
-        }
-        return r;
-    }
-
     // =====================with indent================================================
     public static Report createReport(int ID, int indent, Entity e){
         Report r = new Report(ID);
@@ -68,6 +60,15 @@ class ReportFactory {
         return r;
     }
 
+    public static Report createPublicReport(int ID, int indent, String... str){
+        Report r = new Report(ID, Report.PUBLIC);
+        r.indent(indent);
+        for (String s : str) {
+            r.add(s);
+        }
+        return r;
+    }
+
     // ====================without indent==============================================
     public static Report createReport(int ID, Entity e){
         Report r = new Report(ID);
@@ -96,6 +97,37 @@ class ReportFactory {
         Report r = new Report(ID, Report.PUBLIC);
         r.subject = e.getId();
         r.addDesc(e);
+        return r;
+    }
+
+    public static Report createPublicReport(int ID, String... str){
+        Report r = new Report(ID, Report.PUBLIC);
+        for (String s : str) {
+            r.add(s);
+        }
+        return r;
+    }
+
+    // ===========================Player==============================================
+    public static Report createPlayerReport(int ID, int playerID){
+        Report r = new Report(ID);
+        r.player = playerID;
+        return r;
+    }
+
+    public static Report createPlayerReport(int ID, int playerID, int... ints){
+        Report r = createPlayerReport(ID, playerID);
+        for (int i : ints) {
+            r.add(i);
+        }
+        return r;
+    }
+
+    public static Report createPlayerReport(int ID, int playerID, String... str) {
+        Report r = createPlayerReport(ID, playerID);
+        for (String s : str) {
+            r.add(s);
+        }
         return r;
     }
 }

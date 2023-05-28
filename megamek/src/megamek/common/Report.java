@@ -221,9 +221,12 @@ public class Report implements Serializable {
      *
      * @param data the int to be substituted
      */
-    public void add(int data) {
-        add(data, true);
+    public void add(int... data) {
+        for (int i : data) {
+            add(i, true);
+        }
     }
+
 
     /**
      * Add the given int to the list of data that will be substituted for the
@@ -250,8 +253,10 @@ public class Report implements Serializable {
      *
      * @param data the String to be substituted
      */
-    public void add(String data) {
-        add(data, true);
+    public void add(String... data) {
+        for (String s : data) {
+            add(s, true);
+        }
         tagTranslate = null;
     }
 
