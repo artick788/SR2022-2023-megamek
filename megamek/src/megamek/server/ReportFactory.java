@@ -60,6 +60,14 @@ class ReportFactory {
         return r;
     }
 
+    public static Report createPublicReport(int ID, int indent, Entity e, int... ints){
+        Report r =createPublicReport(ID, indent, e);
+        for (int i : ints) {
+            r.add(i);
+        }
+        return r;
+    }
+
     // ====================without indent==============================================
     public static Report createReport(int ID, Entity e){
         Report r = new Report(ID);

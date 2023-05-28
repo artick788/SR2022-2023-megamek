@@ -4510,31 +4510,18 @@ public class Server implements Runnable {
 
         int roll = Compute.d6(2);
 
-        Report r = new Report(2505);
-        r.subject = entity.getId();
-        r.newlines = 0;
-        r.indent(2);
-        reportmanager.addReport(r);
-        r = new Report(6310);
-        r.subject = entity.getId();
-        r.add(roll);
-        r.newlines = 0;
-        reportmanager.addReport(r);
-        r = new Report(3340);
-        r.add(modifier);
-        r.subject = entity.getId();
-        r.newlines = 0;
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(2505, 2, entity));
+        reportmanager.addReport(ReportFactory.createReport(6310, entity, roll));
+        reportmanager.addReport(ReportFactory.createReport(3340, entity, modifier));
 
-        r = new Report(1210);
-        r.subject = entity.getId();
+        int reportID = 1210;
         roll += modifier;
         if (roll < 8) {
-            r.messageId = 2506;
+            reportID = 2506;
             // minor fishtail, fail to turn
             turnDirection = 0;
         } else if (roll < 10) {
-            r.messageId = 2507;
+            reportID = 2507;
             // moderate fishtail, turn an extra hexside and roll for motive damage at -1.
             if (turnDirection == 0) {
                 turnDirection = Compute.d6() < 4? -1 : 1;
@@ -4544,7 +4531,7 @@ public class Server implements Runnable {
             motiveDamage = true;
             motiveDamageMod = -1;
         } else if (roll < 12) {
-            r.messageId = 2508;
+            reportID = 2508;
             // serious fishtail, turn an extra hexside and roll for motive damage. Turn ends.
             if (turnDirection == 0) {
                 turnDirection = Compute.d6() < 4? -1 : 1;
@@ -4554,23 +4541,23 @@ public class Server implements Runnable {
             motiveDamage = true;
             turnEnds = true;
         } else {
-            r.messageId = 2509;
+            reportID = 2509;
             // Turn fails and vehicle skids
             // Wheeled and naval vehicles start to flip if the roll is high enough.
             if (roll > 13) {
                 if (entity.getMovementMode() == EntityMovementMode.WHEELED) {
-                    r.messageId = 2510;
+                    reportID = 2510;
                     flip = true;
                 } else if (entity.getMovementMode() == EntityMovementMode.NAVAL
                         || entity.getMovementMode() == EntityMovementMode.HYDROFOIL) {
                     entity.setDoomed(true);
-                    r.messageId = 2511;
+                    reportID = 2511;
                 }
             }
             skid = true;
             turnEnds = true;
         }
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(reportID, entity));
         entity.setFacing((entity.getFacing() + turnDirection + 6) % 6);
         entity.setSecondaryFacing(entity.getFacing());
         if (motiveDamage && isGroundVehicle) {
@@ -4649,11 +4636,7 @@ public class Server implements Runnable {
      * @return
      */
     private boolean processCollision(Entity entity, Entity target, Coords src) {
-        Report r = new Report(9035);
-        r.subject = entity.getId();
-        r.add(entity.getDisplayName());
-        r.add(target.getDisplayName());
-        reportmanager.addReport(r);
+        reportmanager.addReport(ReportFactory.createReport(9035, entity, entity.getDisplayName(), target.getDisplayName()));
         boolean partial = (Compute.d6() == 6);
         // if aero chance to avoid
         if ((target.isAero())
@@ -4665,13 +4648,9 @@ public class Server implements Runnable {
             PilotingRollData psr = target.getBasePilotingRoll();
             psr.addModifier(0, "avoiding collision");
             int ctrlroll = Compute.d6(2);
-            r = new Report(9045);
-            r.subject = target.getId();
-            r.add(target.getDisplayName());
+            Report r = ReportFactory.createReport(9045, 2, target, target.getDisplayName());
             r.add(psr.getValue());
             r.add(ctrlroll);
-            r.newlines = 0;
-            r.indent(2);
             if (ctrlroll < psr.getValue()) {
                 r.choose(false);
                 reportmanager.addReport(r);
@@ -4713,11 +4692,7 @@ public class Server implements Runnable {
             }
         } else {
             // can't avoid collision - write report
-            r = new Report(9040);
-            r.subject = entity.getId();
-            r.add(entity.getDisplayName());
-            r.indent(2);
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(9040, 2, entity, entity.getDisplayName()));
         }
 
         // if we are still here, then collide
@@ -4751,18 +4726,13 @@ public class Server implements Runnable {
         Vector<Report> vReport = new Vector<>();
         Report r;
         if (c == null) {
-            r = new Report(9701);
-            r.subject = entity.getId();
-            vReport.add(r);
+            vReport.add(ReportFactory.createReport(9701, entity));
             vReport.addAll(entityManager.destroyEntity(entity, "crashed off the map", true, true));
             return vReport;
         }
 
         if (game.getBoard().inAtmosphere()) {
-            r = new Report(9393, Report.PUBLIC);
-            r.indent();
-            r.addDesc(entity);
-            vReport.add(r);
+            vReport.add(ReportFactory.createPublicReport(9393, 1, entity));
             entity.setDoomed(true);
         } else {
             ((IAero) entity).land();
@@ -4822,11 +4792,7 @@ public class Server implements Runnable {
                 }
             }
             if (!damageDealt) {
-                r = new Report(9700, Report.PUBLIC);
-                r.indent();
-                r.addDesc(entity);
-                r.add(crash_damage);
-                vReport.add(r);
+                vReport.add(ReportFactory.createPublicReport(9700, 1, entity, crash_damage));
                 while (crash_damage > 0) {
                     HitData hit;
                     if ((entity instanceof SmallCraft) && ((SmallCraft) entity).isSpheroid()) {
@@ -4864,12 +4830,7 @@ public class Server implements Runnable {
                         target = 3;
                     }
                     int roll = Compute.d6();
-                    r = new Report(9705, Report.PUBLIC);
-                    r.indent();
-                    r.addDesc(victim);
-                    r.add(target);
-                    r.add(crash_damage);
-                    r.add(roll);
+                    r = ReportFactory.createPublicReport(9705, 1, victim, target, crash_damage, roll);
                     if (roll > target) {
                         r.choose(true);
                         vReport.add(r);
