@@ -238,26 +238,10 @@ public class HandleAttack {
         }
 
         // do we hit?
-        if (roll < toHit.getValue()) {
-            // nope
-            reportmanager.addReport(ReportFactory.createReport(4035, ae));
-
+        if (isHit(roll, toHit, ae, target, bldg, damage, targetInBuilding)){
             if (ae instanceof LandAirMech && ae.isAirborneVTOLorWIGE()) {
                 game.addControlRoll(new PilotingRollData(ae.getId(), 0, "missed punch attack"));
             }
-            // If the target is in a building, the building absorbs the damage.
-            if (targetInBuilding && (bldg != null)) {
-
-                // Only report if damage was done to the building.
-                if (damage > 0) {
-                    Vector<Report> buildingReport = server.damageBuilding(bldg, damage, target.getPosition());
-                    for (Report report : buildingReport) {
-                        report.subject = ae.getId();
-                    }
-                    reportmanager.addReport(buildingReport);
-                }
-            }
-
             if(paa.isZweihandering()) {
                 ArrayList<Integer> criticalLocs = new ArrayList<>();
                 criticalLocs.add(Mech.LOC_RARM);
@@ -268,19 +252,7 @@ public class HandleAttack {
         }
 
         // Targeting a building.
-        if ((target.getTargetType() == Targetable.TYPE_BUILDING)
-                || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
-            // The building takes the full brunt of the attack.
-            reportmanager.addReport(ReportFactory.createReport(4040, ae));
-            Vector<Report> buildingReport = server.damageBuilding(bldg, damage, target.getPosition());
-            for (Report report : buildingReport) {
-                report.subject = ae.getId();
-            }
-            reportmanager.addReport(buildingReport);
-
-            // Damage any infantry in the hex.
-            reportmanager.addReport(server.damageInfantryIn(bldg, damage, target.getPosition()));
-
+        if (isTargetBuilding(target, ae, bldg, damage)) {
             if(paa.isZweihandering()) {
                 ArrayList<Integer> criticalLocs = new ArrayList<>();
                 criticalLocs.add(Mech.LOC_RARM);
@@ -296,7 +268,7 @@ public class HandleAttack {
         hit.setGeneralDamageType(HitData.DAMAGE_PHYSICAL);
         reportmanager.addReport(ReportFactory.createReport(4045, ae, toHit.getTableDesc(), te.getLocationAbbr(hit)));
 
-        damage = ShieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
+        damage = shieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
 
         // A building may absorb the entire shot.
         if (damage == 0) {
@@ -369,7 +341,7 @@ public class HandleAttack {
         }
     }
 
-    private int ShieldsUnitsBuilding(boolean targetInBuilding, Building bldg, int damage, Targetable target, Entity ae) {
+    private int shieldsUnitsBuilding(boolean targetInBuilding, Building bldg, int damage, Targetable target, Entity ae) {
         // The building shields all units from a certain amount of damage.
         // The amount is based upon the building's CF at the phase's start.
         if (targetInBuilding && (bldg != null)) {
@@ -730,30 +702,14 @@ public class HandleAttack {
         }
 
         // do we hit?
-        if (roll < toHit.getValue()) {
-            // miss
-            reportmanager.addReport(ReportFactory.createReport(4035, ae));
+        if (isHit(roll, toHit, ae, target, bldg, damage, targetInBuilding)){
             if (ae instanceof LandAirMech && ae.isAirborneVTOLorWIGE()) {
                 game.addControlRoll(new PilotingRollData(ae.getId(), 0, "missed a kick"));
             } else {
                 game.addPSR(new PilotingRollData(ae.getId(), 0, "missed a kick"));
             }
-
-            // If the target is in a building, the building absorbs the damage.
-            if (targetInBuilding && (bldg != null)) {
-
-                // Only report if damage was done to the building.
-                if (damage > 0) {
-                    Vector<Report> buildingReport = server.damageBuilding(bldg, damage, target.getPosition());
-                    for (Report report : buildingReport) {
-                        report.subject = ae.getId();
-                    }
-                    reportmanager.addReport(buildingReport);
-                }
-            }
             return;
         }
-
         // Targeting a building.
         if (isTargetBuilding(target, ae, bldg, damage)) {
             return;
@@ -763,7 +719,7 @@ public class HandleAttack {
         hit.setGeneralDamageType(HitData.DAMAGE_PHYSICAL);
         reportmanager.addReport(ReportFactory.createReport(4045, ae, toHit.getTableDesc(), te.getLocationAbbr(hit)));
 
-        damage = ShieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
+        damage = shieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
 
         // A building may absorb the entire shot.
         if (damage == 0) {
@@ -879,23 +835,7 @@ public class HandleAttack {
         }
 
         // do we hit?
-        if (roll < toHit.getValue()) {
-            // miss
-            reportmanager.addReport(ReportFactory.createReport(4035, ae));
-
-            // If the target is in a building, the building absorbs the damage.
-            if (targetInBuilding && (bldg != null)) {
-
-                damage += pr.damageRight;
-                // Only report if damage was done to the building.
-                if (damage > 0) {
-                    Vector<Report> buildingReport = server.damageBuilding(bldg, damage, target.getPosition());
-                    for (Report report : buildingReport) {
-                        report.subject = ae.getId();
-                    }
-                    reportmanager.addReport(buildingReport);
-                }
-            }
+        if (isHit(roll, toHit, ae, target, bldg, damage, targetInBuilding)){
             return;
         }
 
@@ -918,7 +858,7 @@ public class HandleAttack {
             HitData hit = te.rollHitLocation(toHit.getHitTable(), toHit.getSideTable());
             hit.setGeneralDamageType(HitData.DAMAGE_ENERGY);
 
-            damage = ShieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
+            damage = shieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
 
             // A building may absorb the entire shot.
             if (damage == 0) {
@@ -990,22 +930,7 @@ public class HandleAttack {
         }
 
         // do we hit?
-        if (roll < toHit.getValue()) {
-            // miss
-            reportmanager.addReport(ReportFactory.createReport(4035, ae));
-
-            // If the target is in a building, the building absorbs the damage.
-            if (targetInBuilding && (bldg != null)) {
-
-                // Only report if damage was done to the building.
-                if (damage > 0) {
-                    Vector<Report> buildingReport = server.damageBuilding(bldg, damage, target.getPosition());
-                    for (Report report : buildingReport) {
-                        report.subject = ae.getId();
-                    }
-                    reportmanager.addReport(buildingReport);
-                }
-            }
+        if (isHit(roll, toHit, ae, target, bldg, damage, targetInBuilding)){
             return;
         }
 
@@ -1019,7 +944,7 @@ public class HandleAttack {
 
         reportmanager.addReport(ReportFactory.createReport(4045, ae, toHit.getTableDesc(), te.getLocationAbbr(hit)));
 
-        damage = ShieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
+        damage = shieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
 
         // A building may absorb the entire shot.
         if (damage == 0) {
@@ -1483,9 +1408,7 @@ public class HandleAttack {
         }
 
         // do we hit?
-        if (roll < toHit.getValue()) {
-            // miss
-            reportmanager.addReport(ReportFactory.createReport(4035, ae));
+        if (isHit(roll, toHit, ae, target, bldg, damage, targetInBuilding)){
             if (caa.getClub().getType().hasSubType(MiscType.S_MACE_THB)) {
                 if (ae instanceof LandAirMech && ae.isAirborneVTOLorWIGE()) {
                     game.addControlRoll(new PilotingRollData(ae.getId(), 0, "missed a mace attack"));
@@ -1503,17 +1426,6 @@ public class HandleAttack {
                 }
             }
 
-            // If the target is in a building, the building absorbs the damage.
-            if (targetInBuilding && (bldg != null)) {
-                // Only report if damage was done to the building.
-                if (damage > 0) {
-                    Vector<Report> buildingReport = server.damageBuilding(bldg, damage, target.getPosition());
-                    for (Report report : buildingReport) {
-                        report.subject = ae.getId();
-                    }
-                    reportmanager.addReport(buildingReport);
-                }
-            }
             if(caa.isZweihandering()) {
                 ArrayList<Integer> criticalLocs = new ArrayList<>();
                 criticalLocs.add(caa.getClub().getLocation());
@@ -1542,7 +1454,7 @@ public class HandleAttack {
         hit.setGeneralDamageType(HitData.DAMAGE_PHYSICAL);
         reportmanager.addReport(ReportFactory.createReport(4045, ae, toHit.getTableDesc(), te.getLocationAbbr(hit)));
 
-        damage = ShieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
+        damage = shieldsUnitsBuilding(targetInBuilding, bldg, damage, target, ae);
 
         // A building may absorb the entire shot.
         if (damage == 0) {
@@ -2586,6 +2498,15 @@ public class HandleAttack {
         return true;
     }
 
+    /**
+     * If the target is a building, the building takes the full brunt of the attack.
+     * we add the correct reports to the reportmanager
+     *
+     * @param target - the target
+     * @param ae - the attacking entity
+     * @param bldg - the building
+     * @param damage - the damage
+     */
     private void targetBuilding(Targetable target, Entity ae, Building bldg, int damage){
         // The building takes the full brunt of the attack.
         reportmanager.addReport(ReportFactory.createReport(4040, ae));
@@ -2599,11 +2520,41 @@ public class HandleAttack {
         reportmanager.addReport(server.damageInfantryIn(bldg, damage, target.getPosition()));
     }
 
+    /**
+     * checks if the target is a building, if so, the targetBuilding method is called to apply the damage to the building
+     * @param target - the target
+     * @param ae - the attacking entity
+     * @param bldg - the building
+     * @param damage - the damage
+     * @return - true if the target is a building, false otherwise
+     */
     private boolean isTargetBuilding(Targetable target, Entity ae, Building bldg, int damage){
         if ((target.getTargetType() == Targetable.TYPE_BUILDING)
                 || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
             targetBuilding(target, ae, bldg, damage);
             return true;
+        }
+        return false;
+    }
+
+    private boolean isHit(int roll, ToHitData toHit, Entity ae, Targetable target, Building bldg, int damage, boolean targetInBuilding){
+        if (roll < toHit.getValue()) {
+            // nope
+            reportmanager.addReport(ReportFactory.createReport(4035, ae));
+
+            // If the target is in a building, the building absorbs the damage.
+            if (targetInBuilding && (bldg != null)) {
+
+                // Only report if damage was done to the building.
+                if (damage > 0) {
+                    Vector<Report> buildingReport = server.damageBuilding(bldg, damage, target.getPosition());
+                    for (Report report : buildingReport) {
+                        report.subject = ae.getId();
+                    }
+                    reportmanager.addReport(buildingReport);
+                }
+            }
+            return false;
         }
         return false;
     }
