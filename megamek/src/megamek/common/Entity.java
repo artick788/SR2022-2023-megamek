@@ -11586,8 +11586,7 @@ public abstract class Entity extends TurnOrdered implements Transporter, Targeta
     public boolean isAirborneVTOLorWIGE() {
         // stuff that moves like a VTOL is flying unless at elevation 0 or on
         // top of/in a building,
-        if ((getMovementMode() == EntityMovementMode.VTOL)
-                || (getMovementMode() == EntityMovementMode.WIGE)) {
+        if ((getMovementMode() == EntityMovementMode.VTOL) || (getMovementMode() == EntityMovementMode.WIGE)) {
             if ((game != null)
                     && (game.getBoard() != null)
                     && (getPosition() != null)

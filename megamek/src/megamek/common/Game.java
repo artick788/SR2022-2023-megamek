@@ -3165,8 +3165,7 @@ public class Game implements Serializable, IGame {
         if (gameListeners == null) {
             gameListeners = new Vector<GameListener>();
         }
-        for (Enumeration<GameListener> e = gameListeners.elements(); e
-                .hasMoreElements(); ) {
+        for (Enumeration<GameListener> e = gameListeners.elements(); e.hasMoreElements(); ) {
             event.fireEvent(e.nextElement());
         }
     }
@@ -4670,8 +4669,7 @@ public class Game implements Serializable, IGame {
                 // Add each coords that is within arc/range as protected
                 int maxDist = 3;
                 if (e instanceof BattleArmor) {
-                    int numTroopers = ((BattleArmor) e)
-                            .getNumberActiverTroopers();
+                    int numTroopers = ((BattleArmor) e).getNumberActiverTroopers();
                     switch (numTroopers) {
                         case 1:
                             maxDist = 1;
@@ -4739,8 +4737,7 @@ public class Game implements Serializable, IGame {
                 attacker = killer;
             }
         }
-        if ((target.isDoomed() || target.getCrew().isDoomed())
-                && !target.getGaveKillCredit() && (attacker != null)) {
+        if ((target.isDoomed() || target.getCrew().isDoomed()) && !target.getGaveKillCredit() && (attacker != null)) {
             attacker.addKill(target);
         }
     }
@@ -4750,8 +4747,7 @@ public class Game implements Serializable, IGame {
         // Stranded units only during movement phases, rebuild the turns vector
         if (getPhase() == IGame.Phase.PHASE_MOVEMENT) {
             // See if there are any loaded units stranded on immobile transports.
-            Iterator<Entity> strandedUnits = getSelectedEntities(
-                    entity -> isEntityStranded(entity));
+            Iterator<Entity> strandedUnits = getSelectedEntities(entity -> isEntityStranded(entity));
             if (strandedUnits.hasNext()) {
                 // Add a game turn to unload stranded units, if this
                 // is the movement phase.
@@ -4843,47 +4839,6 @@ public class Game implements Serializable, IGame {
         }
     }
 
-    /**
-     * save the game
-     *
-     * @param sFile    The <code>String</code> filename to use
-     * @return A <code>String</code> of the path to store the game
-     */
-    public String saveGame(String sFile) {
-        // We need to strip the .gz if it exists,
-        // otherwise we'll double up on it.
-        if (sFile.endsWith(".gz")) {
-            sFile = sFile.replace(".gz", "");
-        }
-        XStream xstream = new XStream();
-
-        // This will make save games much smaller
-        // by using a more efficient means of referencing
-        // objects in the XML graph
-        xstream.setMode(XStream.ID_REFERENCES);
-
-        String sFinalFile = sFile;
-        if (!sFinalFile.endsWith(".sav")) {
-            sFinalFile = sFile + ".sav";
-        }
-        File sDir = new File("savegames");
-        if (!sDir.exists()) {
-            sDir.mkdir();
-        }
-
-        sFinalFile = sDir + File.separator + sFinalFile;
-
-        try (OutputStream os = new FileOutputStream(sFinalFile + ".gz");
-             OutputStream gzo = new GZIPOutputStream(os);
-             Writer writer = new OutputStreamWriter(gzo, StandardCharsets.UTF_8)) {
-
-            xstream.toXML(this, writer);
-        } catch (Exception e) {
-            MegaMek.getLogger().error("Unable to save file: " + sFinalFile, e);
-        }
-        return sFinalFile;
-    }
-
     public List<Building.DemolitionCharge> getExplodingCharges() {
         return explodingCharges;
     }
@@ -4919,11 +4874,4 @@ public class Game implements Serializable, IGame {
     public void addScheduledNuke(int[] nuke) {
         scheduledNukes.add(nuke);
     }
-
-
-
-
-
-
-
 }

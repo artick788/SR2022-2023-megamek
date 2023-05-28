@@ -49,7 +49,7 @@ public class ServerHelper {
         	if(te_hex == null) {
         		te_hex = game.getBoard().getHex(te.getPosition());
         	}
-        	
+
             if ((te_hex != null) && !te_hex.containsTerrain(Terrains.WOODS) && !te_hex.containsTerrain(Terrains.JUNGLE)
                     && !te_hex.containsTerrain(Terrains.ROUGH) && !te_hex.containsTerrain(Terrains.RUBBLE)
                     && !te_hex.containsTerrain(Terrains.SWAMP) && !te_hex.containsTerrain(Terrains.BUILDING)
@@ -78,9 +78,7 @@ public class ServerHelper {
         }
 
         // should we even bother?
-        if (entity.isDestroyed() || entity.isDoomed()
-            || entity.getCrew().isDoomed()
-            || entity.getCrew().isDead()) {
+        if (entity.isDestroyed() || entity.isDoomed() || entity.getCrew().isDoomed() || entity.getCrew().isDead()) {
             return;
         }
 
@@ -106,8 +104,7 @@ public class ServerHelper {
         }
 
         // Add heat from external sources to the heat buildup
-        int max_ext_heat = game.getOptions().intOption(
-                OptionsConstants.ADVCOMBAT_MAX_EXTERNAL_HEAT); // Check Game Options
+        int max_ext_heat = game.getOptions().intOption(OptionsConstants.ADVCOMBAT_MAX_EXTERNAL_HEAT); // Check Game Options
         if (max_ext_heat < 0) {
             max_ext_heat = 15; // standard value specified in TW p.159
         }
@@ -125,8 +122,7 @@ public class ServerHelper {
 
         // should we use a coolant pod?
         int safeHeat = entity.hasInfernoAmmo() ? 9 : 13;
-        int possibleSinkage = ((Aero) entity).getHeatSinks()
-                - entity.getCoolantFailureAmount();
+        int possibleSinkage = ((Aero) entity).getHeatSinks() - entity.getCoolantFailureAmount();
         for (Mounted m : entity.getEquipment()) {
             if (m.getType() instanceof AmmoType) {
                 AmmoType at = (AmmoType) m.getType();
@@ -148,8 +144,7 @@ public class ServerHelper {
                         tosink += possibleSinkage;
                         break;
                     }
-                    if (mode.equals("efficient")
-                            && ((entity.heat - tosink) >= possibleSinkage)) {
+                    if (mode.equals("efficient") && ((entity.heat - tosink) >= possibleSinkage)) {
                         r = new Report(5270);
                         r.subject = entity.getId();
                         vPhaseReport.add(r);
@@ -174,13 +169,11 @@ public class ServerHelper {
         vPhaseReport.addAll(rhsReports);
 
         // add in the effects of heat
-
         if ((entity instanceof Dropship) || (entity instanceof Jumpship)) {
             // only check for a possible control roll
             if (entity.heat > 0) {
                 int bonus = (int) Math.ceil(entity.heat / 100.0);
-                game.addControlRoll(new PilotingRollData(
-                        entity.getId(), bonus, "used too much heat"));
+                game.addControlRoll(new PilotingRollData(entity.getId(), bonus, "used too much heat"));
                 entity.heat = 0;
             }
             return;
@@ -189,8 +182,7 @@ public class ServerHelper {
         // Capital fighters can overheat and require control rolls
         if (entity.isCapitalFighter() && (entity.heat > 0)) {
             int penalty = (int) Math.ceil(entity.heat / 15.0);
-            game.addControlRoll(new PilotingRollData(entity.getId(),
-                    penalty, "used too much heat"));
+            game.addControlRoll(new PilotingRollData(entity.getId(), penalty, "used too much heat"));
         }
 
         // Like other large craft, the rest of these rules don't apply
@@ -225,24 +217,7 @@ public class ServerHelper {
                         r.addDesc(entity);
                     } else {
                         // roll for startup
-                        int startup = (4 + (((entity.heat - 14) / 4) * 2)) - hotDogMod;
-                        if (mtHeat) {
-                            startup -= 5;
-                            switch (entity.getCrew().getPiloting()) {
-                                case 0:
-                                case 1:
-                                    startup -= 2;
-                                    break;
-                                case 2:
-                                case 3:
-                                    startup -= 1;
-                                    break;
-                                case 6:
-                                case 7:
-                                    startup += 1;
-                                    break;
-                            }
-                        }
+                        int startup = startupRoll(entity, hotDogMod, mtHeat);
                         int startupRoll = entity.getCrew().rollPilotingSkill();
                         r = new Report(5050);
                         r.subject = entity.getId();
@@ -294,24 +269,7 @@ public class ServerHelper {
                     vPhaseReport.add(r);
                     entity.setShutDown(true);
                 } else {
-                    int shutdown = (4 + (((entity.heat - 14) / 4) * 2)) - hotDogMod;
-                    if (mtHeat) {
-                        shutdown -= 5;
-                        switch (entity.getCrew().getPiloting()) {
-                            case 0:
-                            case 1:
-                                shutdown -= 2;
-                                break;
-                            case 2:
-                            case 3:
-                                shutdown -= 1;
-                                break;
-                            case 6:
-                            case 7:
-                                shutdown += 1;
-                                break;
-                        }
-                    }
+                    int shutdown = startupRoll(entity, hotDogMod, mtHeat);
                     int shutdownRoll = Compute.d6(2);
                     r = new Report(5060);
                     r.subject = entity.getId();
@@ -337,8 +295,7 @@ public class ServerHelper {
 
         // heat effects: ammo explosion!
         if (entity.heat >= 19) {
-            int boom = (4 + (entity.heat >= 23 ? 2 : 0) + (entity.heat >= 28 ? 2 : 0))
-                    - hotDogMod;
+            int boom = (4 + (entity.heat >= 23 ? 2 : 0) + (entity.heat >= 28 ? 2 : 0)) - hotDogMod;
             if (mtHeat) {
                 boom += (entity.heat >= 35 ? 2 : 0)
                         + (entity.heat >= 40 ? 2 : 0)
@@ -397,7 +354,29 @@ public class ServerHelper {
             vPhaseReport.addAll(s.destroyEntity(entity, "pilot death", true));
         }
     }
-    
+
+    private static int startupRoll(Entity entity, int hotDogMod, boolean mtHeat) {
+        int startup = (4 + (((entity.heat - 14) / 4) * 2)) - hotDogMod;
+        if (mtHeat) {
+            startup -= 5;
+            switch (entity.getCrew().getPiloting()) {
+                case 0:
+                case 1:
+                    startup -= 2;
+                    break;
+                case 2:
+                case 3:
+                    startup -= 1;
+                    break;
+                case 6:
+                case 7:
+                    startup += 1;
+                    break;
+            }
+        }
+        return startup;
+    }
+
     /**
      * Helper function that causes an entity to sink to the bottom of the water
      * hex it's currently in.

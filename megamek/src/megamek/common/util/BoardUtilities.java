@@ -140,8 +140,7 @@ public class BoardUtilities {
                 if(mapSettings.getMedium() == MapSettings.MEDIUM_SPACE) {
                     nb[index++] = new Hex(0,"space:1",mapSettings.getTheme(), new Coords(w,h));
                 } else {
-                    nb[index++] = new Hex(elevationMap[w][h], "", mapSettings
-                            .getTheme(), new Coords(w,h));
+                    nb[index++] = new Hex(elevationMap[w][h], "", mapSettings.getTheme(), new Coords(w,h));
                 }
             }
         }

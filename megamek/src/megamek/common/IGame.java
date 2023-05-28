@@ -1628,8 +1628,6 @@ public interface IGame {
 
     public boolean isPhasePlayable(IGame.Phase phase);
 
-    public String saveGame(String sFile);
-
     public List<Building.DemolitionCharge> getExplodingCharges();
 
     public void setExplodingCharges(List<Building.DemolitionCharge> explodingCharges);

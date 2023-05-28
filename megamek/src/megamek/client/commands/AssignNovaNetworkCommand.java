@@ -282,8 +282,7 @@ public class AssignNovaNetworkCommand extends ClientCommand {
      * @param planned set this to true if you want to calculate based on next turns net.
      * @return
      */
-    private List<Entity> listNetwork(Entity e, boolean planned)
-    {
+    private List<Entity> listNetwork(Entity e, boolean planned) {
         List<Entity> novaNetworkMembers = new LinkedList<Entity>();
         List<Entity> novaUnits = getMyNovaUnits();
         

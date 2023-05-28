@@ -719,5 +719,45 @@ public class GameManager {
         } // End coords-on-board
     }
 
+    public void processTeamChange(IGame game) {
+        if (getPlayerChangingTeam() != null) {
+            getPlayerChangingTeam().setTeam(getRequestedTeam());
+            game.setupTeams();
+            send(PacketFactory.createPlayerUpdatePacket(game, getPlayerChangingTeam().getId()));
+            String teamString = "Team " + getRequestedTeam() + "!";
+            if (getRequestedTeam() == IPlayer.TEAM_UNASSIGNED) {
+                teamString = " unassigned!";
+            } else if (getRequestedTeam() == IPlayer.TEAM_NONE) {
+                teamString = " lone wolf!";
+            }
+            sendServerChat(getPlayerChangingTeam().getName() + " has changed teams to " + teamString);
+            setPlayerChangingTeam(null);
+        }
+        setChangePlayersTeam(false);
+    }
 
+    // TODO (Sam): Maybe a utility function for in the roll class
+    public String rollToString(int critMod, int roll) {
+        String rollString = "";
+        if (critMod != 0) {
+            rollString = "(" + roll;
+            if (critMod > 0) {
+                rollString += "+";
+            }
+            rollString += critMod + ") = ";
+            roll += critMod;
+        }
+        rollString += roll;
+        return rollString;
+    }
+
+    public int applyInfrantryDamageReduction(Entity te, int damage) {
+        // Round up glancing blows against conventional infantry
+        if ((te instanceof Infantry) && !(te instanceof BattleArmor)) {
+            damage = (int) Math.ceil(damage / 2.0);
+        } else {
+            damage = (int) Math.floor(damage / 2.0);
+        }
+        return damage;
+    }
 }

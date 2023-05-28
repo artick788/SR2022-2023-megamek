@@ -56,7 +56,7 @@ public class LocalSaveGameCommand extends ServerCommand {
             if (args.length > 2) {
                 localPath = args[2];
             }
-            server.sendSaveGame(connId, fileName, localPath);
+            server.getGameSaveLoader().sendSaveGame(connId, fileName, localPath);
         }
     }
 }

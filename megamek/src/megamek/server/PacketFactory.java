@@ -238,8 +238,7 @@ public class PacketFactory {
     }
 
     static public Packet createSpecialHexDisplayPacket(IGame game, int toPlayer) {
-        Hashtable<Coords, Collection<SpecialHexDisplay>> shdTable = game
-                .getBoard().getSpecialHexDisplayTable();
+        Hashtable<Coords, Collection<SpecialHexDisplay>> shdTable = game.getBoard().getSpecialHexDisplayTable();
         Hashtable<Coords, Collection<SpecialHexDisplay>> shdTable2 = new Hashtable<>();
         LinkedList<SpecialHexDisplay> tempList;
         IPlayer player = game.getPlayer(toPlayer);

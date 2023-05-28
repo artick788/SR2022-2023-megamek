@@ -20,8 +20,7 @@ public class AssignNovaNetServerCommand extends ServerCommand {
 
     public AssignNovaNetServerCommand(Server server) {
         super(
-                server,
-                "nova",
+                server, "nova",
                 "This command allows you to link NovaCEWS units.\nDo not use this command unless you can link something.\nCall #nova for detailed help.");
         /*
          * This command will change the nova net at end of turn. /nova print
@@ -69,24 +68,20 @@ public class AssignNovaNetServerCommand extends ServerCommand {
                     if (args.length > 2) {
                         // do /nova print ID
                         int id = Integer.parseInt(args[2]);
-                        server.sendServerChat(connID,
-                                strListNetwork(connID, id, true));
+                        server.sendServerChat(connID, strListNetwork(connID, id, true));
                     } else {
                         // do /nova print
-                        server.sendServerChat(connID,
-                                strListNetworks(connID, true));
+                        server.sendServerChat(connID, strListNetworks(connID, true));
                     }
 
                 } else if (cmd.equalsIgnoreCase("printcurrent")) {
                     if (args.length > 2) {
                         // do /nova print ID
                         int id = Integer.parseInt(args[2]);
-                        server.sendServerChat(connID,
-                                strListNetwork(connID, id, false));
+                        server.sendServerChat(connID, strListNetwork(connID, id, false));
                     } else {
                         // do /nova print
-                        server.sendServerChat(connID,
-                                strListNetworks(connID, false));
+                        server.sendServerChat(connID, strListNetworks(connID, false));
                     }
 
                 } else if (cmd.equalsIgnoreCase("debug")) {
@@ -98,14 +93,12 @@ public class AssignNovaNetServerCommand extends ServerCommand {
                         int id2 = Integer.parseInt(args[3]);
                         int id3 = Integer.parseInt(args[4]);
                         // do /nova link ID ID ID
-                        server.sendServerChat(connID,
-                                strLink3(connID, id1, id2, id3));
+                        server.sendServerChat(connID, strLink3(connID, id1, id2, id3));
                     } else if (args.length > 3) {
                         // do /nova link ID ID
                         int id1 = Integer.parseInt(args[2]);
                         int id2 = Integer.parseInt(args[3]);
-                        server.sendServerChat(connID,
-                                strLink2(connID, id1, id2));
+                        server.sendServerChat(connID, strLink2(connID, id1, id2));
                     }
                 } else if (cmd.equalsIgnoreCase("unlink")) {
                     if (args.length > 2) {
@@ -138,8 +131,7 @@ public class AssignNovaNetServerCommand extends ServerCommand {
     private void debug(int connID, Server server) {
         // TODO Auto-generated method stub
         server.sendServerChat(connID, "Called /nova Debug");
-        server.sendServerChat(connID,
-                "Check if server really thinks that stuff is connected");
+        server.sendServerChat(connID, "Check if server really thinks that stuff is connected");
         List<Entity> novaUnits = getMyNovaUnits(connID);
         List<Entity> opponent = server.getGame().getEntitiesVector();
         for (Entity e : novaUnits) {
@@ -150,14 +142,10 @@ public class AssignNovaNetServerCommand extends ServerCommand {
                     server.sendServerChat(connID, "Checking ID " + e.getId()
                             + " and " + t.getId());
                     if (!e.onSameC3NetworkAs(t)) {
-                        server.sendServerChat(connID, "ID " + e.getId()
-                                + " and " + t.getId()
-                                + " network Error with ECM.");
+                        server.sendServerChat(connID, "ID " + e.getId() + " and " + t.getId() + " network Error with ECM.");
                     }
                     if (!e.onSameC3NetworkAs(t, true)) {
-                        server.sendServerChat(connID, "ID " + e.getId()
-                                + " and " + t.getId()
-                                + " network Error without ECM.");
+                        server.sendServerChat(connID, "ID " + e.getId() + " and " + t.getId() + " network Error without ECM.");
                     }
                 }
             }
@@ -165,14 +153,11 @@ public class AssignNovaNetServerCommand extends ServerCommand {
             for (Entity t : opponent) {
                 if (t.getOwnerId() != e.getOwnerId()) {
                     // we are hostile
-                    Entity s = Compute.exposed_findC3Spotter(server.getGame(),
-                            e, t);
+                    Entity s = Compute.exposed_findC3Spotter(server.getGame(), e, t);
                     if (s.getId() != e.getId()) {
-                        server.sendServerChat(connID, "ID " + e.getId()
-                                + " gets bonus from ID " + s.getId());
+                        server.sendServerChat(connID, "ID " + e.getId() + " gets bonus from ID " + s.getId());
                     } else {
-                        server.sendServerChat(connID, "ID " + e.getId()
-                                + " does not have a good spotter");
+                        server.sendServerChat(connID, "ID " + e.getId() + " does not have a good spotter");
                     }
                 }
             }
@@ -223,8 +208,7 @@ public class AssignNovaNetServerCommand extends ServerCommand {
         setNewNetworkID(connID, ent2, ent1.getNewRoundNovaNetworkString());
         setNewNetworkID(connID, ent3, ent1.getNewRoundNovaNetworkString());
 
-        return rval + "New Network! Linked Units: " + id1 + ", " + id2 + ", "
-                + id3 + "\n";
+        return rval + "New Network! Linked Units: " + id1 + ", " + id2 + ", " + id3 + "\n";
     }
 
     private String strLink2(int connID, int id1, int id2) {
@@ -315,19 +299,16 @@ public class AssignNovaNetServerCommand extends ServerCommand {
         for (Entity ent : novaUnits) {
             if (!allreadyReported.contains(ent.getId())) {
                 network = listNetwork(connID, ent, planned);
-                if (network.size() > 1) // we actually have more than one member
-                                        // in this network
-                {
+                // we actually have more than one member in this network
+                if (network.size() > 1) {
                     rval += "Network ID '" + ent.getC3NetId() + "' contains:\n";
                     for (Entity re : network) {
-                        rval += "+ " + re.getId() + " " + re.getDisplayName()
-                                + "\n";
+                        rval += "+ " + re.getId() + " " + re.getDisplayName() + "\n";
                         allreadyReported.add(re.getId());
                     }
                     rval += "+-----\n";
                 } else {
-                    noLink += "+ " + ent.getId() + " " + ent.getDisplayName()
-                            + "\n";
+                    noLink += "+ " + ent.getId() + " " + ent.getDisplayName() + "\n";
                     allreadyReported.add(ent.getId());
                 }
             }

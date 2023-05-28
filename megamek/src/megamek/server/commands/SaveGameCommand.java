@@ -44,6 +44,6 @@ public class SaveGameCommand extends ServerCommand {
         if (args.length > 1) {
             fileName = args[1];
         }
-        server.saveGame(fileName);
+        server.getGameSaveLoader().saveGame(fileName);
     }
 }

@@ -75,8 +75,7 @@ public class GeyserProcessor extends DynamicTerrainProcessor {
                         hex.addTerrain(tf.createTerrain(Terrains.MAGMA, 2));
                         server.getHexUpdateSet().add(g.position);
                         gs.remove();
-                        for (Entity e : server.getGame().getEntitiesVector(
-                                g.position)) {
+                        for (Entity e : server.getGame().getEntitiesVector(g.position)) {
                             server.doMagmaDamage(e, true);
                         }
                     } else {
