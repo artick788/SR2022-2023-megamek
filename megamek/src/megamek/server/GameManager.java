@@ -1,21 +1,10 @@
 package megamek.server;
 
-import megamek.MegaMek;
-import megamek.client.ui.swing.util.PlayerColour;
 import megamek.common.*;
-import megamek.common.actions.ArtilleryAttackAction;
-import megamek.common.actions.EntityAction;
 import megamek.common.actions.WeaponAttackAction;
 import megamek.common.net.Packet;
-import megamek.common.options.GameOptions;
 import megamek.common.options.OptionsConstants;
-import megamek.common.util.BoardUtilities;
-import megamek.common.util.StringUtil;
-import megamek.common.util.fileUtils.MegaMekFile;
-import megamek.common.weapons.AttackHandler;
-import megamek.common.weapons.WeaponHandler;
 
-import java.io.File;
 import java.util.*;
 
 public class GameManager {
@@ -357,8 +346,7 @@ public class GameManager {
                                 e.getId(), e.getEquipmentNum(ams), waas }));
     }
 
-    public void sendAPDSAssignCFR(Entity e, List<Integer> apdsDists,
-                                   List<WeaponAttackAction> waas) {
+    public void sendAPDSAssignCFR(Entity e, List<Integer> apdsDists, List<WeaponAttackAction> waas) {
         send(e.getOwnerId(), new Packet(Packet.COMMAND_CLIENT_FEEDBACK_REQUEST,
                 new Object[] { Packet.COMMAND_CFR_APDS_ASSIGN, e.getId(),
                         apdsDists, waas }));
@@ -502,8 +490,7 @@ public class GameManager {
     public void checkForRevealMinefield(IGame game, Minefield mf, Entity layer) {
         Enumeration<Team> teams = game.getTeams();
         // loop through each team and determine if they can see the mine, then
-        // loop through players on team
-        // and reveal the mine
+        // loop through players on team and reveal the mine
         while (teams.hasMoreElements()) {
             Team team = teams.nextElement();
             boolean canSee = false;
@@ -513,8 +500,7 @@ public class GameManager {
                 canSee = true;
             } else {
                 // need to loop through all entities on this team and find the
-                // one with the best shot of seeing
-                // the mine placement
+                // one with the best shot of seeing the mine placement
                 int target = Integer.MAX_VALUE;
                 Iterator<Entity> entities = game.getEntities();
                 while (entities.hasNext()) {
@@ -613,7 +599,6 @@ public class GameManager {
     }
 
     public void createThunderMinefield(IGame game, Minefield minefield, Coords coords, int playerId, int damage, int entityId, int type) {
-        // TODO (Sam): Nog enkel chekcen of dit een vibrabomb is
         createThunderMinefield(game, minefield, coords, playerId, damage, entityId, type, 0);
     }
 
@@ -694,8 +679,6 @@ public class GameManager {
     public void deliverThunderAugMinefield(IGame game, Coords coords, int playerId, int damage, int entityId) {
         Coords mfCoord;
         for (int dir = 0; dir < 7; dir++) {
-            // May need to reset here for each new hex.
-            int hexDamage = damage;
             if (dir == 6) {// The targeted hex.
                 mfCoord = coords;
             } else {// The hex in the dir direction from the targeted hex.
@@ -704,7 +687,7 @@ public class GameManager {
 
             // Only if this is on the board...
             if (game.getBoard().contains(mfCoord)) {
-                deliverMinefield(game, mfCoord, playerId, hexDamage, entityId, Minefield.TYPE_CONVENTIONAL);
+                deliverMinefield(game, mfCoord, playerId, damage, entityId, Minefield.TYPE_CONVENTIONAL);
             } // End coords-on-board
         } // Handle the next coords
     }
@@ -736,21 +719,6 @@ public class GameManager {
         setChangePlayersTeam(false);
     }
 
-    // TODO (Sam): Maybe a utility function for in the roll class
-    public String rollToString(int critMod, int roll) {
-        String rollString = "";
-        if (critMod != 0) {
-            rollString = "(" + roll;
-            if (critMod > 0) {
-                rollString += "+";
-            }
-            rollString += critMod + ") = ";
-            roll += critMod;
-        }
-        rollString += roll;
-        return rollString;
-    }
-
     public int applyInfrantryDamageReduction(Entity te, int damage) {
         // Round up glancing blows against conventional infantry
         if ((te instanceof Infantry) && !(te instanceof BattleArmor)) {
@@ -760,4 +728,27 @@ public class GameManager {
         }
         return damage;
     }
+
+    public void damageWeaponCriticalSlot(Aero aero, Mounted misc, int loc) {
+        misc.setHit(true);
+        //Taharqa: We should also damage the critical slot, or
+        //MM and MHQ won't remember that this weapon is damaged on the MUL
+        //file
+        for (int i = 0; i < aero.getNumberOfCriticals(loc); i++) {
+            CriticalSlot slot1 = aero.getCritical(loc, i);
+            if ((slot1 == null) || (slot1.getType() == CriticalSlot.TYPE_SYSTEM)) {
+                continue;
+            }
+            Mounted mounted = slot1.getMount();
+            if (mounted.equals(misc)) {
+                aero.hitAllCriticals(loc, i);
+                break;
+            }
+        }
+    }
+
+
+
+
+
 }

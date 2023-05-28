@@ -32,6 +32,7 @@ import javax.xml.bind.annotation.XmlElement;
 import javax.xml.bind.annotation.XmlRootElement;
 import javax.xml.namespace.QName;
 import megamek.MegaMek;
+import megamek.common.util.BoardUtilities;
 import megamek.common.util.BuildingTemplate;
 import megamek.utils.MegaMekXmlUtil;
 
@@ -1564,7 +1565,4 @@ public class MapSettings implements Serializable {
             ex.printStackTrace();
         }
     }
-
-
-
 }

@@ -2,17 +2,27 @@ package megamek.server;
 
 import megamek.client.ui.swing.util.PlayerColour;
 import megamek.common.*;
+import megamek.common.net.IConnection;
 import org.junit.Assert;
 import org.junit.Test;
 import sun.security.util.Debug;
 
 import java.net.InetAddress;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Vector;
+import java.util.*;
 
 public class PlayerTest {
+    @Test
+    public void idk() {
+        Hashtable<Integer, String> connectionIds = new Hashtable<>();
+
+        connectionIds.put(1, "Sam");
+        connectionIds.put(5, "Arthur");
+
+        Assert.assertNull(connectionIds.get(3));
+        Assert.assertNotNull(connectionIds.get(1));
+    }
+
+
     // TODO (Sam): nog test schrijven
     /*
     @Test

@@ -51,5 +51,4 @@ public class ConnectionListenerAdapter implements ConnectionListener {
      */
     public void packetReceived(PacketReceivedEvent e) {
     }
-
 }

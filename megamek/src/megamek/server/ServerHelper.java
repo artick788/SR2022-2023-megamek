@@ -428,4 +428,18 @@ public class ServerHelper {
             }
         }
     }
+
+    public static String rollToString(int critMod, int roll) {
+        String rollString = "";
+        if (critMod != 0) {
+            rollString = "(" + roll;
+            if (critMod > 0) {
+                rollString += "+";
+            }
+            rollString += critMod + ") = ";
+            roll += critMod;
+        }
+        rollString += roll;
+        return rollString;
+    }
 }
