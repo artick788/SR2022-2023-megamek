@@ -6,11 +6,11 @@ import megamek.common.Report;
 class ReportFactory {
 
     public static Report createReport(int ID){
-        return createReport(ID, Report.HIDDEN);
+        return new Report(ID);
     }
 
-    public static Report createReport(int ID, int type){
-        return new Report(ID, type);
+    public static Report createPublicReport(int ID){
+        return new Report(ID, Report.PUBLIC);
     }
 
     // =====================with indent================================================
@@ -38,6 +38,14 @@ class ReportFactory {
         return r;
     }
 
+    public static Report createPublicReport(int ID, int indent, Entity e){
+        Report r = new Report(ID, Report.PUBLIC);
+        r.subject = e.getId();
+        r.indent(indent);
+        r.addDesc(e);
+        return r;
+    }
+
     // ====================without indent==============================================
     public static Report createReport(int ID, Entity e){
         Report r = new Report(ID);
@@ -59,6 +67,13 @@ class ReportFactory {
         for (int i : ints) {
             r.add(i);
         }
+        return r;
+    }
+
+    public static Report createPublicReport(int ID, Entity e){
+        Report r = new Report(ID, Report.PUBLIC);
+        r.subject = e.getId();
+        r.addDesc(e);
         return r;
     }
 }

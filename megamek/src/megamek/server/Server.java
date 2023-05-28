@@ -3485,17 +3485,13 @@ public class Server implements Runnable {
         // if the bonus was greater than zero then too many fighters were
         // launched and they
         // must all make control rolls
-        Report r;
         if (bonus > 0) {
             PilotingRollData psr = unit.getBasePilotingRoll();
             psr.addModifier(bonus, "safe launch rate exceeded");
             int ctrlroll = Compute.d6(2);
-            r = new Report(9375);
-            r.subject = unit.getId();
-            r.add(unit.getDisplayName());
+            Report r = ReportFactory.createReport(9375, 1, unit, unit.getDisplayName());
             r.add(psr.getValue());
             r.add(ctrlroll);
-            r.indent(1);
             if (ctrlroll < psr.getValue()) {
                 r.choose(false);
                 reportmanager.addReport(r);
@@ -3520,12 +3516,7 @@ public class Server implements Runnable {
                 reportmanager.addReport(r);
             }
         } else {
-            r = new Report(9374);
-            r.subject = unit.getId();
-            r.add(unit.getDisplayName());
-            r.indent(1);
-            r.newlines++;
-            reportmanager.addReport(r);
+            reportmanager.addReport(ReportFactory.createReport(9374, 1, unit, unit.getDisplayName()));
         }
 
         // launching from an OOC vessel causes damage
@@ -3534,9 +3525,7 @@ public class Server implements Runnable {
             || ((((Aero)unloader).getCurrentVelocity() > 2) && !game.getBoard().inSpace())) {
             int damageRoll = Compute.d6(2);
             int damage = damageRoll * 10;
-            r = new Report(9385);
-            r.subject = unit.getId();
-            r.add(unit.getDisplayName());
+            Report r = ReportFactory.createReport(9385, unit, unit.getDisplayName());
             r.add(damage);
             reportmanager.addReport(r);
             HitData hit = unit.rollHitLocation(ToHitData.HIT_NORMAL, ToHitData.SIDE_FRONT);
@@ -3830,7 +3819,6 @@ public class Server implements Runnable {
         Coords nextPos = start;
         Coords curPos = nextPos;
         IHex curHex = game.getBoard().getHex(start);
-        Report r;
         int skidDistance = 0; // actual distance moved
         // Flipping vehicles take tonnage/10 points of damage for every hex they enter.
         int flipDamage = (int) Math.ceil(entity.getWeight() / 10.0);
@@ -3844,7 +3832,7 @@ public class Server implements Runnable {
                     // Yup. One dead entity.
                     game.removeEntity(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED);
                     send(PacketFactory.createRemoveEntityPacket(entity.getId(), IEntityRemovalConditions.REMOVE_PUSHED));
-                    r = new Report(2030, Report.PUBLIC);
+                    Report r = new Report(2030, Report.PUBLIC);
                     r.addDesc(entity);
                     reportmanager.addReport(r);
 
@@ -3867,10 +3855,7 @@ public class Server implements Runnable {
 
                 }
                 // Nope. Update the report.
-                r = new Report(2035);
-                r.subject = entity.getId();
-                r.indent();
-                reportmanager.addReport(r);
+                reportmanager.addReport(ReportFactory.createReport(2035, 1, entity));
                 // Stay in the current hex and stop skidding.
                 break;
             }
@@ -3975,6 +3960,7 @@ public class Server implements Runnable {
             }
 
             if (crashedIntoTerrain) {
+                int reportID = 0;
                 if (nextHex.containsTerrain(Terrains.BLDG_ELEV)) {
                     Building bldg = game.getBoard().getBuildingAt(nextPos);
 
@@ -3982,21 +3968,17 @@ public class Server implements Runnable {
                     // before the wall not in the wall
                     // Like a building.
                     if (bldg.getType() == Building.WALL) {
-                        r = new Report(2047);
+                        reportID = 2047;
                     } else if (bldg.getBldgClass() == Building.GUN_EMPLACEMENT) {
-                        r = new Report(2049);
+                        reportID = 2049;
                     } else {
-                        r = new Report(2045);
+                        reportID = 2045;
                     }
 
                 } else {
-                    r = new Report(2045);
+                    reportID = 2045;
                 }
-
-                r.subject = entity.getId();
-                r.indent();
-                r.add(nextPos.getBoardNum(), true);
-                reportmanager.addReport(r);
+                reportmanager.addReport(ReportFactory.createReport(reportID, 1, entity, nextPos.getBoardNum()));
 
                 if ((entity.getMovementMode() == EntityMovementMode.WIGE)
                         || (entity.getMovementMode() == EntityMovementMode.VTOL)) {
@@ -4059,12 +4041,7 @@ public class Server implements Runnable {
             // we assign damage as per an accidental charge, but do not displace
             // the DropShip and end the skid
             else if (null != crashDropShip) {
-                r = new Report(2050);
-                r.subject = entity.getId();
-                r.indent();
-                r.add(crashDropShip.getShortName(), true);
-                r.add(nextPos.getBoardNum(), true);
-                reportmanager.addReport(r);
+                reportmanager.addReport(ReportFactory.createReport(2050, 1, entity, crashDropShip.getShortName(), nextPos.getBoardNum()));
                 ChargeAttackAction caa = new ChargeAttackAction(entity.getId(),
                         crashDropShip.getTargetType(),
                         crashDropShip.getTargetId(),
@@ -4124,20 +4101,13 @@ public class Server implements Runnable {
                     if (!target.isDone()) {
                         if (target instanceof Infantry
                                 || (target instanceof Protomech && target != Compute.stackingViolation(game, entity, nextPos, null))) {
-                            r = new Report(2420);
-                            r.subject = target.getId();
-                            r.addDesc(target);
-                            reportmanager.addReport(r);
+                            reportmanager.addReport(ReportFactory.createReport(2420, target));
                             continue;
                         } else {
                             PilotingRollData psr = target.getBasePilotingRoll();
                             psr.addModifier(0, "avoiding collision");
                             if (psr.getValue() == TargetRoll.AUTOMATIC_FAIL || psr.getValue() == TargetRoll.IMPOSSIBLE) {
-                                r = new Report(2426);
-                                r.subject = target.getId();
-                                r.addDesc(target);
-                                r.add(psr.getDesc());
-                                reportmanager.addReport(r);
+                                reportmanager.addReport(ReportFactory.createReport(2426, target, psr.getDesc()));
                             } else {
                                 int roll = Compute.d6(2);
                                 r = new Report(2425);
