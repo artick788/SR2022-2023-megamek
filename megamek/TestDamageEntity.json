@@ -1,146 +1,52 @@
 {
+  "damage" : 20,
   "nukeS2S" : false,
   "ammoExplosion" : true,
+  "areaSatEntry" : false,
+  "damageType" : "FRAGMENTATION",
+  "throughFront" : true,
+  "underWater" : false,
+  "damageIs" : true,
   "cases" : [ {
     "mechFile" : "data/mechfiles/mechs/3050U/Exterminator EXT-4A.mtf",
     "reports" : [ {
       "type" : 2,
-      "messageID" : 6395,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 2180,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 2190,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 6410,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 6365,
-      "player" : -1
-    }, {
-      "type" : 2,
       "messageID" : 6050,
       "player" : -1
     } ],
-    "reportCount" : 6
+    "reportCount" : 1
   }, {
     "mechFile" : "data/mechfiles/mechs/3039u/Archer ARC-2K.mtf",
     "reports" : [ {
       "type" : 2,
-      "messageID" : 6395,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 2180,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 2190,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 6410,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 6365,
-      "player" : -1
-    }, {
-      "type" : 2,
       "messageID" : 6050,
       "player" : -1
     } ],
-    "reportCount" : 6
+    "reportCount" : 1
   }, {
     "mechFile" : "data/mechfiles/mechs/3039u/Centurion CN9-A.mtf",
     "reports" : [ {
       "type" : 2,
-      "messageID" : 6395,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 2180,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 2190,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 6410,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 6365,
-      "player" : -1
-    }, {
-      "type" : 2,
       "messageID" : 6050,
       "player" : -1
     } ],
-    "reportCount" : 6
+    "reportCount" : 1
   }, {
     "mechFile" : "data/mechfiles/mechs/3039u/Enforcer ENF-4R.mtf",
     "reports" : [ {
       "type" : 2,
-      "messageID" : 6395,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 2180,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 2190,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 6410,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 6365,
-      "player" : -1
-    }, {
-      "type" : 2,
       "messageID" : 6050,
       "player" : -1
     } ],
-    "reportCount" : 6
+    "reportCount" : 1
   }, {
     "mechFile" : "data/mechfiles/mechs/3039u/Griffin GRF-1N.mtf",
     "reports" : [ {
       "type" : 2,
-      "messageID" : 6395,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 2180,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 2190,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 6410,
-      "player" : -1
-    }, {
-      "type" : 2,
-      "messageID" : 6365,
-      "player" : -1
-    }, {
-      "type" : 2,
       "messageID" : 6050,
       "player" : -1
     } ],
-    "reportCount" : 6
+    "reportCount" : 1
   }, {
     "mechFile" : "data/mechfiles/mechs/Arano Restoration/Atlas AS7-D-HT.mtf",
     "reports" : [ {
@@ -158,12 +64,6 @@
     } ],
     "reportCount" : 1
   } ],
-  "damage" : 20,
-  "throughFront" : true,
-  "areaSatEntry" : false,
-  "underWater" : false,
-  "damageType" : "FRAGMENTATION",
-  "damageIs" : true,
   "testName" : "DamageEntityTest",
   "caseCount" : 7
 }

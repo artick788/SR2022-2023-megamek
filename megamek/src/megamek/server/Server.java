@@ -19013,21 +19013,11 @@ public class Server implements Runnable {
         // show Locations which have rerolled with Edge
         HitData undoneLocation = hit.getUndoneLocation();
         while (undoneLocation != null) {
-            r = new Report(6500);
-            r.subject = te_n;
-            r.indent(2);
-            r.addDesc(te);
-            r.add(te.getLocationAbbr(undoneLocation));
-            vDesc.addElement(r);
+            vDesc.addElement(ReportFactory.createReport(6500, 2, te, te.getLocationAbbr(undoneLocation)));
             undoneLocation = undoneLocation.getUndoneLocation();
 
             // if edge was uses, give at end overview of remaining
-            r = new Report(6510);
-            r.subject = te_n;
-            r.indent(2);
-            r.addDesc(te);
-            r.add(te.getCrew().getOptions().intOption(OptionsConstants.EDGE));
-            vDesc.addElement(r);
+            vDesc.addElement(ReportFactory.createReport(6510, 2, te, te.getCrew().getOptions().intOption(OptionsConstants.EDGE)));
         } // while
 
         boolean autoEject = false;
@@ -19095,9 +19085,7 @@ public class Server implements Runnable {
         // Some "hits" on a ProtoMech are actually misses.
         if ((te instanceof Protomech) && (hit.getLocation() == Protomech.LOC_NMISS)) {
             Protomech proto = (Protomech) te;
-            r = new Report(6035);
-            r.subject = te.getId();
-            r.indent(2);
+            r = ReportFactory.createReport(6035, 2, te);
             if (proto.isGlider()) {
                 r.messageId = 6036;
                 proto.setWingHits(proto.getWingHits() + 1);
@@ -19110,19 +19098,11 @@ public class Server implements Runnable {
         if ((crits > 0) && (te instanceof BattleArmor)) {
             // possible critical miss if the rerolled location isn't alive
             if ((hit.getLocation() >= te.locations()) || (te.getInternal(hit.getLocation()) <= 0)) {
-                r = new Report(6037);
-                r.add(hit.getLocation());
-                r.subject = te_n;
-                r.indent(2);
-                vDesc.addElement(r);
+                vDesc.addElement(ReportFactory.createReport(6037, 2, te, hit.getLocation()));
                 return vDesc;
             }
             // otherwise critical hit
-            r = new Report(6225);
-            r.add(te.getLocationAbbr(hit));
-            r.subject = te_n;
-            r.indent(2);
-            vDesc.addElement(r);
+            vDesc.addElement(ReportFactory.createReport(6225, 2, te, te.getLocationAbbr(hit)));
 
             crits = 0;
             damage = Math.max(te.getInternal(hit.getLocation()) + te.getArmor(hit.getLocation()), damage);
@@ -19142,49 +19122,38 @@ public class Server implements Runnable {
                 || ((isPlatoon || isBattleArmor) && !te.isDestroyed() && !te.isDoomed() && game.getPlanetaryConditions().isVacuum())) {
             // PBI. Double damage.
             damage *= 2;
-            r = new Report(6039);
-            r.subject = te_n;
-            r.indent(2);
-            vDesc.addElement(r);
+            vDesc.addElement(ReportFactory.createReport(6039, 2, te));
         }
 
         // If dealing with fragmentation missiles, it does double damage to infantry...
         // We're actually going to abuse this for AX-head warheads, too, so as to not add another parameter.
+        int reportID = 0;
         switch (bFrag) {
             case FRAGMENTATION:
                 // Fragmentation missiles deal full damage to conventional infantry
                 // (only) and no damage to other target types.
+                reportID = 6045;
                 if (!isPlatoon) {
                     damage = 0;
-                    r = new Report(6050); // For some reason this report never actually shows up...
-                } else {
-                    r = new Report(6045); // ...but this one displays just fine.
+                    reportID = 6050; // For some reason this report never actually shows up...
                 }
-                r.subject = te_n;
-                r.indent(2);
-                vDesc.addElement(r);
+                vDesc.addElement(ReportFactory.createReport(reportID, 2, te));
                 break;
             case NONPENETRATING:
                 if (!isPlatoon) {
                     damage = 0;
-                    r = new Report(6051);
-                    r.subject = te_n;
-                    r.indent(2);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6051, 2, te));
                 }
                 break;
             case FLECHETTE:
                 // Flechette ammo deals full damage to conventional infantry and
                 // half damage to other targets (including battle armor).
+                reportID = 6055;
                 if (!isPlatoon) {
                     damage /= 2;
-                    r = new Report(6060);
-                } else {
-                    r = new Report(6055);
+                    reportID =6060;
                 }
-                r.subject = te_n;
-                r.indent(2);
-                vDesc.addElement(r);
+                vDesc.addElement(ReportFactory.createReport(reportID, 2, te));
                 break;
             case ACID:
                 if (isFerroFibrousTarget || reactiveArmor || reflectiveArmor || ferroLamellorArmor || bar5) {
@@ -19192,27 +19161,17 @@ public class Server implements Runnable {
                         break; // hitting IS, not acid-affected armor
                     }
                     damage = Math.min(te.getArmor(hit), 3);
-                    r = new Report(6061);
-                    r.subject = te_n;
-                    r.indent(2);
-                    r.add(damage);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6061, 2, te, damage));
                 } else if (isPlatoon) {
                     damage = (int) Math.ceil(damage * 1.5);
-                    r = new Report(6062);
-                    r.subject = te_n;
-                    r.indent(2);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6062, 2, te));
                 }
                 break;
             case INCENDIARY:
                 // Incendiary AC ammo does +2 damage to unarmoured infantry
                 if (isPlatoon) {
                     damage += 2;
-                    r = new Report(6064);
-                    r.subject = te_n;
-                    r.indent(2);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6064, 2, te));
                 }
                 break;
             case ANTI_TSM:
@@ -19222,10 +19181,7 @@ public class Server implements Runnable {
                 // no damage against armor of BAR rating >=5
                 if ((te.getBARRating(hit.getLocation()) >= 5) && (te.getArmor(hit.getLocation()) > 0)) {
                     damage = 0;
-                    r = new Report(6063);
-                    r.subject = te_n;
-                    r.indent(2);
-                    vDesc.add(r);
+                    vDesc.add(ReportFactory.createReport(6063, 2, te));
                 }
                 break;
             default:
@@ -19254,23 +19210,14 @@ public class Server implements Runnable {
                 // damage should be reduced by a factor of 2 for ammo explosions
                 // according to p. 161, TW
                 damage /= 2;
-                r = new Report(9010);
-                r.subject = te_n;
-                r.add(damage);
-                r.indent(3);
-                vDesc.addElement(r);
+                vDesc.addElement(ReportFactory.createReport(9010, 3, te, damage));
             }
         }
 
         // infantry armor can reduce damage
         if (isPlatoon && (((Infantry) te).calcDamageDivisor() != 1.0)) {
-            r = new Report(6074);
-            r.subject = te_n;
-            r.indent(2);
-            r.add(damage);
-            damage = (int) Math.ceil((damage) / ((Infantry) te).calcDamageDivisor());
-            r.add(damage);
-            vDesc.addElement(r);
+            int damageNext = (int) Math.ceil((damage) / ((Infantry) te).calcDamageDivisor());
+            vDesc.addElement(ReportFactory.createReport(6074, 2, te, damage, damageNext));
         }
 
         // Allocate the damage
@@ -19301,17 +19248,8 @@ public class Server implements Runnable {
                 IAero a = (IAero) te;
                 a.setCurrentDamage(a.getCurrentDamage() + damage);
                 a.setCapArmor(a.getCapArmor() - damage);
-                r = new Report(9065);
-                r.subject = te_n;
-                r.indent(2);
-                r.newlines = 0;
-                r.addDesc(te);
-                r.add(damage);
-                vDesc.addElement(r);
-                r = new Report(6085);
-                r.subject = te_n;
-                r.add(Math.max(a.getCapArmor(), 0));
-                vDesc.addElement(r);
+                vDesc.addElement(ReportFactory.createReport(9065, 2, te, damage));
+                vDesc.addElement(ReportFactory.createReport(6085, 0, te, Math.max(a.getCapArmor(), 0)));
                 // check to see if this destroyed the entity
                 if (a.getCapArmor() <= 0) {
                     // Lets auto-eject if we can!
@@ -19350,11 +19288,7 @@ public class Server implements Runnable {
 
             if (!((te instanceof Aero) && ammoExplosion)) {
                 // report something different for Aero ammo explosions
-                r = new Report(6065);
-                r.subject = te_n;
-                r.indent(2);
-                r.addDesc(te);
-                r.add(damage);
+                r = ReportFactory.createReport(6065, 2, te, damage);
                 if (damageIS) {
                     r.messageId = 6070;
                 }
@@ -19382,11 +19316,7 @@ public class Server implements Runnable {
                     te.damageThisPhase += absorb;
                     damage = damageNew;
 
-                    r = new Report(3530);
-                    r.subject = te_n;
-                    r.indent(3);
-                    r.add(absorb);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(3530, 3, te, absorb));
 
                     if (damage <= 0) {
                         crits = 0;
@@ -19406,11 +19336,7 @@ public class Server implements Runnable {
                     me.damageThisPhase += damageDiff;
                     damage = damageNew;
 
-                    r = new Report(3520);
-                    r.subject = te_n;
-                    r.indent(3);
-                    r.add(damageDiff);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(3520, 3, te, damageDiff));
                 }
             }
 
@@ -19494,11 +19420,7 @@ public class Server implements Runnable {
                         && (bFrag != DamageType.IGNORE_PASSENGER) && !ammoExplosion) {
                     Entity swarm = game.getEntity(swarmer);
                     // Yup. Roll up some hit data for that passenger.
-                    r = new Report(6076);
-                    r.subject = swarmer;
-                    r.indent(3);
-                    r.addDesc(swarm);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6076, 3, swarm));
 
                     HitData passHit = swarm.rollHitLocation(
                             ToHitData.HIT_NORMAL, ToHitData.SIDE_FRONT);
@@ -19528,12 +19450,7 @@ public class Server implements Runnable {
                     if (damage > absorb) {
                         // Yup. Remove the absorbed damage.
                         damage -= absorb;
-                        r = new Report(6080);
-                        r.subject = te_n;
-                        r.indent(2);
-                        r.add(damage);
-                        r.addDesc(te);
-                        vDesc.addElement(r);
+                        vDesc.addElement(ReportFactory.createReport(6080, 2, te, damage));
                     } else {
                         // Nope. Return our description.
                         return vDesc;
@@ -19588,11 +19505,7 @@ public class Server implements Runnable {
                         isHeadHit = false;
                         crits = 0;
                     }
-                    r = new Report(6073);
-                    r.subject = te_n;
-                    r.indent(3);
-                    r.add(damage);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6073, 3, te, damage));
                 } else if (ballisticArmor
                            && ((hit.getGeneralDamageType() == HitData.DAMAGE_ARMOR_PIERCING_MISSILE)
                                || (hit.getGeneralDamageType() == HitData.DAMAGE_ARMOR_PIERCING)
@@ -19600,20 +19513,12 @@ public class Server implements Runnable {
                                || (hit.getGeneralDamageType() == HitData.DAMAGE_MISSILE))) {
                     tmpDamageHold = damage;
                     damage = Math.max(1, damage / 2);
-                    r = new Report(6088);
-                    r.subject = te_n;
-                    r.indent(3);
-                    r.add(damage);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6088, 3, te, damage));
                 } else if (impactArmor && (hit.getGeneralDamageType() == HitData.DAMAGE_PHYSICAL)) {
                     tmpDamageHold = damage;
                     damage -= (int) Math.ceil((double) damage / 3);
                     damage = Math.max(1, damage);
-                    r = new Report(6089);
-                    r.subject = te_n;
-                    r.indent(3);
-                    r.add(damage);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6089, 3, te, damage));
                 } else if (reflectiveArmor
                            && (hit.getGeneralDamageType() == HitData.DAMAGE_PHYSICAL)
                            && !isBattleArmor) { // BA reflec does not receive extra physical damage
@@ -19621,38 +19526,20 @@ public class Server implements Runnable {
                     int currArmor = te.getArmor(hit);
                     int dmgToDouble = Math.min(damage, currArmor / 2);
                     damage += dmgToDouble;
-                    r = new Report(6066);
-                    r.subject = te_n;
-                    r.indent(3);
-                    r.add(currArmor);
-                    r.add(tmpDamageHold);
-                    r.add(dmgToDouble);
-                    r.add(damage);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6066, 3, te, currArmor, tmpDamageHold, dmgToDouble, damage));
                 } else if (reflectiveArmor && areaSatArty && !isBattleArmor) {
                     tmpDamageHold = damage; // BA reflec does not receive extra AE damage
                     int currArmor = te.getArmor(hit);
                     int dmgToDouble = Math.min(damage, currArmor / 2);
                     damage += dmgToDouble;
-                    r = new Report(6087);
-                    r.subject = te_n;
-                    r.indent(3);
-                    r.add(currArmor);
-                    r.add(tmpDamageHold);
-                    r.add(dmgToDouble);
-                    r.add(damage);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6087, 3, te, currArmor, tmpDamageHold, dmgToDouble, damage));
                 } else if (reflectiveArmor && (hit.getGeneralDamageType() == HitData.DAMAGE_ENERGY)) {
                     tmpDamageHold = damage;
                     damage = (int) Math.floor(((double) damage) / 2);
                     if (tmpDamageHold == 1) {
                         damage = 1;
                     }
-                    r = new Report(6067);
-                    r.subject = te_n;
-                    r.indent(3);
-                    r.add(damage);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6067, 3, te, damage));
                 } else if (reactiveArmor
                            && ((hit.getGeneralDamageType() == HitData.DAMAGE_MISSILE)
                                || (hit.getGeneralDamageType() == HitData.DAMAGE_ARMOR_PIERCING_MISSILE) ||
@@ -19662,11 +19549,7 @@ public class Server implements Runnable {
                     if (tmpDamageHold == 1) {
                         damage = 1;
                     }
-                    r = new Report(6068);
-                    r.subject = te_n;
-                    r.indent(3);
-                    r.add(damage);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6068, 3, te, damage));
                 }
 
                 // If we're using optional tank damage thresholds, setup our hit
@@ -19708,10 +19591,7 @@ public class Server implements Runnable {
                     && (hit.getLocation() == VTOL.LOC_ROTOR)
                     && te.hasWorkingMisc(MiscType.F_MAST_MOUNT, -1,
                                          VTOL.LOC_ROTOR)) {
-                    r = new Report(6081);
-                    r.subject = te_n;
-                    r.indent(2);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6081, 2, te));
                     for (Mounted mount : te.getMisc()) {
                         if (mount.getLocation() == VTOL.LOC_ROTOR) {
                             mount.setHit(true);
@@ -19774,16 +19654,11 @@ public class Server implements Runnable {
                         te.damageThisPhase += damage;
                     }
                     damage = 0;
+                    reportID = 6086;
                     if (!te.isHardenedArmorDamaged(hit)) {
-                        r = new Report(6085);
-                    } else {
-                        r = new Report(6086);
+                        reportID =6085;
                     }
-
-                    r.subject = te_n;
-                    r.indent(3);
-                    r.add(te.getArmor(hit));
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(reportID, 3, te, te.getArmor(hit)));
 
                     // telemissiles are destroyed if they lose all armor
                     if ((te instanceof TeleMissile)
@@ -19813,17 +19688,12 @@ public class Server implements Runnable {
                         te.damageThisPhase += absorbed;
                     }
                     damage -= absorbed;
-                    r = new Report(6090);
-                    r.subject = te_n;
-                    r.indent(3);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6090, 3, te));
                     if (te instanceof GunEmplacement) {
                         // gun emplacements have no internal,
                         // destroy the section
                         te.destroyLocation(hit.getLocation());
-                        r = new Report(6115);
-                        r.subject = te_n;
-                        vDesc.addElement(r);
+                        vDesc.addElement(ReportFactory.createReport(6115, 0, te));
 
                         if (te.getTransferLocation(hit).getLocation() == Entity.LOC_DESTROYED) {
                             vDesc.addAll(entityManager.destroyEntity(te, "damage", false));
@@ -19872,10 +19742,7 @@ public class Server implements Runnable {
                     // dissipating, much like Tank CASE.
                     if (ammoExplosion && te.isLargeCraft()) {
                         te.damageThisPhase += damage;
-                        r = new Report(6128);
-                        r.subject = te_n;
-                        r.indent(2);
-                        r.add(damage);
+                        r = ReportFactory.createReport(6128, 2, te, damage);
                         int loc = hit.getLocation();
                         //Roll for broadside weapons so fore/aft side armor facing takes the damage
                         if (loc == Warship.LOC_LBS) {
@@ -19920,20 +19787,12 @@ public class Server implements Runnable {
                             || ((te instanceof Warship)
                                 && (a.get0SI() <= 30) && (opRoll > 5))) {
                             // over-penetration happened
-                            r = new Report(9090);
-                            r.subject = te_n;
-                            r.newlines = 0;
-                            vDesc.addElement(r);
+                            vDesc.addElement(ReportFactory.createReport(9090, 0, te));
                             int new_loc = a.getOppositeLocation(hit.getLocation());
                             damage = Math.min(damage, te.getArmor(new_loc));
                             // We don't want to deal negative damage
                             damage = Math.max(damage, 0);
-                            r = new Report(6065);
-                            r.subject = te_n;
-                            r.indent(2);
-                            r.newlines = 0;
-                            r.addDesc(te);
-                            r.add(damage);
+                            r = ReportFactory.createReport(6025, 2, te, damage);
                             r.add(te.getLocationAbbr(new_loc));
                             vDesc.addElement(r);
                             te.setArmor(te.getArmor(new_loc) - damage, new_loc);
@@ -20004,11 +19863,7 @@ public class Server implements Runnable {
                     // 1 point of damage goes to IS
                     damage--;
                     // Remaining damage prevented by CASE II
-                    r = new Report(6126);
-                    r.subject = te_n;
-                    r.add(damage);
-                    r.indent(3);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6126, 3, te, damage));
                     int loc = hit.getLocation();
 
                     boolean isrear = true;
@@ -20033,10 +19888,7 @@ public class Server implements Runnable {
                     te.damageThisPhase += damage;
 
                     int roll = Compute.d6(2);
-                    r = new Report(6127);
-                    r.subject = te.getId();
-                    r.add(roll);
-                    vDesc.add(r);
+                    vDesc.add(ReportFactory.createReport(6127, 0, te, roll));
                     if (roll >= 8) {
                         hit.setEffect(HitData.EFFECT_NO_CRITICALS);
                     }

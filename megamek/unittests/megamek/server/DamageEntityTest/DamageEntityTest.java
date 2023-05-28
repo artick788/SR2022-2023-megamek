@@ -1,21 +1,17 @@
-package megamek.server;
+package megamek.server.DamageEntityTest;
 
-import junit.framework.TestCase;
 import megamek.common.*;
 
 import megamek.common.loaders.EntityLoadingException;
+import megamek.server.Server;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.junit.Assert;
-import org.mockito.Mockito;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.io.File;
 import java.util.Vector;
-
-import java.util.Random;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;

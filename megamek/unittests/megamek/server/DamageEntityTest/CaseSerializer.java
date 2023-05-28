@@ -1,4 +1,4 @@
-package megamek.server;
+package megamek.server.DamageEntityTest;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
