@@ -13,6 +13,20 @@ class ReportFactory {
         return new Report(ID, Report.PUBLIC);
     }
 
+    public static Report createPublicReport(int ID, int indent){
+        Report r = new Report(ID, Report.PUBLIC);
+        r.indent(indent);
+        return r;
+    }
+
+    public static Report createPublicReport(int ID, String... str){
+        Report r = new Report(ID, Report.PUBLIC);
+        for (String s : str) {
+            r.add(s);
+        }
+        return r;
+    }
+
     // =====================with indent================================================
     public static Report createReport(int ID, int indent, Entity e){
         Report r = new Report(ID);
