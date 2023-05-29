@@ -40,7 +40,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.TreeMap;
 import java.util.Vector;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
@@ -53,12 +52,10 @@ import megamek.common.IGame.Phase;
 import megamek.common.MovePath.MoveStepType;
 import megamek.common.actions.AirmechRamAttackAction;
 import megamek.common.actions.ArtilleryAttackAction;
-import megamek.common.actions.AttackAction;
 import megamek.common.actions.BreakGrappleAttackAction;
 import megamek.common.actions.ChargeAttackAction;
 import megamek.common.actions.ClearMinefieldAction;
 import megamek.common.actions.ClubAttackAction;
-import megamek.common.actions.DfaAttackAction;
 import megamek.common.actions.DodgeAction;
 import megamek.common.actions.EntityAction;
 import megamek.common.actions.FindClubAction;
@@ -171,8 +168,6 @@ public class Server implements Runnable {
         }
     }
 
-    // game info
-
     /**
      * Special packet queue for client feedback requests.
      */
@@ -255,7 +250,6 @@ public class Server implements Runnable {
         NEWconnectionListener = new ServerConnectionListener(game);
         handleAttack = new HandleAttack(this, game, reportmanager, gamemanager);
 
-
         this.metaServerUrl = metaServerUrl;
         this.password = password.length() > 0 ? password : null;
         // initialize server socket
@@ -290,13 +284,13 @@ public class Server implements Runnable {
         commandhash.registerCommands(this);
 
         // register terrain processors
-        terrainProcessors.add(new FireProcessor(this));
-        terrainProcessors.add(new SmokeProcessor(this));
-        terrainProcessors.add(new GeyserProcessor(this));
-        terrainProcessors.add(new ElevatorProcessor(this));
-        terrainProcessors.add(new ScreenProcessor(this));
-        terrainProcessors.add(new WeatherProcessor(this));
-        terrainProcessors.add(new QuicksandProcessor(this));
+        gamemanager.addTerrainProcessor(new FireProcessor(this));
+        gamemanager.addTerrainProcessor(new SmokeProcessor(this));
+        gamemanager.addTerrainProcessor(new GeyserProcessor(this));
+        gamemanager.addTerrainProcessor(new ElevatorProcessor(this));
+        gamemanager.addTerrainProcessor(new ScreenProcessor(this));
+        gamemanager.addTerrainProcessor(new WeatherProcessor(this));
+        gamemanager.addTerrainProcessor(new QuicksandProcessor(this));
 
         packetPump = new PacketPump();
         packetPumpThread = new Thread(packetPump, "Packet Pump");
@@ -892,7 +886,6 @@ public class Server implements Runnable {
             IConnection conn = NEWconnectionListener.getConnectionIds(currConnId);
             conn.setId(newId);
             // If this Id is used, make sure we reassign that connection
-            // TODO (Sam): testen of dit werkt
             if (NEWconnectionListener.getConnectionIds(newId) != null) {
                 unassignedConns.add(NEWconnectionListener.getConnectionIds(newId));
             }
@@ -916,7 +909,6 @@ public class Server implements Runnable {
             NEWconnectionListener.addConnectionIds(newId, conn);
             send(newId, new Packet(Packet.COMMAND_LOCAL_PN, newId));
         }
-
         // Ensure all clients are up-to-date on player info
         transmitAllPlayerUpdates();
     }
@@ -980,7 +972,6 @@ public class Server implements Runnable {
             send(connId, PacketFactory.createArtilleryPacket(game, player));
             send(connId, PacketFactory.createFlarePacket(game));
             send(connId, PacketFactory.createSpecialHexDisplayPacket(game, connId));
-
         } // Found the player.
     }
 
@@ -1018,8 +1009,6 @@ public class Server implements Runnable {
 
     // Track buildings that are affected by an entity's movement.
     private Hashtable<Building, Boolean> affectedBldgs = new Hashtable<>();
-
-    private Vector<DynamicTerrainProcessor> terrainProcessors = new Vector<>();
 
     private static EntityVerifier entityVerifier;
 
@@ -1769,7 +1758,8 @@ public class Server implements Runnable {
                 // TODO (Sam): Check if this change is right (with test)
                 //hexUpdateSet.clear();
                 gamemanager.setHexUpdateSet(new LinkedHashSet<>());
-                for (DynamicTerrainProcessor tp : terrainProcessors) {
+                Vector<DynamicTerrainProcessor> tps = gamemanager.getTerrainProcessors();
+                for (DynamicTerrainProcessor tp : tps) {
                     tp.doEndPhaseChanges(reportmanager.getvPhaseReport());
                 }
                 // TODO (Sam): also changed here
@@ -20051,7 +20041,6 @@ public class Server implements Runnable {
         if (fighters.size() < 1) {
             return;
         }
-        // fs.setOwner(fighters.firstElement().getOwner());
         // Only assign an entity ID when the client hasn't.
         if (Entity.NONE == fs.getId()) {
             fs.setId(game.getNextEntityId());
@@ -20126,19 +20115,6 @@ public class Server implements Runnable {
             loadUnit(loader, loadee, bayNumber);
             // In the chat lounge, notify players of customizing of unit
             if (game.getPhase() == IGame.Phase.PHASE_LOUNGE) {
-                /*
-                 * StringBuffer message = new StringBuffer();
-                 * message.append("Unit "); if
-                 * (game.getOptions().booleanOption(OptionsConstants.BASE_BLIND_DROP) ||
-                 * game.getOptions().booleanOption(OptionsConstants.BASE_REAL_BLIND_DROP)) { if
-                 * (!entity.getExternalIdAsString().equals("-1")) {
-                 * message.append('[') .append(entity.getExternalIdAsString())
-                 * .append("] "); } message.append(entity.getId()).append('(')
-                 * .append(entity.getOwner().getName()).append(')'); } else {
-                 * message.append(entity.getDisplayName()); }
-                 * message.append(" has been customized.");
-                 * sendServerChat(message.toString());
-                 */
                 // Set this so units can be unloaded in the first movement phase
                 loadee.setLoadedThisTurn(false);
             }
@@ -20370,61 +20346,5 @@ public class Server implements Runnable {
         // Clear the list of pending units and move to the next turn.
         game.resetActions();
         changeToNextTurn(connId);
-    }
-
-
-    // TODO (sam): Nog testen
-    HashMap<IPlayer, Integer> elo;
-    private void updateELO() {
-        Vector<IPlayer> winningPlayers = new Vector<>();
-        Vector<IPlayer> losingPlayers = new Vector<>();
-        if (game.getVictoryTeam() == IPlayer.TEAM_NONE) {
-            // Individual victory
-            IPlayer winning = game.getPlayer(game.getVictoryPlayerId());
-            if (winning != null) {
-                winningPlayers.add(winning);
-                for (IPlayer player : game.getPlayersVector()) {
-                    if (player != winning) {
-                        losingPlayers.add(player);
-                    }
-                }
-            } else {
-                //Draw
-            }
-        } else {
-            // Team victory
-            int winningTeam = game.getVictoryTeam();
-            Vector<IPlayer> players = game.getPlayersVector();
-            for (IPlayer player : players) {
-                if (game.getTeamForPlayer(player).getId() == winningTeam) {
-                    winningPlayers.add(player);
-                } else {
-                    losingPlayers.add(player);
-                }
-            }
-        }
-        updateRatings(winningPlayers, losingPlayers);
-    }
-
-    private int getPlayerRating(IPlayer player) {
-        // Retrieve player's rating from storage
-        Integer rating = elo.get(player);
-        if (rating == null) {
-            elo.put(player, 0);
-            return 0;
-        }
-        return rating;
-    }
-
-    public void updateRatings(Vector<IPlayer> winningPlayers, Vector<IPlayer> losingPlayers) {
-        for (IPlayer player : winningPlayers) {
-            int rating = getPlayerRating(player);
-            elo.put(player, rating + 1);
-        }
-
-        for (IPlayer player : losingPlayers) {
-            int rating = getPlayerRating(player);
-            elo.put(player, rating - 1);
-        }
     }
 }
