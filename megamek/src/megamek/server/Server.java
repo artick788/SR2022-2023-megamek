@@ -1073,6 +1073,14 @@ public class Server implements Runnable {
     }
 
     /**
+     * Returns the entityManager component
+     * @return the entityManager
+     */
+    public EntityManager getEntityManager() {
+        return entityManager;
+    }
+
+    /**
      * Correct a duplicate player name
      *
      * @param oldName the <code>String</code> old player name, that is a duplicate
