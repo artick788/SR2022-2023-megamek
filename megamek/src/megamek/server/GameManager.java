@@ -29,6 +29,16 @@ public class GameManager {
      */
     private Set<Coords> hexUpdateSet = new LinkedHashSet<>();
 
+    public Vector<DynamicTerrainProcessor> getTerrainProcessors() {
+        return terrainProcessors;
+    }
+
+    public void addTerrainProcessor(DynamicTerrainProcessor processor) {
+        terrainProcessors.add(processor);
+    }
+
+    private Vector<DynamicTerrainProcessor> terrainProcessors = new Vector<>();
+
     public int getRequestedTeam() {
         return requestedTeam;
     }

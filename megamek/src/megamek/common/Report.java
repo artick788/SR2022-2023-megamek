@@ -546,8 +546,7 @@ public class Report implements Serializable {
             v.elementAt(v.size() - 1).newlines++;
         }
         catch (ArrayIndexOutOfBoundsException ex) {
-            System.err.println("Report.addNewline failed, array index out " +
-                    "of bounds");
+            System.err.println("Report.addNewline failed, array index out of bounds");
         }
     }
 
@@ -591,8 +590,7 @@ public class Report implements Serializable {
      */
     @Override
     public String toString() {
-        String val = new String();
-        val = "Report(messageId=";
+        String val = "Report(messageId=";
         val += messageId;
         val += ")";
         return val;

@@ -5,8 +5,6 @@ import megamek.common.*;
 import megamek.common.actions.*;
 import megamek.common.net.Packet;
 import megamek.common.options.OptionsConstants;
-import megamek.common.weapons.AttackHandler;
-import megamek.common.weapons.Weapon;
 
 import java.util.*;
 
@@ -73,11 +71,10 @@ public class EntityManager {
      * @return a <code>Vector</code> of <code>Report</code> objects that can be
      * sent to the output log.
      */
-    public Vector<Report> destroyEntity(Entity entity, String reason, boolean survivable,
-                                        boolean canSalvage) {
+    public Vector<Report> destroyEntity(Entity entity, String reason, boolean survivable, boolean canSalvage) {
         // can't destroy an entity if it's already been destroyed
         if(entity.isDestroyed()) {
-            return new Vector<Report>();
+            return new Vector<>();
         }
 
         Vector<Report> vDesc = new Vector<>();
@@ -111,9 +108,8 @@ public class EntityManager {
             entity.setDoomed(true);
 
             // Kill any picked up MechWarriors
-            Enumeration<Integer> iter = entity.getPickedUpMechWarriors().elements();
-            while (iter.hasMoreElements()) {
-                int mechWarriorId = iter.nextElement();
+            Vector<Integer> mechWarriors = entity.getPickedUpMechWarriors();
+            for(Integer mechWarriorId : mechWarriors) {
                 Entity mw = game.getEntity(mechWarriorId);
 
                 // in some situations, a "picked up" mechwarrior won't actually exist
@@ -459,8 +455,7 @@ public class EntityManager {
     public void resetEntityPhase(IGame.Phase phase) {
         // first, mark doomed entities as destroyed and flag them
         Vector<Entity> toRemove = new Vector<>(0, 10);
-        for (Iterator<Entity> e = game.getEntities(); e.hasNext(); ) {
-            final Entity entity = e.next();
+        for (Entity entity : game.getEntitiesVector()) {
             entity.newPhase(phase);
             if (entity.isDoomed()) {
                 entity.setDestroyed(true);
@@ -478,10 +473,8 @@ public class EntityManager {
             }
 
             if (entity.isDestroyed()) {
-                if (game.getEntity(entity.getTransportId()) != null
-                        && game.getEntity(entity.getTransportId()).isLargeCraft()) {
-                    //Leaving destroyed entities in dropship bays alone here
-                } else {
+                //Leaving destroyed entities in dropship bays alone
+                if (!(game.getEntity(entity.getTransportId()) != null && game.getEntity(entity.getTransportId()).isLargeCraft())) {
                     toRemove.addElement(entity);
                 }
             }
@@ -500,15 +493,11 @@ public class EntityManager {
         }
 
         // do some housekeeping on all the remaining
-        for (Iterator<Entity> e = game.getEntities(); e.hasNext(); ) {
-            final Entity entity = e.next();
-
+        for (Entity entity : game.getEntitiesVector()) {
             entity.applyDamage();
-
             entity.reloadEmptyWeapons();
 
-            // reset damage this phase
-            // telemissiles need a record of damage last phase
+            // reset damage this phase telemissiles need a record of damage last phase
             entity.damageThisRound += entity.damageThisPhase;
             entity.damageThisPhase = 0;
             entity.engineHitsThisPhase = 0;
@@ -518,7 +507,6 @@ public class EntityManager {
             entity.setStartupThisPhase(false);
 
             // reset done to false
-
             if (phase == IGame.Phase.PHASE_DEPLOYMENT) {
                 entity.setDone(!entity.shouldDeploy(game.getRoundCount()));
             } else {
@@ -819,8 +807,7 @@ public class EntityManager {
 
                         // Yup. Find a ProtoMech from the last unit, and
                         // set it's unit number to the deleted entity.
-                        Iterator<Entity> lastUnit =
-                                game.getSelectedEntities(new EntitySelector() {
+                        Iterator<Entity> lastUnit = game.getSelectedEntities(new EntitySelector() {
                                     private final int ownerId = entity.getOwnerId();
 
                                     private final char lastUnitNum = oldMax;
@@ -865,8 +852,7 @@ public class EntityManager {
      * chat lounge) and do any actions that need to be done
      */
     public void checkEntityExchange() {
-        for (Iterator<Entity> entities = game.getEntities(); entities.hasNext(); ) {
-            Entity entity = entities.next();
+        for (Entity entity : game.getEntitiesVector()) {
             // apply bombs
             if (entity.isBomber()) {
                 ((IBomber)entity).applyBombs();
@@ -966,9 +952,7 @@ public class EntityManager {
     public void removeAllEntitiesOwnedBy(IPlayer player) {
         Vector<Entity> toRemove = new Vector<>();
 
-        for (Iterator<Entity> e = game.getEntities(); e.hasNext(); ) {
-            final Entity entity = e.next();
-
+        for (Entity entity : game.getEntitiesVector()) {
             if (entity.getOwner().equals(player)) {
                 toRemove.addElement(entity);
             }
@@ -1025,6 +1009,14 @@ public class EntityManager {
         }
     }
 
+    private int calculateMovementPointsUsed(MovePath md, Entity entity) {
+        if (md.hasActiveMASC()) {
+            return entity.getRunMP();
+        } else {
+            return entity.getRunMPwithoutMASC();
+        }
+    }
+
     /**
      * Steps through an entity movement packet, executing it.
      *
@@ -1057,8 +1049,8 @@ public class EntityManager {
                 entityUpdate(ship.getId());
                 Coords legalPos = entity.getPosition();
                 //Get the step so we can pass it in and get the abandon coords from it
-                for (final Enumeration<MoveStep> i = md.getSteps(); i.hasMoreElements();) {
-                    final MoveStep step = i.nextElement();
+                Vector<MoveStep> steps = md.getStepVector();
+                for (MoveStep step : steps) {
                     if (step.getType() == MovePath.MoveStepType.EJECT) {
                         legalPos = step.getTargetPosition();
                     }
@@ -1155,12 +1147,10 @@ public class EntityManager {
         int mpUsed = entity.mpUsed;
         EntityMovementType moveType = entity.moved;
         EntityMovementType overallMoveType;
-        boolean firstStep;
         boolean wasProne = entity.isProne();
         boolean fellDuringMovement = false;
         boolean crashedDuringMovement = false;
         boolean dropshipStillUnloading = false;
-        boolean turnOver;
         int prevFacing = curFacing;
         IHex prevHex = game.getBoard().getHex(curPos);
         final boolean isInfantry = entity instanceof Infantry;
@@ -1171,7 +1161,6 @@ public class EntityManager {
         int cachedGravityLimit = -1;
         int thrustUsed = 0;
         int j = 0;
-        boolean didMove;
         boolean recovered = false;
         Entity loader = null;
         boolean continueTurnFromPBS = false;
@@ -1240,8 +1229,8 @@ public class EntityManager {
         }
 
         // iterate through steps
-        firstStep = true;
-        turnOver = false;
+        boolean firstStep = true;
+        boolean turnOver = false;
         /* Bug 754610: Revert fix for bug 702735. */
         MoveStep prevStep = null;
 
@@ -1346,9 +1335,8 @@ public class EntityManager {
                 }
             }
 
-            // check for MASC failure on first step
-            // also check Tanks because they can have superchargers that act
-            // like MASc
+            // check for MASC failure on first step also check Tanks because
+            // they can have superchargers that act like MASc
             if (firstStep && ((entity instanceof Mech) || (entity instanceof Tank))) {
                 // Not necessarily a fall, but we need to give them a new turn to plot movement with
                 // likely reduced MP.
@@ -1364,11 +1352,7 @@ public class EntityManager {
                         // this one in case it's needed to process a skid.
                         if (processFailedVehicleManeuver(entity, curPos, 0, step,
                                 step.isThisStepBackwards(), lastStepMoveType, distance, 2, mof)) {
-                            if (md.hasActiveMASC()) {
-                                mpUsed = entity.getRunMP();
-                            } else {
-                                mpUsed = entity.getRunMPwithoutMASC();
-                            }
+                            mpUsed = calculateMovementPointsUsed(md, entity);
 
                             turnOver = true;
                             distance = entity.delta_distance;
@@ -1396,13 +1380,9 @@ public class EntityManager {
                 if (rollTarget.getValue() != TargetRoll.CHECK_FALSE) {
                     int mof = server.doSkillCheckWhileMoving(entity, lastElevation, lastPos, curPos, rollTarget, false);
                     if (mof > 0) {
-                        if (processFailedVehicleManeuver(entity, curPos, 0, step, step.isThisStepBackwards(),
-                                lastStepMoveType, distance, 2, mof)) {
-                            if (md.hasActiveMASC()) {
-                                mpUsed = entity.getRunMP();
-                            } else {
-                                mpUsed = entity.getRunMPwithoutMASC();
-                            }
+                        if (processFailedVehicleManeuver(entity, curPos, 0, step,
+                                step.isThisStepBackwards(), lastStepMoveType, distance, 2, mof)) {
+                            mpUsed = calculateMovementPointsUsed(md, entity);
 
                             turnOver = true;
                             distance = entity.delta_distance;
@@ -1449,7 +1429,7 @@ public class EntityManager {
             }
 
             // did the entity move?
-            didMove = step.getDistance() > distance;
+            boolean didMove = step.getDistance() > distance;
 
             // check for aero stuff
             if (entity.isAirborne() && entity.isAero()) {
@@ -1470,8 +1450,7 @@ public class EntityManager {
                         thrustUsed += step.getMp();
                     }
                     // then we moved to a new hex or the last step so check
-                    // conditions
-                    // structural damage
+                    // condition structural damage
                     rollTarget = a.checkThrustSI(thrustUsed, overallMoveType);
                     if ((rollTarget.getValue() != TargetRoll.CHECK_FALSE)
                             && !(entity instanceof FighterSquadron) && !game.useVectorMove()) {
@@ -1658,11 +1637,8 @@ public class EntityManager {
                 if (step.getType() == MovePath.MoveStepType.LAUNCH) {
                     TreeMap<Integer, Vector<Integer>> launched = step.getLaunched();
                     Set<Integer> bays = launched.keySet();
-                    Iterator<Integer> bayIter = bays.iterator();
-                    Bay currentBay;
-                    while (bayIter.hasNext()) {
-                        int bayId = bayIter.next();
-                        currentBay = entity.getFighterBays().elementAt(bayId);
+                    for (int bayId : bays) {
+                        Bay currentBay = entity.getFighterBays().elementAt(bayId);
                         Vector<Integer> launches = launched.get(bayId);
                         int nLaunched = launches.size();
                         // need to make some decisions about how to handle the distribution
@@ -1712,8 +1688,7 @@ public class EntityManager {
                             int bonus = Math.max(0, distribution[currentDoor] - 2);
 
                             Entity fighter = game.getEntity(fighterId);
-                            if (!launchUnit(entity, fighter, curPos, curFacing, step.getVelocity(),
-                                    step.getAltitude(), step.getVectors(), bonus)) {
+                            if (!launchUnit(entity, fighter, curPos, curFacing, step, bonus)) {
                                 MegaMek.getLogger().error("Server was told to unload "
                                         + fighter.getDisplayName() + " from " + entity.getDisplayName()
                                         + " into " + curPos.getBoardNum());
@@ -1742,8 +1717,7 @@ public class EntityManager {
                         for (int dropShipId : launches) {
                             // check to see if we are in the same door
                             Entity ds = game.getEntity(dropShipId);
-                            if (!launchUnit(entity, ds, curPos, curFacing, step.getVelocity(), step.getAltitude(),
-                                    step.getVectors(), 0)) {
+                            if (!launchUnit(entity, ds, curPos, curFacing, step, 0)) {
                                 MegaMek.getLogger().error("Error! Server was told to unload "
                                         + ds.getDisplayName() + " from " + entity.getDisplayName()
                                         + " into " + curPos.getBoardNum());
@@ -1756,10 +1730,8 @@ public class EntityManager {
                 if (step.getType() == MovePath.MoveStepType.DROP) {
                     TreeMap<Integer, Vector<Integer>> dropped = step.getLaunched();
                     Set<Integer> bays = dropped.keySet();
-                    Iterator<Integer> bayIter = bays.iterator();
-                    Bay currentBay;
-                    while (bayIter.hasNext()) {
-                        int bayId = bayIter.next();
+                    for (int bayId : bays) {
+                        Bay currentBay = entity.getTransportBays().elementAt(bayId);
                         currentBay = entity.getTransportBays().elementAt(bayId);
                         Vector<Integer> drops = dropped.get(bayId);
                         int nDropped = drops.size();
@@ -2086,11 +2058,7 @@ public class EntityManager {
                         if (processFailedVehicleManeuver(entity, curPos, step.getFacing() - curFacing,
                                 (null == prevStep)?step : prevStep, step.isThisStepBackwards(),
                                 lastStepMoveType, distance, mof, mof)) {
-                            if (md.hasActiveMASC()) {
-                                mpUsed = entity.getRunMP();
-                            } else {
-                                mpUsed = entity.getRunMPwithoutMASC();
-                            }
+                            mpUsed = calculateMovementPointsUsed(md, entity);
 
                             turnOver = true;
                             distance = entity.delta_distance;
@@ -2252,11 +2220,7 @@ public class EntityManager {
                     entity.setSecondaryFacing(curFacing);
 
                     // skid consumes all movement
-                    if (md.hasActiveMASC()) {
-                        mpUsed = entity.getRunMP();
-                    } else {
-                        mpUsed = entity.getRunMPwithoutMASC();
-                    }
+                    mpUsed = calculateMovementPointsUsed(md, entity);
 
                     entity.moved = moveType;
                     fellDuringMovement = true;
@@ -3918,12 +3882,9 @@ public class EntityManager {
         Report r;
 
         // An entity can only eject it's crew once.
-        if (entity.getCrew().isEjected()) {
-            return vDesc;
-        }
-
-        // If the crew are already dead, don't bother
-        if (entity.isCarcass()) {
+        if (entity.getCrew().isEjected()
+                // If the crew are already dead, don't bother
+                || entity.isCarcass()) {
             return vDesc;
         }
 
@@ -3944,7 +3905,7 @@ public class EntityManager {
             //Per SO p27, you get a certain number of escape pods away per turn per 100k tons of ship
             int escapeMultiplier = (int) (entity.getWeight() / 100000);
             //Set up the maximum number that CAN launch
-            int toLaunch = 0;
+            int toLaunch;
             if (roll < rollTarget.getValue()) {
                 toLaunch = 1;
             } else {
@@ -3955,7 +3916,7 @@ public class EntityManager {
             int totalLaunched = 0;
             boolean isPod = false;
             while (launchCounter > 0) {
-                int launched = 0;
+                int launched;
                 if (entity.getPodsLeft() > 0 && (airborne || entity.getPodsLeft() >= entity.getLifeBoatsLeft())) {
                     //Entity has more escape pods than lifeboats (or equal numbers)
                     launched = Math.min(launchCounter, entity.getPodsLeft());
@@ -4802,12 +4763,9 @@ public class EntityManager {
         Report r;
 
         // An entity can only eject it's crew once.
-        if (entity.getCrew().isEjected()) {
-            return vDesc;
-        }
-
-        // If the crew are already dead, don't bother
-        if (entity.isCarcass()) {
+        if (entity.getCrew().isEjected()
+                // If the crew are already dead, don't bother
+                || entity.isCarcass()) {
             return vDesc;
         }
 
@@ -5194,8 +5152,10 @@ public class EntityManager {
         }
     }
 
-    private boolean launchUnit(Entity unloader, Targetable unloaded, Coords pos, int facing, int velocity,
-                               int altitude, int[] moveVec, int bonus) {
+    private boolean launchUnit(Entity unloader, Targetable unloaded, Coords pos, int facing, MoveStep step, int bonus) {
+        int velocity = step.getVelocity();
+        int altitude = step.getAltitude();
+        int[] moveVec = step.getVectors();
 
         Entity unit;
         if (unloaded instanceof Entity && unloader instanceof Aero) {
