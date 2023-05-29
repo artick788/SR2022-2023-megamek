@@ -427,6 +427,15 @@ public class Building implements Serializable {
     }
 
     /**
+     * Get the coordinates that the building occupies.
+     *
+     * @return a <code>Vector</code> of the <code>Coord</code> objects.
+     */
+    public Vector<Coords> getCoordsVector() {
+        return coordinates;
+    }
+
+    /**
      * Get the construction type of the building. This value will be one of the
      * constants, LIGHT, MEDIUM, HEAVY, or HARDENED.
      *

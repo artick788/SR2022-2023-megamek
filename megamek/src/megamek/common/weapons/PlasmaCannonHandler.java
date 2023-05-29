@@ -192,9 +192,7 @@ public class PlasmaCannonHandler extends AmmoWeaponHandler {
             }
             vPhaseReport.addAll(buildingReport);
             // Damage any infantry in the building.
-            Vector<Report> infantryReport = server.damageInfantryIn(
-                    coverBuilding, nDamage, coverLoc,
-                    wtype.getInfantryDamageClass());
+            Vector<Report> infantryReport = server.damageInfantryIn(coverBuilding, nDamage, coverLoc);
             for (Report report : infantryReport) {
                 report.indent(2);
             }
