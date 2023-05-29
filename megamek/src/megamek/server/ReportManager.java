@@ -66,8 +66,8 @@ public class ReportManager {
         StringBuilder sb = new StringBuilder();
 
         Vector<Entity> vAllUnits = new Vector<>();
-        for (Iterator<Entity> i = game.getEntities(); i.hasNext(); ) {
-            vAllUnits.addElement(i.next());
+        for (Entity entity : game.getEntitiesVector()) {
+            vAllUnits.addElement(entity);
         }
 
         for (Enumeration<Entity> i = game.getRetreatedEntities(); i.hasMoreElements(); ) {
@@ -78,9 +78,9 @@ public class ReportManager {
             vAllUnits.addElement(i.nextElement());
         }
 
-        for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
+        Vector<IPlayer> players = game.getPlayersVector();
+        for (IPlayer p : players) {
             // Record the player.
-            IPlayer p = i.nextElement();
             sb.append("++++++++++ ").append(p.getName()).append(" ++++++++++");
             sb.append(CommonConstants.NL);
 
@@ -321,8 +321,7 @@ public class ReportManager {
         if (game.getOptions().booleanOption(OptionsConstants.RPG_INDIVIDUAL_INITIATIVE)) {
             r = new Report(1040, Report.PUBLIC);
             addReport(r);
-            for (Enumeration<GameTurn> e = game.getTurns(); e.hasMoreElements(); ) {
-                GameTurn t = e.nextElement();
+            for (GameTurn t : game.getTurnVector()) {
                 if (t instanceof GameTurn.SpecificEntityTurn) {
                     Entity entity = game.getEntity(((GameTurn.SpecificEntityTurn) t).getEntityNum());
                     r = new Report(1045);
@@ -340,9 +339,7 @@ public class ReportManager {
                 }
             }
         } else {
-            for (Enumeration<Team> i = game.getTeams(); i.hasMoreElements(); ) {
-                final Team team = i.nextElement();
-
+            for (Team team : game.getTeamsVector()) {
                 // Teams with no active players can be ignored
                 if (team.isObserverTeam()) {
                     continue;
@@ -380,8 +377,7 @@ public class ReportManager {
                 r = new Report(1020, Report.PUBLIC);
 
                 boolean hasEven = false;
-                for (Enumeration<GameTurn> i = game.getTurns(); i.hasMoreElements(); ) {
-                    GameTurn turn = i.nextElement();
+                for (GameTurn turn : game.getTurnVector()) {
                     IPlayer player = game.getPlayer(turn.getPlayerNum());
                     if (null != player) {
                         r.add(player.getName());
@@ -447,7 +443,6 @@ public class ReportManager {
     //////////////////////////
     // TODO (Sam): RESOLVES
     //////////////////////////
-
 
     /**
      * Make the rolls indicating whether any unconscious crews wake up

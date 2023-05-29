@@ -2,12 +2,8 @@ package megamek.server;
 
 import megamek.client.ui.swing.util.PlayerColour;
 import megamek.common.*;
-import megamek.common.net.IConnection;
 import org.junit.Assert;
 import org.junit.Test;
-import sun.security.util.Debug;
-
-import java.net.InetAddress;
 import java.util.*;
 
 public class PlayerTest {

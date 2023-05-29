@@ -381,14 +381,12 @@ public class GameManager {
         Enumeration<Coords> mineLoc = game.getMinedCoords();
         while (mineLoc.hasMoreElements()) {
             Coords c = mineLoc.nextElement();
-            Enumeration<Minefield> minefields = game.getMinefields(c).elements();
-            while (minefields.hasMoreElements()) {
-                Minefield minefield = minefields.nextElement();
+            Vector<Minefield> minefields = game.getMinefields(c);
+            for (Minefield minefield : minefields) {
                 if (minefield.hasDetonated()) {
                     minefield.setDetonated(false);
-                    Enumeration<Minefield> otherMines = game.getMinefields(c).elements();
-                    while (otherMines.hasMoreElements()) {
-                        Minefield otherMine = otherMines.nextElement();
+                    Vector<Minefield> otherMines = game.getMinefields(c);
+                    for (Minefield otherMine : otherMines) {
                         if (otherMine.equals(minefield)) {
                             continue;
                         }
@@ -406,9 +404,8 @@ public class GameManager {
             // cycle through a second time to see if any mines at these coords
             // need to be removed
             List<Minefield> mfRemoved = new ArrayList<>();
-            Enumeration<Minefield> mines = game.getMinefields(c).elements();
-            while (mines.hasMoreElements()) {
-                Minefield mine = mines.nextElement();
+            Vector<Minefield> mines = game.getMinefields(c);
+            for (Minefield mine : mines) {
                 if (mine.getDensity() < 5) {
                     mfRemoved.add(mine);
                 }
@@ -433,9 +430,8 @@ public class GameManager {
         }
         game.removeMinefield(mf);
 
-        Enumeration<IPlayer> players = game.getPlayers();
-        while (players.hasMoreElements()) {
-            IPlayer player = players.nextElement();
+        Vector<IPlayer> players = game.getPlayersVector();
+        for (IPlayer player : players) {
             removeMinefield(player, mf);
         }
     }
@@ -459,9 +455,8 @@ public class GameManager {
      * @param mf The <code>Minefield</code> to be revealed
      */
     public void revealMinefield(IGame game, Minefield mf) {
-        Enumeration<Team> teams = game.getTeams();
-        while (teams.hasMoreElements()) {
-            Team team = teams.nextElement();
+        List<Team> teams = game.getTeamsVector();
+        for (Team team : teams) {
             revealMinefield(team, mf);
         }
     }
@@ -473,9 +468,8 @@ public class GameManager {
      * @param mf   The <code>Minefield</code> to be revealed
      */
     public void revealMinefield(Team team, Minefield mf) {
-        Enumeration<IPlayer> players = team.getPlayers();
-        while (players.hasMoreElements()) {
-            IPlayer player = players.nextElement();
+        Vector<IPlayer> players = team.getPlayersVector();
+        for (IPlayer player : players) {
             if (!player.containsMinefield(mf)) {
                 player.addMinefield(mf);
                 send(player.getId(), new Packet(Packet.COMMAND_REVEAL_MINEFIELD, mf));
@@ -488,11 +482,9 @@ public class GameManager {
      * LOS. If so, then it reveals the mine
      */
     public void checkForRevealMinefield(IGame game, Minefield mf, Entity layer) {
-        Enumeration<Team> teams = game.getTeams();
         // loop through each team and determine if they can see the mine, then
         // loop through players on team and reveal the mine
-        while (teams.hasMoreElements()) {
-            Team team = teams.nextElement();
+        for (Team team : game.getTeamsVector()) {
             boolean canSee = false;
 
             // the players own team can always see the mine
@@ -502,9 +494,7 @@ public class GameManager {
                 // need to loop through all entities on this team and find the
                 // one with the best shot of seeing the mine placement
                 int target = Integer.MAX_VALUE;
-                Iterator<Entity> entities = game.getEntities();
-                while (entities.hasNext()) {
-                    Entity en = entities.next();
+                for (Entity en : game.getEntitiesVector()) {
                     // are we on the right team?
                     if (!team.equals(game.getTeamForPlayer(en.getOwner()))) {
                         continue;
@@ -541,10 +531,9 @@ public class GameManager {
      * Clear any detonated mines at these coords
      */
     public void clearDetonatedMines(IGame game, Coords c, int target) {
-        Enumeration<Minefield> minefields = game.getMinefields(c).elements();
         List<Minefield> mfRemoved = new ArrayList<>();
-        while (minefields.hasMoreElements()) {
-            Minefield minefield = minefields.nextElement();
+        Vector<Minefield> minefields = game.getMinefields(c);
+        for(Minefield minefield : minefields) {
             if (minefield.hasDetonated() && (Compute.d6(2) >= target)) {
                 mfRemoved.add(minefield);
             }
@@ -577,13 +566,10 @@ public class GameManager {
             int teamId = player.getTeam();
 
             if (teamId != IPlayer.TEAM_NONE) {
-                Enumeration<Team> teams = game.getTeams();
-                while (teams.hasMoreElements()) {
-                    Team team = teams.nextElement();
+                for (Team team : game.getTeamsVector()) {
                     if (team.getId() == teamId) {
-                        Enumeration<IPlayer> players = team.getPlayers();
-                        while (players.hasMoreElements()) {
-                            IPlayer teamPlayer = players.nextElement();
+                        Vector<IPlayer> players = team.getPlayersVector();
+                        for (IPlayer teamPlayer : players) {
                             if (teamPlayer.getId() != player.getId()) {
                                 send(teamPlayer.getId(), new Packet(Packet.COMMAND_DEPLOY_MINEFIELDS, minefields));
                             }
@@ -731,9 +717,8 @@ public class GameManager {
 
     public void damageWeaponCriticalSlot(Aero aero, Mounted misc, int loc) {
         misc.setHit(true);
-        //Taharqa: We should also damage the critical slot, or
-        //MM and MHQ won't remember that this weapon is damaged on the MUL
-        //file
+        //Taharqa: We should also damage the critical slot, or MM and MHQ
+        // won't remember that this weapon is damaged on the MUL file
         for (int i = 0; i < aero.getNumberOfCriticals(loc); i++) {
             CriticalSlot slot1 = aero.getCritical(loc, i);
             if ((slot1 == null) || (slot1.getType() == CriticalSlot.TYPE_SYSTEM)) {
@@ -746,9 +731,4 @@ public class GameManager {
             }
         }
     }
-
-
-
-
-
 }

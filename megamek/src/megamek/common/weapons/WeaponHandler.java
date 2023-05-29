@@ -1453,9 +1453,7 @@ public class WeaponHandler implements AttackHandler, Serializable {
             }
             vPhaseReport.addAll(buildingReport);
             // Damage any infantry in the building.
-            Vector<Report> infantryReport = server.damageInfantryIn(
-                    coverBuilding, nDamage, coverLoc,
-                    wtype.getInfantryDamageClass());
+            Vector<Report> infantryReport = server.damageInfantryIn(coverBuilding, nDamage, coverLoc);
             for (Report report : infantryReport) {
                 report.indent(2);
             }
@@ -1695,8 +1693,7 @@ public class WeaponHandler implements AttackHandler, Serializable {
 
         // Damage any infantry in hex, unless attack between units in same bldg
         if (toHit.getThruBldg() == null) {
-            vPhaseReport.addAll(server.damageInfantryIn(bldg, nDamage, coords,
-                    wtype.getInfantryDamageClass()));
+            vPhaseReport.addAll(server.damageInfantryIn(bldg, nDamage, coords));
         }
     }
 
