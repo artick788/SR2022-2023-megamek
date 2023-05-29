@@ -106,11 +106,7 @@ public class EntityManager {
 
         // Destroy the entity, unless it's already destroyed.
         if (!entity.isDoomed() && !entity.isDestroyed()) {
-            r = new Report(6365);
-            r.subject = entity.getId();
-            r.addDesc(entity);
-            r.add(reason);
-            vDesc.addElement(r);
+            vDesc.addElement(ReportFactory.createReport(6365, entity, reason));
 
             entity.setDoomed(true);
 
@@ -133,10 +129,7 @@ public class EntityManager {
                 game.removeEntity(mw.getId(), condition);
                 entityUpdate(mw.getId());
                 server.send(PacketFactory.createRemoveEntityPacket(mw.getId(), condition));
-                r = new Report(6370);
-                r.subject = mw.getId();
-                r.addDesc(mw);
-                vDesc.addElement(r);
+                vDesc.addElement(ReportFactory.createReport(6370, mw));
             }
 
             // make any remaining telemissiles operated by this entity
@@ -196,10 +189,7 @@ public class EntityManager {
                         // Safe to remove, as they aren't targeted
                         game.moveToGraveyard(other.getId());
                         server.send(PacketFactory.createRemoveEntityPacket(other.getId(), condition));
-                        r = new Report(6370);
-                        r.subject = other.getId();
-                        r.addDesc(other);
-                        vDesc.addElement(r);
+                        vDesc.addElement(ReportFactory.createReport(6370, other));
                     }
                     // Can we unload the unit to the current hex?
                     // TODO : unloading into stacking violation is not
@@ -213,10 +203,7 @@ public class EntityManager {
                         // Safe to remove, as they aren't targeted
                         game.moveToGraveyard(other.getId());
                         server.send(PacketFactory.createRemoveEntityPacket(other.getId(), condition));
-                        r = new Report(6375);
-                        r.subject = other.getId();
-                        r.addDesc(other);
-                        vDesc.addElement(r);
+                        vDesc.addElement(ReportFactory.createReport(6375, other));
                     } // End can-not-unload
                     else {
                         // The other unit survives.
@@ -247,11 +234,7 @@ public class EntityManager {
                     //game.moveToGraveyard(transport.getId());
                     //entityUpdate(transport.getId());
                     //send(PacketFactory.createRemoveEntityPacket(transport.getId(), condition));
-                    r = new Report(6365);
-                    r.subject = transport.getId();
-                    r.addDesc(transport);
-                    r.add("fighter destruction");
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6365, transport, "fighter destruction"));
                 }
 
             } // End unit-is-transported
@@ -284,10 +267,7 @@ public class EntityManager {
                 swarmer.setDone(false);
                 entity.setSwarmAttackerId(Entity.NONE);
                 Report.addNewline(vDesc);
-                r = new Report(6380);
-                r.subject = swarmerId;
-                r.addDesc(swarmer);
-                vDesc.addElement(r);
+                vDesc.addElement(ReportFactory.createReport(6380, swarmer));
                 // Swarming infantry shouldn't take damage when their target dies
                 // http://bg.battletech.com/forums/total-warfare/swarming-question
                 entityUpdate(swarmerId);
@@ -299,10 +279,7 @@ public class EntityManager {
                 final Entity swarmed = game.getEntity(swarmedId);
                 swarmed.setSwarmAttackerId(Entity.NONE);
                 entity.setSwarmTargetId(Entity.NONE);
-                r = new Report(6385);
-                r.subject = swarmed.getId();
-                r.addDesc(swarmed);
-                vDesc.addElement(r);
+                vDesc.addElement(ReportFactory.createReport(6385, swarmed));
                 entityUpdate(swarmedId);
             }
 
@@ -495,10 +472,7 @@ public class EntityManager {
                     final Entity swarmed = game.getEntity(swarmedId);
                     swarmed.setSwarmAttackerId(Entity.NONE);
                     entity.setSwarmTargetId(Entity.NONE);
-                    Report r = new Report(5165);
-                    r.subject = swarmedId;
-                    r.addDesc(swarmed);
-                    reportManager.addReport(r);
+                    reportManager.addReport(ReportFactory.createReport(5165, swarmed));
                     entityUpdate(swarmedId);
                 }
             }
@@ -3959,21 +3933,12 @@ public class EntityManager {
             // Report the ejection
             PilotingRollData rollTarget = Server.getEjectModifiers(game, entity,
                     entity.getCrew().getCurrentPilotIndex(), false);
-            r = new Report(2180);
-            r.subject = entity.getId();
-            r.addDesc(entity);
-            r.add(rollTarget.getLastPlainDesc(), true);
-            r.indent();
-            vDesc.addElement(r);
+            vDesc.addElement(ReportFactory.createReport(2180, 1, entity, rollTarget.getLastPlainDesc()));
             int roll = Compute.d6(2);
             int MOS = (roll - Math.max(2, rollTarget.getValue()));
             //Report the roll
-            r = new Report(2190);
-            r.subject = entity.getId();
-            r.add(rollTarget.getValueAsString());
-            r.add(rollTarget.getDesc());
+            r = ReportFactory.createReport(2190, 1, entity, rollTarget.getValueAsString(), rollTarget.getDesc());
             r.add(roll);
-            r.indent();
             r.choose(roll >= rollTarget.getValue());
             vDesc.addElement(r);
             //Per SO p27, you get a certain number of escape pods away per turn per 100k tons of ship
@@ -4311,12 +4276,7 @@ public class EntityManager {
             } else {
                 // Swarming infantry take a 3d6 point hit.
                 // ASSUMPTION : damage should not be doubled.
-                r = new Report(2140);
-                r.subject = entity.getId();
-                r.indent();
-                r.addDesc(swarmer);
-                r.add("3d6");
-                reportManager.addReport(r);
+                reportManager.addReport(ReportFactory.createAttackingEntityReport(2140, entity, swarmer, "3d6"));
                 reportManager.addReport(server.damageEntity(swarmer,
                         swarmer.rollHitLocation(ToHitData.HIT_NORMAL, ToHitData.SIDE_FRONT), Compute.d6(3)));
                 reportManager.addNewLines();
@@ -4492,15 +4452,10 @@ public class EntityManager {
         PilotingRollData prd = rider.getBasePilotingRoll(EntityMovementType.MOVE_NONE);
         boolean falls = automatic;
         if (automatic) {
-            r = new Report(2465);
-            r.subject = rider.getId();
-            r.addDesc(rider);
+            r = ReportFactory.createReport(2465, rider);
             r.addDesc(carrier);
         } else {
-            r = new Report(2460);
-            r.subject = rider.getId();
-            r.addDesc(rider);
-            r.add(prd.getValueAsString());
+            r = ReportFactory.createReport(2460, rider, prd.getValueAsString());
             r.addDesc(carrier);
             final int diceRoll = carrier.getCrew().rollPilotingSkill();
             r.add(diceRoll);
@@ -4867,21 +4822,12 @@ public class EntityManager {
             }
 
             if (autoEject) {
-                r = new Report(6395);
-                r.subject = entity.getId();
-                r.addDesc(entity);
-                r.indent(2);
-                vDesc.addElement(r);
+                vDesc.addElement(ReportFactory.createReport(6395, 2, entity));
             }
 
             // okay, print the info
             PilotingRollData rollTarget = Server.getEjectModifiers(game, entity, entity.getCrew().getCurrentPilotIndex(), autoEject);
-            r = new Report(2180);
-            r.subject = entity.getId();
-            r.addDesc(entity);
-            r.add(rollTarget.getLastPlainDesc(), true);
-            r.indent();
-            vDesc.addElement(r);
+            vDesc.addElement(ReportFactory.createReport(2180, 1, entity, rollTarget.getLastPlainDesc()));
             for (int crewPos = 0; crewPos < entity.getCrew().getSlotCount(); crewPos++) {
                 if (entity.getCrew().isMissing(crewPos)) {
                     continue;
@@ -4890,10 +4836,10 @@ public class EntityManager {
                 // roll
                 final int diceRoll = entity.getCrew().rollPilotingSkill();
                 if (entity.getCrew().getSlotCount() > 1) {
-                    r = new Report(2193);
+                    r = ReportFactory.createReport(2193);
                     r.add(entity.getCrew().getNameAndRole(crewPos));
                 } else {
-                    r = new Report(2190);
+                    r = ReportFactory.createReport(2190);
                 }
                 r.subject = entity.getId();
                 r.add(rollTarget.getValueAsString());
@@ -4967,10 +4913,7 @@ public class EntityManager {
                 if (game.getBoard().contains(targetCoords)) {
                     pilot.setPosition(targetCoords);
                     // report safe ejection
-                    r = new Report(6400);
-                    r.subject = entity.getId();
-                    r.indent(3);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6400, 3, entity));
                     // Update the entity
                     entityUpdate(pilot.getId());
                     // check if the pilot lands in a minefield
@@ -4979,10 +4922,7 @@ public class EntityManager {
                     }
                 } else {
                     // ejects safely
-                    r = new Report(6410);
-                    r.subject = entity.getId();
-                    r.indent(3);
-                    vDesc.addElement(r);
+                    vDesc.addElement(ReportFactory.createReport(6410, 3, entity));
                     game.removeEntity(pilot.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
                     server.send(PacketFactory.createRemoveEntityPacket(pilot.getId(),
                             IEntityRemovalConditions.REMOVE_IN_RETREAT));
@@ -5397,6 +5337,145 @@ public class EntityManager {
         server.send(PacketFactory.createTurnVectorPacket(game));
 
         return true;
+    }
+
+    /**
+     * resolve assault drops for all entities
+     */
+    public void doAllAssaultDrops() {
+        for (Entity e : game.getEntitiesVector()) {
+            if (e.isAssaultDropInProgress()) {
+                doAssaultDrop(e);
+                e.setLandedAssaultDrop();
+            }
+        }
+    }
+
+    /**
+     * resolve the landing of an assault drop
+     *
+     * @param entity the <code>Entity</code> for which to resolve it
+     */
+    public void doAssaultDrop(Entity entity) {
+        //resolve according to SO p.22
+        Report r = ReportFactory.createReport(2380);
+
+        // whatever else happens, this entity is on the ground now
+        entity.setAltitude(0);
+
+        PilotingRollData psr;
+        // LAMs that convert to fighter mode on the landing turn are processed as crashes
+        if ((entity instanceof LandAirMech) && (entity.getConversionMode() == LandAirMech.CONV_MODE_FIGHTER)) {
+            reportManager.addReport(server.processCrash(entity, 0, entity.getPosition()));
+            return;
+        }
+        if ((entity instanceof Protomech) || (entity instanceof BattleArmor)) {
+            psr = new PilotingRollData(entity.getId(), 5, "landing assault drop");
+        } else if (entity instanceof Infantry) {
+            psr = new PilotingRollData(entity.getId(), 4, "landing assault drop");
+        } else {
+            psr = entity.getBasePilotingRoll();
+        }
+        int roll = Compute.d6(2);
+        // check for a safe landing
+        reportManager.addNewLines();
+        r.subject = entity.getId();
+        r.add(entity.getDisplayName(), true);
+        r.add(psr.getValueAsString());
+        r.add(roll);
+        r.newlines = 1;
+        r.choose(roll >= psr.getValue());
+        reportManager.addReport(r);
+
+        // if we are on an atmospheric map or the entity is off the map for some reason
+        if (game.getBoard().inAtmosphere() || entity.getPosition() == null) {
+            // then just remove the entity
+            // TODO : for this and when the unit scatters off the board, we should really still
+            // TODO : apply damage before we remove, but this causes all kinds of problems for
+            // TODO : doEntityFallsInto and related methods which expect a coord on the board
+            // TODO : - need to make those more robust
+            r = new Report(2388);
+            reportManager.addReport(r);
+            r.subject = entity.getId();
+            r.add(entity.getDisplayName(), true);
+            game.removeEntity(entity.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
+            return;
+        }
+
+        if (roll < psr.getValue()) {
+            int fallHeight = psr.getValue() - roll;
+
+            // if you fail by more than 7, you automatically fail
+            if (fallHeight > 7) {
+                reportManager.addReport(destroyEntity(entity, "failed assault drop", false, false));
+                entityUpdate(entity.getId());
+                return;
+            }
+
+            // determine where we really land
+            Coords c = Compute.scatterAssaultDrop(entity.getPosition(), fallHeight);
+            int distance = entity.getPosition().distance(c);
+            reportManager.addReport(ReportFactory.createReport(2385, 1, entity, distance));
+            if (!game.getBoard().contains(c)) {
+                reportManager.addReport(ReportFactory.createReport(2386));
+                game.removeEntity(entity.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
+                return;
+            } else {
+                r = ReportFactory.createReport(2387);
+                r.add(c.getBoardNum());
+                reportManager.addReport(r);
+            }
+            entity.setPosition(c);
+
+            // do fall damage from accidental fall
+            //set elevation to fall height above ground or building roof
+            IHex hex = game.getBoard().getHex(entity.getPosition());
+            int bldgElev = hex.containsTerrain(Terrains.BLDG_ELEV) ? hex.terrainLevel(Terrains.BLDG_ELEV) : 0;
+            entity.setElevation(fallHeight + bldgElev);
+            if ((entity instanceof Infantry) && !(entity instanceof BattleArmor)) {
+                HitData hit = new HitData(Infantry.LOC_INFANTRY);
+                reportManager.addReport(server.damageEntity(entity, hit, 1));
+                // LAMs that convert to fighter mode on the landing turn are processed as crashes regardless of roll
+            } else {
+                reportManager.addReport(server.doEntityFallsInto(entity, c, psr, true));
+            }
+        } else {
+            // set entity to expected elevation
+            IHex hex = game.getBoard().getHex(entity.getPosition());
+            int bldgElev = hex.containsTerrain(Terrains.BLDG_ELEV) ? hex.terrainLevel(Terrains.BLDG_ELEV) : 0;
+            entity.setElevation(bldgElev);
+
+            Building bldg = game.getBoard().getBuildingAt(entity.getPosition());
+            if (bldg != null) {
+                // whoops we step on the roof
+                server.checkBuildingCollapseWhileMoving(bldg, entity, entity.getPosition());
+            }
+
+            // finally, check for any stacking violations
+            Entity violated = Compute.stackingViolation(game, entity, entity.getPosition(), null);
+            if (violated != null) {
+                // StratOps explicitly says that this is not treated as an accident
+                // fall from above
+                // so we just need to displace the violating unit
+                // check to see if the violating unit is a DropShip and if so, then
+                // displace the unit dropping instead
+                if (violated instanceof Dropship) {
+                    violated = entity;
+                }
+                Coords targetDest = Compute.getValidDisplacement(game, violated.getId(), violated.getPosition(),
+                        Compute.d6() - 1);
+                if (null != targetDest) {
+                    server.doEntityDisplacement(violated, violated.getPosition(), targetDest, null);
+                    entityUpdate(violated.getId());
+                } else {
+                    // ack! automatic death! Tanks
+                    // suffer an ammo/power plant hit.
+                    // TODO : a Mech suffers a Head Blown Off crit.
+                    reportManager.addReport(destroyEntity(entity, "impossible displacement",
+                            entity instanceof Mech, entity instanceof Mech));
+                }
+            }
+        }
     }
 
 }
