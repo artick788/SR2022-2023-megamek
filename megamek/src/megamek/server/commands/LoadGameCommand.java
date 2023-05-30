@@ -21,9 +21,9 @@
 package megamek.server.commands;
 
 import java.io.File;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Vector;
 
 import megamek.common.IPlayer;
 import megamek.common.net.IConnection;
@@ -69,8 +69,7 @@ public class LoadGameCommand extends ServerCommand {
     }
 
     private void load(File f, int connId) {
-        server.sendServerChat(server.getPlayer(connId).getName()
-                + " loaded a new game.");
+        server.sendServerChat(server.getPlayer(connId).getName() + " loaded a new game.");
         // Keep track of the current id to name mapping
         Map<String, Integer> nameToIdMap = new HashMap<>();
         Map<Integer, String> idToNameMap = new HashMap<>();
@@ -83,9 +82,8 @@ public class LoadGameCommand extends ServerCommand {
         } else {
             server.remapConnIds(nameToIdMap, idToNameMap);
             // update all the clients with the new game info
-            Enumeration<IConnection> connEnum = server.getConnections();
-            while (connEnum.hasMoreElements()) {
-                IConnection conn = connEnum.nextElement();
+            Vector<IConnection> connEnum = server.getConnections();
+            for (IConnection conn : connEnum) {
                 server.sendCurrentInfo(conn.getId());
             }
         }

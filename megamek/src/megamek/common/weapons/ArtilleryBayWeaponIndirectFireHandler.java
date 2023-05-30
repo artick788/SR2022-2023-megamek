@@ -485,8 +485,7 @@ public class ArtilleryBayWeaponIndirectFireHandler extends AmmoBayWeaponHandler 
             } else {
                 //Deliver a round to each target hex
                 for (Coords c : targets) {
-                    server.deliverArtilleryInferno(c, ae, subjectId,
-                            vPhaseReport);
+                    server.deliverArtilleryInferno(c, ae, subjectId, vPhaseReport);
                 }
             }
             return false;

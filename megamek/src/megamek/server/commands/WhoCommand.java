@@ -20,7 +20,7 @@
 
 package megamek.server.commands;
 
-import java.util.Enumeration;
+import java.util.Vector;
 
 import megamek.common.net.IConnection;
 import megamek.server.Server;
@@ -42,21 +42,14 @@ public class WhoCommand extends ServerCommand {
     @Override
     public void run(int connId, String[] args) {
         server.sendServerChat(connId, "Listing all connections...");
-        server
-                .sendServerChat(connId,
-                        "[id#] : [name], [address], [pending], [bytes sent], [bytes received]");
-        for (Enumeration<IConnection> i = server.getConnections(); i.hasMoreElements();) {
-            IConnection conn = i.nextElement();
-            StringBuffer cb = new StringBuffer();
-            cb.append(conn.getId()).append(" : ");
-            cb.append(server.getPlayer(conn.getId()).getName()).append(", ");
-            cb.append(conn.getInetAddress());
-            cb.append(", ").append(conn.hasPending()).append(", ");
-            cb.append(conn.bytesSent());
-            cb.append(", ").append(conn.bytesReceived());
-            server.sendServerChat(connId, cb.toString());
+        server.sendServerChat(connId, "[id#] : [name], [address], [pending], [bytes sent], [bytes received]");
+        Vector<IConnection> connections = server.getConnections();
+        for (IConnection conn : connections) {
+            String cb = conn.getId() + " : " + server.getPlayer(conn.getId()).getName() + ", " +
+                    conn.getInetAddress() + ", " + conn.hasPending() + ", " + conn.bytesSent() +
+                    ", " + conn.bytesReceived();
+            server.sendServerChat(connId, cb);
         }
         server.sendServerChat(connId, "end list");
     }
-
 }

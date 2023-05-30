@@ -40,8 +40,7 @@ public class ServerHelper {
      * @param ignoreInfantryDoubleDamage Whether we should ignore double damage to infantry.
      * @return Whether the infantry unit can be considered to be "in the open"
      */
-    public static boolean infantryInOpen(Entity te, IHex te_hex, IGame game, 
-            boolean isPlatoon, boolean ammoExplosion, boolean ignoreInfantryDoubleDamage) {
+    public static boolean infantryInOpen(Entity te, IHex te_hex, IGame game, boolean isPlatoon, boolean ammoExplosion, boolean ignoreInfantryDoubleDamage) {
         
         if (isPlatoon && !te.isDestroyed() && !te.isDoomed() && !ignoreInfantryDoubleDamage
                 && (((Infantry) te).getDugIn() != Infantry.DUG_IN_COMPLETE)) {
@@ -50,15 +49,13 @@ public class ServerHelper {
         		te_hex = game.getBoard().getHex(te.getPosition());
         	}
 
-            if ((te_hex != null) && !te_hex.containsTerrain(Terrains.WOODS) && !te_hex.containsTerrain(Terrains.JUNGLE)
+            return (te_hex != null) && !te_hex.containsTerrain(Terrains.WOODS) && !te_hex.containsTerrain(Terrains.JUNGLE)
                     && !te_hex.containsTerrain(Terrains.ROUGH) && !te_hex.containsTerrain(Terrains.RUBBLE)
                     && !te_hex.containsTerrain(Terrains.SWAMP) && !te_hex.containsTerrain(Terrains.BUILDING)
                     && !te_hex.containsTerrain(Terrains.FUEL_TANK) && !te_hex.containsTerrain(Terrains.FORTIFIED)
                     && (!te.hasAbility(OptionsConstants.INFANTRY_URBAN_GUERRILLA))
                     && (!te_hex.containsTerrain(Terrains.PAVEMENT) || !te_hex.containsTerrain(Terrains.ROAD))
-                    && !ammoExplosion) {
-                return true;
-            }
+                    && !ammoExplosion;
         }
         
         return false;
@@ -68,7 +65,7 @@ public class ServerHelper {
      * Worker function that handles heat as applied to aerospace fighter
      */
     public static void resolveAeroHeat(IGame game, Entity entity, Vector<Report> vPhaseReport, Vector<Report> rhsReports, 
-            int radicalHSBonus, int hotDogMod, Server s) {
+            int radicalHSBonus, int hotDogMod) {
         Report r;
         
         // If this aero is part of a squadron, we will deal with its
@@ -235,14 +232,12 @@ public class ServerHelper {
                     vPhaseReport.add(r);
                 }
             } else {
-                // if we're shutdown by a BA taser, we might activate
-                // again
+                // if we're shutdown by a BA taser, we might activate again
                 if (entity.isBATaserShutdown()) {
                     int roll = Compute.d6(2);
                     if (roll >= 8) {
                         entity.setTaserShutdownRounds(0);
-                        if (!(game.getOptions().booleanOption(
-                                OptionsConstants.RPG_MANUAL_SHUTDOWN)
+                        if (!(game.getOptions().booleanOption(OptionsConstants.RPG_MANUAL_SHUTDOWN)
                                 && entity.isManualShutdown())) {
                             entity.setShutDown(false);
                         }
@@ -291,7 +286,7 @@ public class ServerHelper {
             }
         }
 
-        s.checkRandomAeroMovement(entity, hotDogMod);
+        Server.getServerInstance().checkRandomAeroMovement(entity, hotDogMod);
 
         // heat effects: ammo explosion!
         if (entity.heat >= 19) {
@@ -319,7 +314,7 @@ public class ServerHelper {
                 // boom!
                 r.choose(false);
                 vPhaseReport.add(r);
-                vPhaseReport.addAll(s.explodeAmmoFromHeat(entity));
+                vPhaseReport.addAll(Server.getServerInstance().explodeAmmoFromHeat(entity));
             }
         }
 
@@ -340,7 +335,7 @@ public class ServerHelper {
                 // pilot is hurting
                 r.choose(false);
                 vPhaseReport.add(r);
-                vPhaseReport.addAll(s.damageCrew(entity, 1));
+                vPhaseReport.addAll(Server.getServerInstance().damageCrew(entity, 1));
             }
         }
 
@@ -351,7 +346,7 @@ public class ServerHelper {
             r.subject = entity.getId();
             r.addDesc(entity);
             vPhaseReport.add(r);
-            vPhaseReport.addAll(s.destroyEntity(entity, "pilot death", true));
+            vPhaseReport.addAll(Server.getServerInstance().destroyEntity(entity, "pilot death", true));
         }
     }
 
@@ -387,7 +382,6 @@ public class ServerHelper {
         }
         
         IHex fallHex = entity.getGame().getBoard().getHex(entity.getPosition());
-        int waterDepth = 0;
         
         // we're going hull down, we still sink to the bottom if appropriate
         if (fallHex.containsTerrain(Terrains.WATER)) {
@@ -397,16 +391,18 @@ public class ServerHelper {
             if (!entityOnTopOfBridge) {
                 // *Only* use this if there actually is water in the hex, otherwise
                 // we get ITerrain.LEVEL_NONE, i.e. Integer.minValue...
-                waterDepth = fallHex.terrainLevel(Terrains.WATER);
+                int waterDepth = fallHex.terrainLevel(Terrains.WATER);
                 entity.setElevation(-waterDepth);
             }
         }
     }
     
     public static void checkAndApplyMagmaCrust(IHex hex, int elevation, Entity entity, Coords curPos,
-            boolean jumpLanding, Vector<Report> vPhaseReport, Server server) {
+            boolean jumpLanding, Vector<Report> vPhaseReport) {
         
-        if ((hex.terrainLevel(Terrains.MAGMA) == 1) && (elevation == 0) && (entity.getMovementMode() != EntityMovementMode.HOVER)) {
+        if ((hex.terrainLevel(Terrains.MAGMA) == 1)
+                && (elevation == 0)
+                && (entity.getMovementMode() != EntityMovementMode.HOVER)) {
             int reportID = jumpLanding ? 2396 : 2395;
             
             int roll = Compute.d6();
@@ -421,9 +417,9 @@ public class ServerHelper {
             if (roll >= rollTarget) {
                 hex.removeTerrain(Terrains.MAGMA);
                 hex.addTerrain(Terrains.getTerrainFactory().createTerrain(Terrains.MAGMA, 2));
-                server.sendChangedHex(curPos);
+                Server.getServerInstance().sendChangedHex(curPos);
                 for (Entity en : entity.getGame().getEntitiesVector(curPos)) {
-                    server.doMagmaDamage(en, false);
+                    Server.getServerInstance().doMagmaDamage(en, false);
                 }
             }
         }

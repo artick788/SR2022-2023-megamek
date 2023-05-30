@@ -13,8 +13,8 @@ import megamek.common.util.StringUtil;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Enumeration;
 import java.util.List;
+import java.util.Vector;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -155,9 +155,8 @@ public class GameSaveLoader {
         }
 
         // update all the clients with the new game info
-        Enumeration<IConnection> connectionsEnum = getServerInstance().getConnections();
-        while (connectionsEnum.hasMoreElements()) {
-            IConnection conn = connectionsEnum.nextElement();
+        Vector<IConnection> connectionsEnum = getServerInstance().getConnections();
+        for (IConnection conn : connectionsEnum){
             getServerInstance().sendCurrentInfo(conn.getId());
         }
         return true;

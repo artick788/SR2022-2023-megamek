@@ -6,7 +6,6 @@ import megamek.common.actions.*;
 import megamek.common.options.OptionsConstants;
 
 import java.util.ArrayList;
-import java.util.Enumeration;
 import java.util.List;
 import java.util.Vector;
 
@@ -15,7 +14,7 @@ public class HandleAttack {
     private IGame game;
     private ReportManager reportmanager;
     private GameManager gamemanager;
-    private java.util.Vector<PhysicalResult> physicalResults = new java.util.Vector<PhysicalResult>();
+    private Vector<PhysicalResult> physicalResults = new Vector<>();
     private Server server;
     private EntityManager entityManager;
 
@@ -35,30 +34,28 @@ public class HandleAttack {
         reportmanager.addReport(new Report(4000, Report.PUBLIC));
 
         // add any pending charges
-        for (Enumeration<AttackAction> i = game.getCharges(); i.hasMoreElements(); ) {
-            game.addAction(i.nextElement());
+        for (AttackAction action : game.getChargesVector()) {
+            game.addAction(action);
         }
         game.resetCharges();
 
         // add any pending rams
-        for (Enumeration<AttackAction> i = game.getRams(); i.hasMoreElements(); ) {
-            game.addAction(i.nextElement());
+        for (AttackAction action : game.getRamsVector()) {
+            game.addAction(action);
         }
         game.resetRams();
 
         // add any pending Tele Missile Attacks
-        for (Enumeration<AttackAction> i = game.getTeleMissileAttacks(); i
-                .hasMoreElements(); ) {
-            game.addAction(i.nextElement());
+        for (AttackAction action : game.getTeleMissileAttacksVector()) {
+            game.addAction(action);
         }
         game.resetTeleMissileAttacks();
 
         // remove any duplicate attack declarations
         game.cleanupPhysicalAttacks();
 
-        // loop thru received attack actions
-        for (Enumeration<EntityAction> i = game.getActions(); i.hasMoreElements(); ) {
-            Object o = i.nextElement();
+        // loop through received attack actions
+        for (EntityAction o : game.getActionsVector()) {
             // verify that the attacker is still active
             AttackAction aa = (AttackAction) o;
             if (!game.getEntity(aa.getEntityId()).isActive() && !(o instanceof DfaAttackAction)) {
@@ -405,8 +402,7 @@ public class HandleAttack {
         final ToHitData toHit = pr.toHit;
         int roll = pr.roll;
         Entity te = null;
-        if ((target != null)
-                && (target.getTargetType() == Targetable.TYPE_ENTITY)) {
+        if ((target != null) && (target.getTargetType() == Targetable.TYPE_ENTITY)) {
             // Lets re-write around that horrible hack that was here before.
             // So instead of asking if a specific location is wet and praying
             // that it won't cause an NPE...
@@ -548,7 +544,7 @@ public class HandleAttack {
             }
             // damage target
             Report r = ReportFactory.createReport(4230, 2, ae, damage);
-            r.add(toHit.getTableDesc());;
+            r.add(toHit.getTableDesc());
             reportmanager.addReport(r);
 
             while (damage > 0) {
@@ -641,7 +637,7 @@ public class HandleAttack {
         final Entity ae = game.getEntity(kaa.getEntityId());
         final Targetable target = game.getTarget(kaa.getTargetType(), kaa.getTargetId());
         Entity te = null;
-        if (target.getTargetType() == Targetable.TYPE_ENTITY) {
+        if ((target != null) && target.getTargetType() == Targetable.TYPE_ENTITY) {
             te = (Entity) target;
         }
         boolean throughFront = true;
@@ -786,7 +782,7 @@ public class HandleAttack {
         final Entity ae = game.getEntity(kaa.getEntityId());
         final Targetable target = game.getTarget(kaa.getTargetType(), kaa.getTargetId());
         Entity te = null;
-        if (target.getTargetType() == Targetable.TYPE_ENTITY) {
+        if ((target != null) && target.getTargetType() == Targetable.TYPE_ENTITY) {
             te = (Entity) target;
         }
         boolean throughFront = true;
@@ -824,7 +820,7 @@ public class HandleAttack {
 
         reportmanager.addReport(ReportFactory.createReport(4290, 1, ae, legName, target.getDisplayName()));
 
-        if (toHit.getValue() == TargetRoll.IMPOSSIBLE) {;
+        if (toHit.getValue() == TargetRoll.IMPOSSIBLE) {
             reportmanager.addReport(ReportFactory.createReport(4075, ae, toHit.getDesc()));
             return;
         } else if (toHit.getValue() == TargetRoll.AUTOMATIC_SUCCESS) {
@@ -897,7 +893,7 @@ public class HandleAttack {
         int roll = pr.roll;
         final Targetable target = game.getTarget(ppaa.getTargetType(), ppaa.getTargetId());
         Entity te = null;
-        if (target.getTargetType() == Targetable.TYPE_ENTITY) {
+        if ((target != null) && target.getTargetType() == Targetable.TYPE_ENTITY) {
             te = (Entity) target;
         }
         boolean throughFront = true;
@@ -1003,10 +999,10 @@ public class HandleAttack {
         // PLEASE NOTE: buildings are *never* the target
         // of a "brush off", but iNarc pods **are**.
         Targetable target = game.getTarget(baa.getTargetType(), baa.getTargetId());
-        Entity te = null;
         final String armName = baa.getArm() == BrushOffAttackAction.LEFT ? "Left Arm" : "Right Arm";
 
-        if (target.getTargetType() == Targetable.TYPE_ENTITY) {
+        Entity te = null;
+        if ((target != null) && target.getTargetType() == Targetable.TYPE_ENTITY) {
             te = game.getEntity(baa.getTargetId());
         }
 
@@ -1068,8 +1064,8 @@ public class HandleAttack {
                 // Handle iNarc pod targets.
                 // TODO : check the return code and handle false appropriately.
                 ae.removeINarcPod((INarcPod) target);
-                // // TODO : confirm that we don't need to update the attacker.
-                // //killme
+                // TODO : confirm that we don't need to update the attacker.
+                // killme
                 // entityManager.entityUpdate( ae.getId() ); // killme
                 reportmanager.addReport(ReportFactory.createReport(4105, ae, target.getDisplayName()));
                 break;
@@ -1269,7 +1265,7 @@ public class HandleAttack {
         int roll = pr.roll;
         final Targetable target = game.getTarget(caa.getTargetType(), caa.getTargetId());
         Entity te = null;
-        if (target.getTargetType() == Targetable.TYPE_ENTITY) {
+        if ((target != null) && target.getTargetType() == Targetable.TYPE_ENTITY) {
             te = (Entity) target;
         }
         boolean throughFront = true;
@@ -2257,7 +2253,6 @@ public class HandleAttack {
             te = (Entity) target;
         }
 
-        // TODO (Sam): Can this not go in the previous if statement because it sets te to not null
         boolean throughFront = true;
         if (te != null) {
             throughFront = Compute.isThroughFrontHex(game, ae.getPosition(), te);
@@ -2267,7 +2262,7 @@ public class HandleAttack {
 
         boolean glancing = Compute.d6(1) == 6;
 
-        // entity isn't ramming any more
+        // entity isn't ramming anymore
         ae.setRamming(false);
 
         reportWhoAttacks(lastEntityId, pr.aaa, te);
@@ -2521,6 +2516,5 @@ public class HandleAttack {
             reportmanager.addReport(server.doEntityDisplacement(te, te.getPosition(), hexes[worst], psr));
             te.setFacing(hexes[worst].direction(ae.getPosition()));
         }
-
     }
 }

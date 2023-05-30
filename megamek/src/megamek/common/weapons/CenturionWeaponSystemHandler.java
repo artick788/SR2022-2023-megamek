@@ -104,8 +104,7 @@ public class CenturionWeaponSystemHandler extends EnergyWeaponHandler {
             if (entityTarget.hasAbility(OptionsConstants.PILOT_HOT_DOG)) {
                 hotDogMod = 1;
             }
-            int shutdown = (4 + (((entityTarget.heat) / 4) * 2))
-                    - hotDogMod;
+            int shutdown = (4 + (((entityTarget.heat) / 4) * 2)) - hotDogMod;
             if (mtHeat) {
                 shutdown -= 5;
                 switch (entityTarget.getCrew().getPiloting()) {

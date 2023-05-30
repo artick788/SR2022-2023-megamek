@@ -2363,7 +2363,7 @@ public class EntityManager {
 
             // check for breaking magma crust unless we are jumping over the hex
             if (stepMoveType != EntityMovementType.MOVE_JUMP) {
-                ServerHelper.checkAndApplyMagmaCrust(curHex, step.getElevation(), entity, curPos, false, reportManager.getvPhaseReport(), server);
+                ServerHelper.checkAndApplyMagmaCrust(curHex, step.getElevation(), entity, curPos, false, reportManager.getvPhaseReport());
             }
 
             // check if we've moved into a swamp
@@ -3316,7 +3316,7 @@ public class EntityManager {
 
             // Don't interact with terrain when jumping onto a building or a bridge
             if (entity.getElevation() == 0) {
-                ServerHelper.checkAndApplyMagmaCrust(curHex, entity.getElevation(), entity, curPos, true, reportManager.getvPhaseReport(), server);
+                ServerHelper.checkAndApplyMagmaCrust(curHex, entity.getElevation(), entity, curPos, true, reportManager.getvPhaseReport());
 
                 // jumped into swamp? maybe stuck!
                 if (curHex.getBogDownModifier(entity.getMovementMode(),

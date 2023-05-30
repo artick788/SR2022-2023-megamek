@@ -400,13 +400,7 @@ public class GameManager {
                         if (otherMine.equals(minefield)) {
                             continue;
                         }
-                        int bonus = 0;
-                        if (otherMine.getDensity() > minefield.getDensity()) {
-                            bonus = 1;
-                        }
-                        if (otherMine.getDensity() < minefield.getDensity()) {
-                            bonus = -1;
-                        }
+                        int bonus = Integer.compare(otherMine.getDensity(), minefield.getDensity());
                         otherMine.checkReduction(bonus, false);
                     }
                 }
@@ -521,9 +515,7 @@ public class GameManager {
                         current.append(Compute.getAttackerMovementModifier(game, en.getId()));
                         current.append(Compute.getTargetMovementModifier(game, layer.getId()));
                         current.append(los.losModifiers(game));
-                        if (current.getValue() < target) {
-                            target = current.getValue();
-                        }
+                        target = Math.min(target, current.getValue());
                     }
                 }
 
@@ -561,10 +553,8 @@ public class GameManager {
      */
     public void processDeployMinefields(IGame game, Vector<Minefield> minefields) {
         int playerId = IPlayer.PLAYER_NONE;
-        for (int i = 0; i < minefields.size(); i++) {
-            Minefield mf = minefields.elementAt(i);
+        for (Minefield mf : minefields) {
             playerId = mf.getPlayerId();
-
             game.addMinefield(mf);
             if (mf.getType() == Minefield.TYPE_VIBRABOMB) {
                 game.addVibrabomb(mf);

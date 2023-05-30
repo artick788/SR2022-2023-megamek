@@ -38,10 +38,6 @@ public class ServerConnectionListener extends ConnectionListenerAdapter {
     private final Hashtable<Integer, IConnection> connectionIds = new Hashtable<>();
     private final Hashtable<Integer, ConnectionHandler> connectionHandlers = new Hashtable<>();
     private final ConcurrentLinkedQueue<ReceivedPacket> packetQueue = new ConcurrentLinkedQueue<>();
-    /**
-     * Special packet queue for client feedback requests.
-     */
-    //private final ConcurrentLinkedQueue<ReceivedPacket> cfrPacketQueue = new ConcurrentLinkedQueue<>();
 
     public ConcurrentLinkedQueue<ReceivedPacket> getPacketQueue() {
         return packetQueue;
@@ -49,13 +45,6 @@ public class ServerConnectionListener extends ConnectionListenerAdapter {
 
     public ReceivedPacket pollPacketQueue() {
         return packetQueue.poll();
-    }
-
-    public void addToPacketQueue(ReceivedPacket packet) {
-        synchronized (packetQueue) {
-            packetQueue.add(packet);
-            packetQueue.notifyAll();
-        }
     }
 
     public void waitPacketQueue() {
@@ -97,10 +86,6 @@ public class ServerConnectionListener extends ConnectionListenerAdapter {
         connectionsPending.removeElement(conn);
     }
 
-    public void removeAllConnectionsPending() {
-        connectionsPending.removeAllElements();
-    }
-
     public IConnection getConnectionIds(int id) {
         return connectionIds.get(id);
     }
@@ -111,10 +96,6 @@ public class ServerConnectionListener extends ConnectionListenerAdapter {
 
     public void removeConnectionIds(int id) {
         connectionIds.remove(id);
-    }
-
-    public void removeAllConnectionIds() {
-        connectionIds.clear();
     }
 
     public void addConnectionHandler(int id, ConnectionHandler conn) {
@@ -164,15 +145,7 @@ public class ServerConnectionListener extends ConnectionListenerAdapter {
         int cmd = e.getPacket().getCommand();
         // Handled CFR packets specially
         if (cmd == Packet.COMMAND_CLIENT_FEEDBACK_REQUEST) {
-            // TODO (Sam): Quick fix, can be better
             Server.getServerInstance().addTocfrPacketQueue(rp);
-            /*
-            synchronized (cfrPacketQueue) {
-                cfrPacketQueue.add(rp);
-                cfrPacketQueue.notifyAll();
-            }
-
-             */
             // Some packets should be handled immediately
         } else if ((cmd == Packet.COMMAND_CLOSE_CONNECTION)
                 || (cmd == Packet.COMMAND_CLIENT_NAME)
@@ -206,5 +179,27 @@ public class ServerConnectionListener extends ConnectionListenerAdapter {
             connectionCounter++;
         }
         return connectionCounter;
+    }
+
+    public void killAllConections() {
+        // kill pending connections
+        for (IConnection conn : getConnectionsPending()) {
+            conn.close();
+        }
+        connectionsPending.removeAllElements();
+
+        // Send "kill" commands to all connections
+        // N.B. I may be starting a race here.
+        for (IConnection conn : getConnections()) {
+            Server.getServerInstance().send(conn.getId(), new Packet(Packet.COMMAND_CLOSE_CONNECTION));
+        }
+
+        // kill active connections
+        for (IConnection conn : getConnections()) {
+            conn.close();
+        }
+
+        connections.removeAllElements();
+        connectionIds.clear();
     }
 }

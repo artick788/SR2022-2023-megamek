@@ -20,7 +20,7 @@
 
 package megamek.server.commands;
 
-import java.util.Enumeration;
+import java.util.Vector;
 
 import megamek.common.net.IConnection;
 import megamek.server.Server;
@@ -53,21 +53,18 @@ public class TeamCommand extends ServerCommand {
 
             StringBuilder message = new StringBuilder();
 
-            String origin = "Team Chat[" + server.getPlayer(connId).getName()
-                    + "]";
+            String origin = "Team Chat[" + server.getPlayer(connId).getName() + "]";
 
             for (int pos = 1; pos < args.length; pos++) {
                 message.append(" ");
                 message.append(args[pos]);
             }
 
-            for (Enumeration<IConnection> i = server.getConnections(); i.hasMoreElements();) {
-                IConnection conn = i.nextElement();
-
+            Vector<IConnection> connections = server.getConnections();
+            for (IConnection conn : connections) {
                 if (server.getPlayer(conn.getId()).getTeam() == team)
                     server.sendChat(conn.getId(), origin, message.toString());
             }
         }
     }
-
 }

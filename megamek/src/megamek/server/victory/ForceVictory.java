@@ -42,26 +42,14 @@ public class ForceVictory implements IVictoryConditions, Serializable {
         List<IPlayer> players = game.getPlayersVector();
         boolean forceVictory = true;
 
-        // Individual victory.
-        if (victoryPlayerId != IPlayer.PLAYER_NONE) {
-            for (int i = 0; i < players.size(); i++) {
-                IPlayer player = players.get(i);
-
-                if (player.getId() != victoryPlayerId && !player.isObserver()) {
-                    if (!player.admitsDefeat()) {
-                        forceVictory = false;
-                        break;
-                    }
-                }
-            }
-        }
-        // Team victory.
-        if (victoryTeam != IPlayer.TEAM_NONE) {
-            for (int i = 0; i < players.size(); i++) {
-                IPlayer player = players.get(i);
-
-                if (player.getTeam() != victoryTeam && !player.isObserver()) {
-                    if (!player.admitsDefeat()) {
+        for (IPlayer player : players) {
+            if (!player.isObserver()) {
+                boolean playerAdmitsDefeat = player.admitsDefeat();
+                // Individual victory.
+                if ((victoryPlayerId != IPlayer.PLAYER_NONE && player.getId() != victoryPlayerId)
+                        // Team victory.
+                        || (victoryTeam != IPlayer.TEAM_NONE && player.getTeam() != victoryTeam)) {
+                    if (!playerAdmitsDefeat) {
                         forceVictory = false;
                         break;
                     }
@@ -72,7 +60,6 @@ public class ForceVictory implements IVictoryConditions, Serializable {
         if (forceVictory) {
             return new VictoryResult(true, victoryPlayerId, victoryTeam);
         }
-
         return VictoryResult.noResult();
     }
 }

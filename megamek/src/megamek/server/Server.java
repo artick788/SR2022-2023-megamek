@@ -157,13 +157,13 @@ public class Server implements Runnable {
         @Override
         public void run() {
             while (!shouldStop) {
-                while (!NEWconnectionListener.getPacketQueue().isEmpty()) {
-                    ServerConnectionListener.ReceivedPacket rp = NEWconnectionListener.pollPacketQueue();
-                    synchronized (NEWconnectionListener.getServerLock()) {
+                while (!connectionListener.getPacketQueue().isEmpty()) {
+                    ServerConnectionListener.ReceivedPacket rp = connectionListener.pollPacketQueue();
+                    synchronized (connectionListener.getServerLock()) {
                         handle(rp.connId, rp.packet);
                     }
                 }
-                NEWconnectionListener.waitPacketQueue();
+                connectionListener.waitPacketQueue();
             }
         }
     }
@@ -196,34 +196,32 @@ public class Server implements Runnable {
 
     public static String ORIGIN = "***Server";
 
-    private ServerConnectionListener NEWconnectionListener;
+    private ServerConnectionListener connectionListener;
 
     /**
      * Returns a free connection id.
      */
     public int getFreeConnectionId() {
-        return NEWconnectionListener.getFreeConnectionId();
+        return connectionListener.getFreeConnectionId();
     }
 
     /**
      * Returns a connection, indexed by id
      */
-    public Enumeration<IConnection> getConnections() {
-        return NEWconnectionListener.getConnections().elements();
-    }
+    public Vector<IConnection> getConnections() {return connectionListener.getConnections();}
 
     /**
      * Returns a connection, indexed by id
      */
     public IConnection getConnection(int connId) {
-        return NEWconnectionListener.getConnectionIds(connId);
+        return connectionListener.getConnectionIds(connId);
     }
 
     /**
      * Returns a pending connection
      */
     IConnection getPendingConnection(int connId) {
-        return NEWconnectionListener.getPendingConnection(connId);
+        return connectionListener.getPendingConnection(connId);
     }
 
     public Server(String password, int port) throws IOException {
@@ -247,7 +245,7 @@ public class Server implements Runnable {
         packetHandler = new PacketHandler(game);
         commandhash = new CommandHash();
         gameSaveLoader = new GameSaveLoader(game);
-        NEWconnectionListener = new ServerConnectionListener(game);
+        connectionListener = new ServerConnectionListener(game);
         handleAttack = new HandleAttack(this, game, reportmanager, gamemanager);
 
         this.metaServerUrl = metaServerUrl;
@@ -366,25 +364,8 @@ public class Server implements Runnable {
         } catch (IOException ignored) {
         }
 
-        // kill pending connections
-        for (IConnection conn : NEWconnectionListener.getConnectionsPending()) {
-            conn.close();
-        }
-        NEWconnectionListener.removeAllConnectionsPending();
+        connectionListener.killAllConections();
 
-        // Send "kill" commands to all connections
-        // N.B. I may be starting a race here.
-        for (IConnection conn : NEWconnectionListener.getConnections()) {
-            send(conn.getId(), new Packet(Packet.COMMAND_CLOSE_CONNECTION));
-        }
-
-        // kill active connections
-        for (IConnection conn : NEWconnectionListener.getConnections()) {
-            conn.close();
-        }
-
-        NEWconnectionListener.removeAllConnections();
-        NEWconnectionListener.removeAllConnectionIds();
         if (serverBrowserUpdateTimer != null) {
             serverBrowserUpdateTimer.cancel();
         }
@@ -413,7 +394,7 @@ public class Server implements Runnable {
             DataOutputStream printout = new DataOutputStream(conn.getOutputStream());
             StringBuilder content = new StringBuilder("port=" + URLEncoder.encode(Integer.toString(serverSocket.getLocalPort()), "UTF-8"));
             if (register) {
-                for (IConnection iconn : NEWconnectionListener.getConnections()) {
+                for (IConnection iconn : connectionListener.getConnections()) {
                     content.append("&players[]=").append(game.getPlayer(iconn.getId()).getName());
                 }
                 if ((game.getPhase() != Phase.PHASE_LOUNGE) && (game.getPhase() != Phase.PHASE_UNKNOWN)) {
@@ -481,19 +462,19 @@ public class Server implements Runnable {
         while (connector == currentThread) {
             try {
                 Socket s = serverSocket.accept();
-                synchronized (NEWconnectionListener.getServerLock()) {
+                synchronized (connectionListener.getServerLock()) {
                     int id = getFreeConnectionId();
                     MegaMek.getLogger().info("s: accepting player connection #" + id + "...");
 
                     IConnection c = ConnectionFactory.getInstance().createServerConnection(s, id);
-                    c.addConnectionListener(NEWconnectionListener);
+                    c.addConnectionListener(connectionListener);
                     c.open();
 
-                    NEWconnectionListener.addConnectionsPending(c);
+                    connectionListener.addConnectionsPending(c);
                     ConnectionHandler ch = new ConnectionHandler(c);
                     Thread newConnThread = new Thread(ch, "Connection " + id);
                     newConnThread.start();
-                    NEWconnectionListener.addConnectionHandler(id, ch);
+                    connectionListener.addConnectionHandler(id, ch);
 
                     greeting(id);
                     ConnectionWatchdog w = new ConnectionWatchdog(this, id);
@@ -720,7 +701,7 @@ public class Server implements Runnable {
                 try {
                     sendServerChat(game.getPlayer(connId).getName() + " loaded a new game.");
                     setGame((IGame) packet.getObject(0));
-                    for (IConnection conn : NEWconnectionListener.getConnections()) {
+                    for (IConnection conn : connectionListener.getConnections()) {
                         sendCurrentInfo(conn.getId());
                     }
                 } catch (Exception e) {
@@ -764,10 +745,10 @@ public class Server implements Runnable {
      * Send a packet to all connected clients.
      */
     void send(Packet packet) {
-        if (NEWconnectionListener.getConnections() == null) {
+        if (connectionListener.getConnections() == null) {
             return;
         }
-        for (IConnection conn : NEWconnectionListener.getConnections()) {
+        for (IConnection conn : connectionListener.getConnections()) {
             conn.send(packet);
         }
     }
@@ -870,9 +851,9 @@ public class Server implements Runnable {
             if ((oldName != null) && !oldName.equals(p.getName())) {
                 // If this name doesn't belong to a current player, unassign it
                 if (!currentPlayerNames.contains(oldName)) {
-                    unassignedConns.add(NEWconnectionListener.getConnectionIds(p.getId()));
+                    unassignedConns.add(connectionListener.getConnectionIds(p.getId()));
                     // Make sure we don't add this to unassigned connections twice
-                    NEWconnectionListener.removeConnectionIds(p.getId());
+                    connectionListener.removeConnectionIds(p.getId());
                 }
                 // If it does belong to a current player, it'll get handled when that player comes up
             }
@@ -883,14 +864,14 @@ public class Server implements Runnable {
         // Remap old connection Ids to new ones
         for (Integer currConnId : connIdRemapping.keySet()) {
             Integer newId = connIdRemapping.get(currConnId);
-            IConnection conn = NEWconnectionListener.getConnectionIds(currConnId);
+            IConnection conn = connectionListener.getConnectionIds(currConnId);
             conn.setId(newId);
             // If this Id is used, make sure we reassign that connection
-            if (NEWconnectionListener.getConnectionIds(newId) != null) {
-                unassignedConns.add(NEWconnectionListener.getConnectionIds(newId));
+            if (connectionListener.getConnectionIds(newId) != null) {
+                unassignedConns.add(connectionListener.getConnectionIds(newId));
             }
             // Map the new Id
-            NEWconnectionListener.addConnectionIds(newId, conn);
+            connectionListener.addConnectionIds(newId, conn);
 
             game.getPlayer(newId).setGhost(false);
             send(newId, new Packet(Packet.COMMAND_LOCAL_PN, newId));
@@ -906,7 +887,7 @@ public class Server implements Runnable {
             conn.setId(newId);
             IPlayer newPlayer = game.addNewPlayer(newId, name);
             newPlayer.setObserver(true);
-            NEWconnectionListener.addConnectionIds(newId, conn);
+            connectionListener.addConnectionIds(newId, conn);
             send(newId, new Packet(Packet.COMMAND_LOCAL_PN, newId));
         }
         // Ensure all clients are up-to-date on player info
@@ -2156,21 +2137,21 @@ public class Server implements Runnable {
     }
 
     private void sendSpecialHexDisplayPackets() {
-        if (NEWconnectionListener.getConnections() == null) {
+        if (connectionListener.getConnections() == null) {
             return;
         }
-        for (int i = 0; i < NEWconnectionListener.getConnections().size(); i++) {
-            if (NEWconnectionListener.getConnections().get(i) != null) {
-                NEWconnectionListener.getConnections().get(i).send(PacketFactory.createSpecialHexDisplayPacket(game, i));
+        for (int i = 0; i < connectionListener.getConnections().size(); i++) {
+            if (connectionListener.getConnections().get(i) != null) {
+                connectionListener.getConnections().get(i).send(PacketFactory.createSpecialHexDisplayPacket(game, i));
             }
         }
     }
 
     private void sendTagInfoUpdates() {
-        if (NEWconnectionListener.getConnections() == null) {
+        if (connectionListener.getConnections() == null) {
             return;
         }
-        for (IConnection connection : NEWconnectionListener.getConnections()) {
+        for (IConnection connection : connectionListener.getConnections()) {
             if (connection != null) {
                 connection.send(PacketFactory.createTagInfoUpdatesPacket(game));
             }
@@ -2178,10 +2159,10 @@ public class Server implements Runnable {
     }
 
     public void sendTagInfoReset() {
-        if (NEWconnectionListener.getConnections() == null) {
+        if (connectionListener.getConnections() == null) {
             return;
         }
-        for (IConnection connection : NEWconnectionListener.getConnections()) {
+        for (IConnection connection : connectionListener.getConnections()) {
             if (connection != null) {
                 connection.send(new Packet(Packet.COMMAND_RESET_TAGINFO));
             }
@@ -3555,8 +3536,7 @@ public class Server implements Runnable {
                     }
                 }
 
-                // Mechs and vehicles get charged,
-                // but need to make a to-hit roll
+                // Mechs and vehicles get charged, but need to make a to-hit roll
                 if ((target instanceof Mech) || (target instanceof Tank) || (target instanceof Aero)) {
                     ChargeAttackAction caa = new ChargeAttackAction(entity.getId(), target.getTargetType(),
                             target.getTargetId(), target.getPosition());
@@ -3783,7 +3763,7 @@ public class Server implements Runnable {
             // check for breaking magma crust
             // note that this must sequentially occur before the next 'entering liquid magma' check
             // otherwise, magma crust won't have a chance to break
-            ServerHelper.checkAndApplyMagmaCrust(nextHex, nextElevation, entity, curPos, false, reportmanager.getvPhaseReport(), this);
+            ServerHelper.checkAndApplyMagmaCrust(nextHex, nextElevation, entity, curPos, false, reportmanager.getvPhaseReport());
 
             // is the next hex a swamp?
             PilotingRollData rollTarget = entity.checkBogDown(step, moveType, nextHex, curPos, nextPos,
@@ -5784,7 +5764,7 @@ public class Server implements Runnable {
             checkBuildingCollapseWhileMoving(bldg, entity, dest);
         }
         
-        ServerHelper.checkAndApplyMagmaCrust(destHex, entity.getElevation(), entity, dest, false, vPhaseReport, this);
+        ServerHelper.checkAndApplyMagmaCrust(destHex, entity.getElevation(), entity, dest, false, vPhaseReport);
         
         Entity violation = Compute.stackingViolation(game, entity.getId(), dest);
         if (violation == null) {
@@ -6236,21 +6216,19 @@ public class Server implements Runnable {
                 }
             }
             if (ea instanceof ArtilleryAttackAction) {
-                boolean firingAtNewHex = false;
                 final ArtilleryAttackAction aaa = (ArtilleryAttackAction) ea;
                 final Entity firingEntity = game.getEntity(aaa.getEntityId());
-                for (Enumeration<AttackHandler> j = game.getAttacks(); !firingAtNewHex && j.hasMoreElements(); ) {
-                    WeaponHandler wh = (WeaponHandler) j.nextElement();
+                Vector<AttackHandler> attacks = game.getAttacksVector();
+                for (AttackHandler attackHandler : attacks) {
+                    WeaponHandler wh = (WeaponHandler) attackHandler;
                     if (wh.waa instanceof ArtilleryAttackAction) {
                         ArtilleryAttackAction oaaa = (ArtilleryAttackAction) wh.waa;
                         if ((oaaa.getEntityId() == aaa.getEntityId())
-                            && !oaaa.getTarget(game).getPosition().equals(aaa.getTarget(game).getPosition())) {
-                            firingAtNewHex = true;
+                                && !oaaa.getTarget(game).getPosition().equals(aaa.getTarget(game).getPosition())) {
+                            game.clearArtillerySpotters(firingEntity.getId(), aaa.getWeaponId());
+                            break;
                         }
                     }
-                }
-                if (firingAtNewHex) {
-                    game.clearArtillerySpotters(firingEntity.getId(), aaa.getWeaponId());
                 }
                 Iterator<Entity> spotters = game.getSelectedEntities(new EntitySelector() {
                             public int player = firingEntity.getOwnerId();
@@ -7971,7 +7949,7 @@ public class Server implements Runnable {
 
             // put in ASF heat build-up first because there are few differences
             if (entity instanceof Aero && !(entity instanceof ConvFighter)) {
-                ServerHelper.resolveAeroHeat(game, entity, reportmanager.getvPhaseReport(), rhsReports, radicalHSBonus, hotDogMod, this);
+                ServerHelper.resolveAeroHeat(game, entity, reportmanager.getvPhaseReport(), rhsReports, radicalHSBonus, hotDogMod);
                 continue;
             }
 
@@ -9393,8 +9371,6 @@ public class Server implements Runnable {
                 if (entity.hasUMU()) {
                     return vPhaseReport;
                 }
-                // game.addPSR(new PilotingRollData(entity.getId(),
-                // TargetRoll.AUTOMATIC_FAIL, "lost buoyancy"));
             }
         }
         // add all cumulative mods from other rolls to each PSR
@@ -9418,8 +9394,7 @@ public class Server implements Runnable {
             entity.addPilotingModifierForTerrain(toUse);
             toUse.append(psr);
             // now, append all other roll's cumulative mods, not the
-            // non-cumulative
-            // ones
+            // non-cumulative ones
             for (Enumeration<PilotingRollData> j = game.getPSRs(); j.hasMoreElements(); ) {
                 final PilotingRollData other = j.nextElement();
                 if ((other.getEntityId() != entity.getId()) || other.equals(psr)) {
@@ -11883,12 +11858,9 @@ public class Server implements Runnable {
         Enumeration<Building> buildings = game.getBoard().getBuildings();
         while (buildings.hasMoreElements()) {
             final Building bldg = buildings.nextElement();
-
             // Lets find the closest hex from the building.
-            Enumeration<Coords> hexes = bldg.getCoords();
-
-            while (hexes.hasMoreElements()) {
-                final Coords coords = hexes.nextElement();
+            Vector<Coords> hexes = bldg.getCoordsVector();
+            for (Coords coords : hexes) {
                 int dist = position.distance(coords);
                 if (dist < damages.length) {
                     Vector<Report> buildingReport = damageBuilding(bldg, damages[dist], coords);
@@ -16361,9 +16333,8 @@ public class Server implements Runnable {
         }
 
         // Deal with players who can see all.
-        for (Enumeration<IPlayer> p = game.getPlayers(); p.hasMoreElements();) {
-            IPlayer player = p.nextElement();
-
+        Vector<IPlayer> players = game.getPlayersVector();
+        for (IPlayer player : players) {
             if (player.canSeeAll() && !vCanSee.contains(player)) {
                 vCanSee.addElement(player);
             }
@@ -16573,7 +16544,7 @@ public class Server implements Runnable {
      * Sends out the game victory event to all connections
      */
     private void transmitGameVictoryEventToAll() {
-        for (IConnection conn : NEWconnectionListener.getConnections()) {
+        for (IConnection conn : connectionListener.getConnections()) {
             send(conn.getId(), new Packet(Packet.COMMAND_GAME_VICTORY_EVENT));
         }
     }
@@ -16582,9 +16553,8 @@ public class Server implements Runnable {
      * Sends out all player info to the specified connection
      */
     private void transmitAllPlayerConnects(int connId) {
-        for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
-            final IPlayer player = i.nextElement();
-
+        Vector<IPlayer> players = game.getPlayersVector();
+        for (IPlayer player : players) {
             send(connId, PacketFactory.createPlayerConnectPacket(game, player.getId()));
         }
     }
@@ -16593,9 +16563,8 @@ public class Server implements Runnable {
      * Sends out the player ready stats for all players to all connections
      */
     private void transmitAllPlayerDones() {
-        for (Enumeration<IPlayer> i = game.getPlayers(); i.hasMoreElements(); ) {
-            final IPlayer player = i.nextElement();
-
+        Vector<IPlayer> players = game.getPlayersVector();
+        for (IPlayer player : players) {
             send(PacketFactory.createPlayerDonePacket(game, player.getId()));
         }
     }
@@ -16609,11 +16578,11 @@ public class Server implements Runnable {
      * Send the round report to all connected clients.
      */
     private void sendReport(boolean tacticalGeniusReport) {
-        if (NEWconnectionListener.getConnections() == null) {
+        if (connectionListener.getConnections() == null) {
             return;
         }
 
-        for (IConnection conn : NEWconnectionListener.getConnections()) {
+        for (IConnection conn : connectionListener.getConnections()) {
             IPlayer p = game.getPlayer(conn.getId());
             Packet packet;
             if (tacticalGeniusReport) {
@@ -17103,20 +17072,19 @@ public class Server implements Runnable {
                 while (!collapse && entities.hasMoreElements()) {
                     final Entity entity = entities.nextElement();
                     // WiGEs can collapse the top floor of a building by flying over it.
-                    final int entityElev = entity.getElevation();
+                    int entityElev = entity.getElevation();
                     final boolean wigeFlyover = entity.getMovementMode() == EntityMovementMode.WIGE
                             && entityElev == numFloors + 1;
 
-                    if (entityElev != bridgeEl && !wigeFlyover) {
+                    if (entityElev != bridgeEl) {
                         // Ignore entities not *inside* the building
-                        if (entityElev > numFloors) {
+                        if (entityElev > numFloors && !wigeFlyover) {
                             continue;
                         }
-                    }
-                    
-                    // if we're under a bridge, we can't collapse the bridge
-                    if (entityElev < bridgeEl) {
-                        continue;
+                        // if we're under a bridge, we can't collapse the bridge
+                        if (entityElev < bridgeEl) {
+                            continue;
+                        }
                     }
 
                     if ((entity.getMovementMode() == EntityMovementMode.HYDROFOIL)
@@ -17138,13 +17106,12 @@ public class Server implements Runnable {
 
                     // Add the weight to the correct floor.
                     double load = entity.getWeight();
-                    int floor = entityElev;
-                    if (floor == bridgeEl) {
-                        floor = numLoads;
+                    if (entityElev == bridgeEl) {
+                        entityElev = numLoads;
                     }
                     // Entities on the roof fall to the previous top floor/new roof
-                    if (topFloorCollapse && floor == numFloors) {
-                        floor--;
+                    if (topFloorCollapse && entityElev == numFloors) {
+                        entityElev--;
                     }
 
                     if (wigeFlyover) {
@@ -17155,11 +17122,11 @@ public class Server implements Runnable {
                             loads[numFloors] = 0;
                         }
                     } else {
-                        loads[floor] += load;
-                        if (loads[floor] > currentCF) {
+                        loads[entityElev] += load;
+                        if (loads[entityElev] > currentCF) {
                             // If the load on any floor but the ground floor
                             // exceeds the building's current CF it collapses.
-                            if (floor != 0) {
+                            if (entityElev != 0) {
                                 collapse = true;
                             } else if (!bldg.getBasementCollapsed(coords)) {
                                 basementCollapse = true;
@@ -17361,7 +17328,6 @@ public class Server implements Runnable {
                 game.getBoard().collapseBuilding(coords);
             }
 
-            // TODO (Sam): Nog iets mee doen want snap dit niet
             // Sort in elevation order
             vector.sort((a, b) -> {
                 if (a.getElevation() > b.getElevation()) {
@@ -17372,9 +17338,8 @@ public class Server implements Runnable {
                 return 0;
             });
             // Walk through the entities in this position.
-            Enumeration<Entity> entities = vector.elements();
-            while (entities.hasMoreElements()) {
-                final Entity entity = entities.nextElement();
+            Vector<Entity> entities = vector;
+            for (Entity entity : entities) {
                 // all gun emplacements are simply destroyed
                 if (entity instanceof GunEmplacement) {
                     vPhaseReport.addAll(entityManager.destroyEntity(entity, "building collapse"));
@@ -17478,9 +17443,9 @@ public class Server implements Runnable {
         }
         // if more than half of the hexes are gone, collapse all
         if (bldg.getCollapsedHexCount() > (bldg.getOriginalHexCount() / 2)) {
-            for (Enumeration<Coords> coordsEnum = bldg.getCoords(); coordsEnum.hasMoreElements();) {
-                coords = coordsEnum.nextElement();
-                collapseBuilding(bldg, game.getPositionMap(), coords, false, vPhaseReport);
+            Vector<Coords> coordsVec = bldg.getCoordsVector();
+            for (Coords coords1 : coordsVec) {
+                collapseBuilding(bldg, game.getPositionMap(), coords1, false, vPhaseReport);
             }
         }
 
@@ -17502,9 +17467,8 @@ public class Server implements Runnable {
             Building bldg = buildings.nextElement();
             Vector<Coords> collapseCoords = new Vector<>();
             Vector<Coords> updateCoords = new Vector<>();
-            Enumeration<Coords> buildingCoords = bldg.getCoords();
-            while (buildingCoords.hasMoreElements()) {
-                Coords coords = buildingCoords.nextElement();
+            Vector<Coords> buildingCoords = bldg.getCoordsVector();
+            for (Coords coords : buildingCoords) {
                 // If the CF is zero, the building should fall.
                 if (bldg.getCurrentCF(coords) == 0) {
                     collapseCoords.addElement(coords);
@@ -18399,14 +18363,6 @@ public class Server implements Runnable {
             }
         }
     }
-
-    /*
-     * //See note above where knownDeadEntities variable is declared private
-     * void deadEntitiesCleanup() { Entity en = null; for(Enumeration k =
-     * game.getGraveyardEntities(); k.hasMoreElements(); en = (Entity)
-     * k.nextElement()) { if (en != null) { if (!knownDeadEntities.contains(en))
-     * { knownDeadEntities.add(en); } } } }
-     */
 
     /**
      * remove Ice in the hex that's at the passed coords, and let entities fall
@@ -19533,9 +19489,9 @@ public class Server implements Runnable {
         }
 
         // right, switch the connection into the "active" bin
-        NEWconnectionListener.removeConnectionPending(conn);
-        NEWconnectionListener.addConnections(conn);
-        NEWconnectionListener.addConnectionIds(conn.getId(), conn);
+        connectionListener.removeConnectionPending(conn);
+        connectionListener.addConnections(conn);
+        connectionListener.addConnectionIds(conn.getId(), conn);
 
         // add and validate the player info
         if (!returning) {
@@ -20169,20 +20125,17 @@ public class Server implements Runnable {
         }
 
         int changed = 0;
-
         for (Enumeration<?> i = ((Vector<?>) packet.getObject(1)).elements(); i.hasMoreElements(); ) {
             IBasicOption option = (IBasicOption) i.nextElement();
             IOption originalOption = game.getOptions().getOption(option.getName());
 
-            if (originalOption == null) {
-                continue;
+            if (originalOption != null) {
+                String message = "Player " + player.getName() + " changed option \""
+                        + originalOption.getDisplayableName() + "\" to " + option.getValue().toString() + '.';
+                sendServerChat(message);
+                originalOption.setValue(option.getValue());
+                changed++;
             }
-
-            String message = "Player " + player.getName() + " changed option \"" + originalOption.getDisplayableName()
-                    + "\" to " + option.getValue().toString() + '.';
-            sendServerChat(message);
-            originalOption.setValue(option.getValue());
-            changed++;
         }
 
         // Set proper RNG
@@ -20263,9 +20216,9 @@ public class Server implements Runnable {
         // N.B. we're also building the list of players who
         // have declared their "unload stranded" actions.
         Vector<IPlayer> declared = new Vector<>();
-        Enumeration<EntityAction> pending = game.getActions();
-        while (pending.hasMoreElements()) {
-            action = (UnloadStrandedAction) pending.nextElement();
+        List<EntityAction> actions = game.getActionsVector();
+        for (EntityAction action1 : actions) {
+            action = (UnloadStrandedAction) action1;
             if (action.getPlayerId() == connId) {
                 MegaMek.getLogger().error("Server got multiple unload stranded packets from player");
                 sendServerChat(player.getName() + " should not send multiple 'unload stranded entity' packets.");
@@ -20323,9 +20276,8 @@ public class Server implements Runnable {
 
         // All players have declared whether they're unloading stranded units.
         // Walk the list of pending actions and unload the entities.
-        pending = game.getActions();
-        while (pending.hasMoreElements()) {
-            action = (UnloadStrandedAction) pending.nextElement();
+        for (EntityAction pending : game.getActionsVector()) {
+            action = (UnloadStrandedAction) pending;
 
             // Some players don't want to unload any stranded units.
             if (Entity.NONE != action.getEntityId()) {
