@@ -1054,6 +1054,14 @@ public class Server implements Runnable {
     }
 
     /**
+     * Returns the entityManager component
+     * @return the entityManager
+     */
+    public EntityManager getEntityManager() {
+        return entityManager;
+    }
+
+    /**
      * Correct a duplicate player name
      *
      * @param oldName the <code>String</code> old player name, that is a duplicate
@@ -1959,7 +1967,7 @@ public class Server implements Runnable {
                 game.updateSpacecraftDetection();
                 game.detectSpacecraft();
                 resolveWhatPlayersCanSeeWhatUnits();
-                doAllAssaultDrops();
+                entityManager.doAllAssaultDrops();
                 game.addMovementHeat();
                 applyBuildingDamage();
                 checkForPSRFromDamage();
@@ -18629,145 +18637,6 @@ public class Server implements Runnable {
             vDesc.addAll(crashVTOLorWiGE(te));
         }
         return vDesc;
-    }
-
-    /**
-     * resolve the landing of an assault drop
-     *
-     * @param entity the <code>Entity</code> for which to resolve it
-     */
-    public void doAssaultDrop(Entity entity) {
-        //resolve according to SO p.22
-        Report r = new Report(2380);
-
-        // whatever else happens, this entity is on the ground now
-        entity.setAltitude(0);
-
-        PilotingRollData psr;
-        // LAMs that convert to fighter mode on the landing turn are processed as crashes
-        if ((entity instanceof LandAirMech) && (entity.getConversionMode() == LandAirMech.CONV_MODE_FIGHTER)) {
-            reportmanager.addReport(processCrash(entity, 0, entity.getPosition()));
-            return;
-        }
-        if ((entity instanceof Protomech) || (entity instanceof BattleArmor)) {
-            psr = new PilotingRollData(entity.getId(), 5, "landing assault drop");
-        } else if (entity instanceof Infantry) {
-            psr = new PilotingRollData(entity.getId(), 4, "landing assault drop");
-        } else {
-            psr = entity.getBasePilotingRoll();
-        }
-        int roll = Compute.d6(2);
-        // check for a safe landing
-        reportmanager.addNewLines();
-        r.subject = entity.getId();
-        r.add(entity.getDisplayName(), true);
-        r.add(psr.getValueAsString());
-        r.add(roll);
-        r.newlines = 1;
-        r.choose(roll >= psr.getValue());
-        reportmanager.addReport(r);
-
-        // if we are on an atmospheric map or the entity is off the map for some reason
-        if (game.getBoard().inAtmosphere() || entity.getPosition() == null) {
-            // then just remove the entity
-            // TODO : for this and when the unit scatters off the board, we should really still
-            // TODO : apply damage before we remove, but this causes all kinds of problems for
-            // TODO : doEntityFallsInto and related methods which expect a coord on the board
-            // TODO : - need to make those more robust
-            r = new Report(2388);
-            reportmanager.addReport(r);
-            r.subject = entity.getId();
-            r.add(entity.getDisplayName(), true);
-            game.removeEntity(entity.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
-            return;
-        }
-
-        if (roll < psr.getValue()) {
-            int fallHeight = psr.getValue() - roll;
-
-            // if you fail by more than 7, you automatically fail
-            if (fallHeight > 7) {
-                reportmanager.addReport(entityManager.destroyEntity(entity, "failed assault drop", false, false));
-                entityManager.entityUpdate(entity.getId());
-                return;
-            }
-
-            // determine where we really land
-            Coords c = Compute.scatterAssaultDrop(entity.getPosition(), fallHeight);
-            int distance = entity.getPosition().distance(c);
-            reportmanager.addReport(ReportFactory.createReport(2385, 1, entity, distance));
-            if (!game.getBoard().contains(c)) {
-                reportmanager.addReport(ReportFactory.createReport(2386));
-                game.removeEntity(entity.getId(), IEntityRemovalConditions.REMOVE_IN_RETREAT);
-                return;
-            } else {
-                r = ReportFactory.createReport(2387);
-                r.add(c.getBoardNum());
-                reportmanager.addReport(r);
-            }
-            entity.setPosition(c);
-
-            // do fall damage from accidental fall
-            //set elevation to fall height above ground or building roof
-            IHex hex = game.getBoard().getHex(entity.getPosition());
-            int bldgElev = hex.containsTerrain(Terrains.BLDG_ELEV) ? hex.terrainLevel(Terrains.BLDG_ELEV) : 0;
-            entity.setElevation(fallHeight + bldgElev);
-            if ((entity instanceof Infantry) && !(entity instanceof BattleArmor)) {
-                HitData hit = new HitData(Infantry.LOC_INFANTRY);
-                reportmanager.addReport(damageEntity(entity, hit, 1));
-                // LAMs that convert to fighter mode on the landing turn are processed as crashes regardless of roll
-            } else {
-                reportmanager.addReport(doEntityFallsInto(entity, c, psr, true));
-            }
-        } else {
-            // set entity to expected elevation
-            IHex hex = game.getBoard().getHex(entity.getPosition());
-            int bldgElev = hex.containsTerrain(Terrains.BLDG_ELEV) ? hex.terrainLevel(Terrains.BLDG_ELEV) : 0;
-            entity.setElevation(bldgElev);
-
-            Building bldg = game.getBoard().getBuildingAt(entity.getPosition());
-            if (bldg != null) {
-                // whoops we step on the roof
-                checkBuildingCollapseWhileMoving(bldg, entity, entity.getPosition());
-            }
-
-            // finally, check for any stacking violations
-            Entity violated = Compute.stackingViolation(game, entity, entity.getPosition(), null);
-            if (violated != null) {
-                // StratOps explicitly says that this is not treated as an accident
-                // fall from above
-                // so we just need to displace the violating unit
-                // check to see if the violating unit is a DropShip and if so, then
-                // displace the unit dropping instead
-                if (violated instanceof Dropship) {
-                    violated = entity;
-                }
-                Coords targetDest = Compute.getValidDisplacement(game, violated.getId(), violated.getPosition(),
-                        Compute.d6() - 1);
-                if (null != targetDest) {
-                    doEntityDisplacement(violated, violated.getPosition(), targetDest, null);
-                    entityManager.entityUpdate(violated.getId());
-                } else {
-                    // ack! automatic death! Tanks
-                    // suffer an ammo/power plant hit.
-                    // TODO : a Mech suffers a Head Blown Off crit.
-                    reportmanager.addReport(entityManager.destroyEntity(entity, "impossible displacement",
-                            entity instanceof Mech, entity instanceof Mech));
-                }
-            }
-        }
-    }
-
-    /**
-     * resolve assault drops for all entities
-     */
-    void doAllAssaultDrops() {
-        for (Entity e : game.getEntitiesVector()) {
-            if (e.isAssaultDropInProgress()) {
-                doAssaultDrop(e);
-                e.setLandedAssaultDrop();
-            }
-        }
     }
 
     /**

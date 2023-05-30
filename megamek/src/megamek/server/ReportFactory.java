@@ -125,9 +125,7 @@ class ReportFactory {
 
     public static Report createPlayerReport(int ID, int playerID, String... str) {
         Report r = createPlayerReport(ID, playerID);
-        for (String s : str) {
-            r.add(s);
-        }
+        r.add(str);
         return r;
     }
 
@@ -137,6 +135,12 @@ class ReportFactory {
         r.indent();
         r.addDesc(te);
         r.newlines = 0;
+        return r;
+    }
+
+    public static Report createAttackingEntityReport(int ID, Entity ae, Entity te, String... str){
+        Report r = createAttackingEntityReport(ID, ae, te);
+        r.add(str);
         return r;
     }
 }
